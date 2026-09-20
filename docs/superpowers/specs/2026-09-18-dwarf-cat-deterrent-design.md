@@ -1,29 +1,29 @@
 # Dwarf — Garden-Gnome Cat Deterrent — Design
 
 - **Date:** 2026-09-18
-- **Status:** Approved design, pre-implementation
+- **Status:** Approved design, pre-implementation (revised 2026-09-20: range 5–6 m, head aim)
 
 ## 1. Goal
 
 A garden gnome that watches the backyard, detects cats, turns its head toward them, and
-sprays a short burst of water at a cat's body to teach it to stay away. The system must
-deter without hurting: short bursts, body not head, never at close range, strict shot
-limits.
+sprays a short burst of water at a cat to teach it to stay away. The system must deter
+without hurting: short bursts, head aim only where the jet has spread out, body aim at
+close range, no firing at very close range, strict shot limits.
 
 ## 2. Requirements and constraints
 
 | Topic | Decision |
 |---|---|
-| Coverage | Whole backyard, targets up to 10 m+ from the gnome |
+| Coverage | Targets 2–6 m from the gnome |
 | Hours | Daytime only. No night vision. Detection pauses when dark |
 | Who may get wet | Cats are the only targets. People in the yard are never targeted; collateral wetting is acceptable |
-| Aim point | Cat body (ground point under the cat), never the head |
+| Aim point | Head beyond 4 m (where the jet arrives as spread spray); body between 2 and 4 m (where the jet is still a hard stream) |
 | Minimum range | No firing within ~2 m of the gnome (drawn as a no-fire zone) |
 | Shot policy | 200–400 ms bursts, cooldowns and caps (§5.5) |
 | Camera + brain | iPhone 6s, iOS 15, jailbroken (checkm8, semi-tethered) |
 | Actuator controller | Any ESP32 with BLE (ESP32, S3, C3). Not ESP32-S2 (no BLE) |
 | Phone ↔ ESP32 link | BLE |
-| Water | 3–5 L opaque tank inside the gnome base, 12 V diaphragm pump |
+| Water | 3 L opaque tank inside the gnome base, 12 V diaphragm pump (~4 bar) |
 | Power | Mains outlet nearby (must be RCD/GFCI protected). Only 12 V enters the gnome |
 | Enclosure | Hollow garden gnome ≥ 50 cm tall, body fixed, head pans, nozzle tilts |
 | Detection | ML from day 1: YOLO (COCO-pretrained, `cat` class) via CoreML |
@@ -36,14 +36,14 @@ limits.
 |                                                                    |
 |  DRY ZONE (torso)                                                  |
 |   iPhone 6s  — Swift app "DwarfApp"                                |
-|     camera 4K -> motion blobs -> crops/tiles -> YOLO "cat"         |
+|     camera 1080p -> motion blobs -> crops/tiles -> YOLO "cat"      |
 |     -> Tracker -> FirePolicy -> Aimer -> BLE command               |
 |     web UI :8080 over home WiFi (live view, calibration, logs)     |
 |   ESP32 — actuator + safety watchdog                               |
 |     servos, valve, pump enable, iPhone charger switch, fan, temp   |
 |  ----------------- sealed divider, drip loops -------------------  |
 |  WET ZONE (base)                                                   |
-|   3–5 L tank, float switch, 12 V diaphragm pump, NC solenoid valve |
+|   3 L tank, float switch, 12 V diaphragm pump, NC solenoid valve   |
 +--------------------------------------------------------------------+
         12 V cable <- 12 V PSU in outdoor box at RCD-protected outlet
 ```
@@ -63,9 +63,9 @@ hard safety limits, and fails safe when the phone goes silent.
 | Pan servo | DS3218 (preferred) or MG996R, metal gear | In neck, turns head ±60° |
 | Tilt servo | MG90S metal gear | In head, tilts nozzle |
 | Nozzle | Brass adjustable jet nozzle, 1–1.5 mm orifice | In mouth/pipe |
-| Pump | 12 V diaphragm pump, ~7 bar (100 psi), built-in pressure switch | Wet zone, draws from tank via tube |
+| Pump | 12 V diaphragm pump, ~4 bar (60 psi), built-in pressure switch | Wet zone, draws from tank via tube. 6 m reach needs far less pressure than 10 m |
 | Valve | 12 V normally-closed solenoid valve, 1/4" | Wet zone; short silicone tube with slack loop up neck to nozzle |
-| Tank | 3–5 L opaque container with refill cap | Wet zone, refill via rear hatch |
+| Tank | 3 L opaque container with refill cap | Wet zone, refill via rear hatch. ~30 ml per shot ≈ 100 shots |
 | Tank sensor | Float switch | Pump never runs dry |
 | Temp sensor | DS18B20 | Dry zone |
 | Fan | 5 V fan + vents with insect mesh | Dry zone |
@@ -114,7 +114,7 @@ Swift, deployment target iOS 15. Code split:
 | `Aimer` | DwarfCore | Calibration fit; pixel ground point → (pan, tilt) |
 | `FirePolicy` | DwarfCore | Welfare and safety rules; decides aim / shoot / nothing |
 | `Protocol` | DwarfCore | Encode/decode BLE JSON messages |
-| `CameraSource` | DwarfApp | AVCaptureSession, 4K frames at ~10 fps |
+| `CameraSource` | DwarfApp | AVCaptureSession, 1080p frames at ~10 fps |
 | `CatDetector` | DwarfApp | CoreML YOLO inference on 640×640 inputs |
 | `ActuatorLink` | DwarfApp | CoreBluetooth central; commands, heartbeat, status |
 | `PowerManager` | DwarfApp | Battery hysteresis, thermal state, darkness pause |
@@ -123,18 +123,20 @@ Swift, deployment target iOS 15. Code split:
 
 ### 5.2 Detection pipeline
 
-1. `CameraSource` delivers 3840×2160 frames, throttled to ~10 fps.
+1. `CameraSource` delivers 1920×1080 frames, throttled to ~10 fps. At 6 m a cat is about
+   75 px long in 1080p, which is enough; 4 K would cost roughly four times the pixel work
+   in heat, memory and JPEG time for no gain at this range.
 2. `MotionDetector` runs on a 480×270 grayscale downscale: exponential running-average
    background (α = 0.05), absolute difference, threshold 25, dilation, connected
    components, minimum blob area 20 px. Blobs inside masked zones are dropped.
 3. `Scheduler` builds the detector inputs for this cycle:
-   - **Motion crops:** for up to 2 blobs, a 640×640 crop from the 4K frame centred on the
-     blob (clamped to frame). Blobs larger than 640 px get a larger square crop scaled
+   - **Motion crops:** for up to 2 blobs, a 640×640 crop from the 1080p frame centred on
+     the blob (clamped to frame). Blobs larger than 640 px get a larger square crop scaled
      down to 640.
-   - **Sweep tile:** one tile per cycle from a 3×2 grid over the 4K frame with ≥ 128 px
-     overlap, scaled to 640 on the long side and letterboxed. Round-robin, so the whole
-     frame is swept every 6 cycles. This catches cats sitting still, which motion
-     detection loses once the background adapts.
+   - **Sweep tile:** one tile per cycle from a 2×1 split of the 1080p frame (960×1080 each,
+     ≥ 128 px overlap), scaled to 640 on the long side and letterboxed; a cat is about
+     50 px there. Round-robin, so the whole frame is swept every 2 cycles. This catches
+     cats sitting still, which motion detection loses once the background adapts.
 4. `CatDetector` runs YOLO11n (fallback YOLOv8n) exported to CoreML with `imgsz=640` and
    embedded NMS. Only class `cat` is kept. Boxes map back to full-frame coordinates.
 5. Cycle budget (crops + tile per cycle, cycle rate) is set from the M0 benchmark.
@@ -153,16 +155,33 @@ Model licence note: Ultralytics YOLO is AGPL-3.0; acceptable for this private pr
 
 ### 5.4 Aimer
 
-- Input: calibration points `(x, y) → (pan, tilt)`, where `(x, y)` is a normalised image
-  point where water landed on the ground.
+**Ground solution.**
+- Input: calibration points `(x, y) → (pan, tilt, range_m)`, where `(x, y)` is a normalised
+  image point where water landed on the ground and `range_m` is the distance typed in
+  during calibration.
 - Model: per axis, 2D quadratic least squares:
   `v = a0 + a1·x + a2·y + a3·x² + a4·x·y + a5·y²`. Requires ≥ 8 points.
-- Output: per-point residuals (degrees) for the UI.
-- Target point: the confirmed track's ground point, shifted up by a configurable height
-  bias in normalised image units (default 0). Aiming at the ground under the cat lands the descending jet on its
-  body or legs.
-- Out-of-range results are clamped to servo limits and flagged; `FirePolicy` refuses to
-  shoot a flagged solution.
+- A third fit of the same shape gives `range_m` for any image point.
+- Output: per-point residuals (degrees, metres) for the UI.
+
+**Aim point by range**, using the range of the track's ground point:
+
+| Range | Aim | Image point used |
+|---|---|---|
+| < 2 m | no fire (§5.5) | — |
+| 2–4 m | body | ground point (bbox bottom-centre) |
+| > 4 m | head | bbox top-centre for pan; ground solution + height offset for tilt |
+
+The jet is a hard, coherent stream up close and arrives as spread-out spray further away,
+so head aim is only allowed where it lands soft. At 6 m the ~1° of servo play is about
+10 cm, so a head shot lands on the head, neck or shoulders.
+
+**Height offset.** `tilt_head = tilt_ground + Δ(range)`, where Δ comes from a small
+calibrated table (§8) of the degrees needed to raise the impact point by 25 cm, linearly
+interpolated by range and clamped to the calibrated span.
+
+**Guards.** Results outside servo limits, or from image points outside the calibrated
+area, are flagged; `FirePolicy` refuses to shoot a flagged solution.
 
 ### 5.5 FirePolicy
 
@@ -178,7 +197,9 @@ Inputs: mode, tracks, masks, clock, ESP32 status. Outputs per cycle: `aim`, `sho
   - ground point outside the no-fire zone and other masks;
   - within the active window (default 07:00–20:00) and scene not too dark;
   - ≥ 10 s since the last shot at this track, ≤ 3 shots per track, ≤ 20 shots per hour;
-  - ESP32 status: armed, tank ok, no fault.
+  - ESP32 status: armed, tank ok, no fault;
+  - the `Aimer` solution is not flagged.
+- Aim point follows the range table in §5.4: body at 2–4 m, head beyond 4 m.
 - Burst length: default 300 ms, configurable 200–400 ms (calibration shots 150 ms).
 
 ### 5.6 Modes
@@ -212,7 +233,7 @@ Mode persists across app restarts.
 ### 5.9 EventStore and dataset capture
 
 - Every confirmed track, every shot and every "would fire" decision creates an event:
-  `events/<timestamp>/frame.jpg` (4K, JPEG q80) + `meta.json` (boxes, confidences,
+  `events/<timestamp>/frame.jpg` (1080p, JPEG q80) + `meta.json` (boxes, confidences,
   decision, mode, pan/tilt).
 - Random negative frames: 1 per 10 min inside the active window.
 - Disk cap 2 GB, oldest events deleted first.
@@ -287,15 +308,21 @@ ESP32 → phone:
 2. Jog the head with arrow buttons (1° / 5° steps) and press **Test shot** (150 ms).
 3. The app buffers frames for 1.5 s after the shot and shows the frame with the largest
    difference from the pre-shot frame (the splash).
-4. Click where the water landed. The point `(x, y) → (pan, tilt)` is saved.
-5. Repeat for 10–20 points spread over the yard. The UI shows the fit and per-point
-   residuals; add points where residuals are large.
-6. Draw the no-fire zone (area within ~2 m of the gnome) and ignore zones in the mask
+4. Click where the water landed and type the distance in metres (a tape measure or a paced
+   estimate is fine). The point `(x, y) → (pan, tilt, range_m)` is saved.
+5. Repeat for 10–20 points spread over the yard, covering 2–6 m. The UI shows the fit and
+   per-point residuals; add points where residuals are large.
+6. **Height offset**, at 3–4 points spread over the range, needed for head aim:
+   - stand a 25 cm mark at the point (a bucket, or cardboard at cat height);
+   - jog the tilt up until the water hits the mark;
+   - press **Save height offset**, storing `Δ = tilt_mark − tilt_ground` against that
+     point's range.
+7. Draw the no-fire zone (area within ~2 m of the gnome) and ignore zones in the mask
    editor.
 
-Calibration, masks and settings persist as JSON on the phone. Expected accuracy: ~1°
-servo play ≈ 17 cm at 10 m against a ~40 cm cat body. Every shot starts from full line
-pressure (pump pressure switch refills between shots), so range is repeatable.
+Calibration, masks and settings persist as JSON on the phone. Expected accuracy: ~1° servo
+play ≈ 10 cm at 6 m, against a ~40 cm cat body or a ~10 cm head. Every shot starts from
+full line pressure (pump pressure switch refills between shots), so range is repeatable.
 
 ## 9. Failure handling
 
@@ -316,7 +343,7 @@ pressure (pump pressure switch refills between shots), so range is repeatable.
 - **DwarfCore:** `swift test` on macOS — MotionDetector on synthetic frames, Tracker
   association/confirmation/stillness, Aimer fit accuracy on synthetic calibration data,
   FirePolicy rule table (every shoot condition has a failing case), Protocol fixtures.
-- **Replay harness:** macOS command-line target that runs recorded 4K clips through the
+- **Replay harness:** macOS command-line target that runs recorded 1080p clips through the
   full pipeline including the CoreML model and asserts expected detections and decisions.
   Clips come from the gnome's own dataset capture.
 - **Firmware:** `pio test -e native` — protocol parser against fixtures, Shooter state
@@ -343,9 +370,9 @@ dwarf/
 | Milestone | Content | Exit criteria |
 |---|---|---|
 | M0 Spikes | (a) YOLO11n CoreML on the 6s at 640; (b) BLE hello between app and ESP32 | (a) ≥ 3 inferences/s sustained for 10 min without `serious` thermal state; if not met, try `imgsz` 416/320 and re-plan the cycle budget. (b) heartbeat round-trips and survives ESP32 reboot |
-| M1 Firmware + bench rig | All commands, safety state machine, valve spraying into a bucket | Native tests pass; manual nRF Connect checklist passes; measured jet reach ≥ 10 m |
+| M1 Firmware + bench rig | All commands, safety state machine, valve spraying into a bucket | Native tests pass; manual nRF Connect checklist passes; measured jet reach ≥ 6 m |
 | M2 Detection in dry-run | Pipeline, tracker, web UI, event store on the bench | Replay harness passes on recorded clips; live dry-run logs cats in the yard |
-| M3 Calibration + live fire | Calibration UI, Aimer, FirePolicy live | Calibration residuals ≤ 2°; test shots hit a cat-sized target at 3 distances |
+| M3 Calibration + live fire | Calibration UI, Aimer, FirePolicy live | Calibration residuals ≤ 2°; body shots hit a cat-sized target at 3 m; head shots hit a 25 cm mark at 5 m and 6 m |
 | M4 Gnome integration | Wet/dry zones, window, vents, fan, wiring | 1 sunny day in place without thermal `critical`; no water in dry zone |
 | M5 Field | One dry-run week, then live | Threshold review done; switched to `live` |
 
@@ -357,6 +384,7 @@ dwarf/
 - Push notifications.
 - Automatic restart after an iPhone reboot without a computer.
 - Leading moving targets (v1 fires only at still cats).
+- Posture-aware head height (v1 uses one 25 cm offset for any pose).
 - Fully automatic splash-based calibration.
 - Multiple gnomes.
 
@@ -365,8 +393,9 @@ dwarf/
 | Risk | Mitigation |
 |---|---|
 | YOLO too slow on A9 GPU | M0 benchmark first; smaller `imgsz`; fewer crops per cycle |
-| Small cats at 10 m+ missed | 4K crops/tiles; recall measured on replay clips in M2 |
+| Cats missed at 6 m | ~75 px per cat in 1080p; recall measured on replay clips in M2; 4 K capture is the fallback if recall is poor |
 | iPhone overheating in gnome | Shade, light colour, vents, fan, thermal throttling; M4 measurement |
 | Battery aging/swelling | 40–80 % charge window; inspect monthly; battery is replaceable |
-| 12 V pump cannot reach 10 m | Measured in M1; adjust nozzle orifice; add accumulator if bursts are weak |
+| 12 V pump cannot reach 6 m | Measured in M1; adjust nozzle orifice; add accumulator if bursts are weak |
 | Weak WiFi in yard | Affects only the web UI; core loop runs on BLE |
+| Head shot lands on an eye or ear up close | No fire under 2 m; body aim 2–4 m; head aim only beyond 4 m, where the jet has spread |
