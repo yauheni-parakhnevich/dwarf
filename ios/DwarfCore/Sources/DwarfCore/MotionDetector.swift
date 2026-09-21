@@ -2,6 +2,13 @@ import Foundation
 
 public struct MotionConfig: Equatable, Sendable {
     /// How fast the background forgets. Higher absorbs a stopped object sooner.
+    ///
+    /// This is per *frame*, not per second, so the wall-clock time to absorb a stopped
+    /// animal scales with the frame rate: if the phone throttles from 10 fps to 3 fps in
+    /// the heat, absorption takes about three times longer. That is the safe direction —
+    /// a stopped cat stays flagged for longer, and the cost of the opposite error is only
+    /// a wasted inference — so it is left coupled deliberately rather than converted to a
+    /// time constant.
     public var backgroundAlpha: Double = 0.05
     /// Absolute luma difference that counts as movement.
     public var threshold: Double = 25
