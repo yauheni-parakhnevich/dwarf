@@ -67,4 +67,52 @@ final class IncomingTests: XCTestCase {
         XCTAssertThrowsError(try decode(#"{"armed":true,"pan":0,"tilt":0,"tank":"ok","pump":false,"charge":true,"fan":false,"temp":20,"fault":null}"#),
                              "shots is missing")
     }
+
+    // MARK: - "shots" narrowing must never trap the process.
+    //
+    // `UInt32(_:)` does not throw on a value it cannot represent -- it hits a fatal-error
+    // trap and takes the whole process down with it. A single corrupted BLE notification
+    // that still parses as valid JSON must not be able to kill the app that way, so these
+    // values must come back as a catchable `DecodingError`, never a crash.
+
+    func testNegativeShotsIsRejectedRatherThanTrappingTheProcess() {
+        XCTAssertThrowsError(try decode(#"{"armed":false,"pan":0,"tilt":0,"tank":"ok","pump":false,"charge":true,"fan":false,"temp":24,"fault":null,"shots":-1}"#)) { error in
+            guard case IncomingMessage.DecodingError.outOfRange(let field, _) = error else {
+                return XCTFail("expected outOfRange, got \(error)")
+            }
+            XCTAssertEqual(field, "shots")
+        }
+    }
+
+    func testShotsAboveUInt32MaxIsRejectedRatherThanTrappingTheProcess() {
+        let tooLarge = Double(UInt32.max) + 1
+        XCTAssertThrowsError(try decode(#"{"armed":false,"pan":0,"tilt":0,"tank":"ok","pump":false,"charge":true,"fan":false,"temp":24,"fault":null,"shots":\#(tooLarge)}"#)) { error in
+            guard case IncomingMessage.DecodingError.outOfRange(let field, _) = error else {
+                return XCTFail("expected outOfRange, got \(error)")
+            }
+            XCTAssertEqual(field, "shots")
+        }
+    }
+
+    func testNonFiniteShotsIsRejectedRatherThanTrappingTheProcess() {
+        // The firmware never actually sends a null "shots" -- it is serialised straight
+        // from a uint32_t, never through the round1() helper that turns pan/tilt/temp
+        // into null when non-finite -- but a corrupted packet is a corrupted packet
+        // regardless of what the firmware would ever intentionally emit.
+        XCTAssertThrowsError(try decode(#"{"armed":false,"pan":0,"tilt":0,"tank":"ok","pump":false,"charge":true,"fan":false,"temp":24,"fault":null,"shots":null}"#)) { error in
+            guard case IncomingMessage.DecodingError.outOfRange(let field, let value) = error else {
+                return XCTFail("expected outOfRange, got \(error)")
+            }
+            XCTAssertEqual(field, "shots")
+            XCTAssertTrue(value.isNaN)
+        }
+    }
+
+    func testFractionalShotsTruncatesDeliberately() throws {
+        // An in-range fractional count truncates toward zero -- the same truncation
+        // UInt32(_:) itself would perform -- rather than being rejected outright.
+        let message = try decode(#"{"armed":false,"pan":0,"tilt":0,"tank":"ok","pump":false,"charge":true,"fan":false,"temp":24,"fault":null,"shots":3.7}"#)
+        guard case .status(let status) = message else { return XCTFail("expected status") }
+        XCTAssertEqual(status.shots, 3)
+    }
 }

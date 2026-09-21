@@ -54,6 +54,20 @@ public enum IncomingMessage: Equatable, Sendable {
         case notAnObject
         case unrecognised
         case missingField(String)
+        /// A numeric field held a value `UInt32(_:)` cannot represent -- negative,
+        /// non-finite, or larger than `UInt32.max`. Thrown deliberately, because
+        /// `UInt32(_:)` does not throw on such a value: it hits a fatal-error trap and
+        /// takes the whole process down with it. That is the same crash class
+        /// `Command.serialize` exists to prevent on the outgoing side (see
+        /// `Command.swift`'s doc comment on non-finite angles reaching
+        /// `JSONSerialization`); this is its incoming twin -- a corrupted BLE
+        /// notification that still parses as JSON must not be able to kill the app.
+        ///
+        /// If the validation that throws this ever regresses -- e.g. a future field
+        /// goes back to a bare `UInt32(try number(...))` -- the symptom is NOT a red
+        /// test. It is the app dying outright, silently, the instant a single garbled
+        /// packet arrives, the same way the encoder used to die on a NaN angle.
+        case outOfRange(field: String, value: Double)
     }
 
     public static func decode(_ data: Data) throws -> IncomingMessage {
@@ -89,16 +103,24 @@ public enum IncomingMessage: Equatable, Sendable {
             guard let value = object[key] as? Bool else { throw DecodingError.missingField(key) }
             return value
         }
+        // Narrows a field to `UInt32` without ever handing `UInt32(_:)` a value it cannot
+        // represent -- see `DecodingError.outOfRange`. A fractional value (e.g. a
+        // corrupted `3.7`) is truncated toward zero deliberately, the same truncation
+        // `UInt32(_:)` itself performs for an in-range fractional value; only a value
+        // that is negative, non-finite (including the NaN `number(_:)` produces for a
+        // JSON `null`), or too large to fit is rejected.
+        func counter(_ key: String) throws -> UInt32 {
+            let value = try number(key)
+            guard value.isFinite, value >= 0, value <= Double(UInt32.max) else {
+                throw DecodingError.outOfRange(field: key, value: value)
+            }
+            return UInt32(value)
+        }
 
         guard let tank = object["tank"] as? String else { throw DecodingError.missingField("tank") }
 
         let faultCode = object["fault"] as? String   // JSON null decodes to NSNull, not String
 
-        let shotsValue = try number("shots")
-        // A garbled or malicious "shots" (negative, fractional, out of UInt32 range, or the
-        // NaN case discussed above) would trap `UInt32(_:)` rather than throw a catchable
-        // error. The firmware never sends such a value, so this is left as a known, narrow
-        // gap rather than papered over here -- see the accompanying analysis.
         return .status(DeviceStatus(
             armed: try flag("armed"),
             pan: try number("pan"),
@@ -109,7 +131,7 @@ public enum IncomingMessage: Equatable, Sendable {
             fan: try flag("fan"),
             temp: try number("temp"),
             fault: faultCode.map(DeviceFault.init(code:)),
-            shots: UInt32(shotsValue)
+            shots: try counter("shots")
         ))
     }
 }
