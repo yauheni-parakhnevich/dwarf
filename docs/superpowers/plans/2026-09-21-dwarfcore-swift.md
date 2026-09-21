@@ -2446,6 +2446,7 @@ below must hold before a shot is requested:
 | Mode is `live` | Dry-run exists so a week of logs can be reviewed before any water flows |
 | Track is confirmed | Two of three looks, not one hopeful frame |
 | Track is still | A shot takes about a second to arrive; leading a walking cat is beyond this machine |
+| Track is not ambiguous | Two tracks close enough to have swapped identities mean the confirmation, stillness and shot count may belong to the other animal |
 | Range at least 2 m | Closer than that the jet is a hard stream, not spread spray |
 | Ground point outside every no-fire zone | The owner drew those for a reason |
 | Aim solution not flagged | Outside the servo limits, outside the calibrated area, or a head shot with no height data |
@@ -2481,10 +2482,12 @@ final class FirePolicyTests: XCTestCase {
     }
 
     private func track(id: Int = 1, x: Double = 0.5, y: Double = 0.7,
-                       confirmed: Bool = true, still: Bool = true) -> Track {
+                       confirmed: Bool = true, still: Bool = true,
+                       ambiguous: Bool = false) -> Track {
         Track(id: id,
               box: Rect(x: x - 0.04, y: y - 0.06, width: 0.08, height: 0.06),
-              confidence: 0.9, lastSeen: 0, isConfirmed: confirmed, isStill: still)
+              confidence: 0.9, lastSeen: 0, isConfirmed: confirmed, isStill: still,
+              isAmbiguous: ambiguous)
     }
 
     private func healthyStatus() -> DeviceStatus {
@@ -2551,6 +2554,15 @@ final class FirePolicyTests: XCTestCase {
         let policy = FirePolicy()
         guard case .aim = policy.decide(input(tracks: [track(still: false)])) else {
             return XCTFail("expected aim only")
+        }
+    }
+
+    func testAnAmbiguousTrackIsFollowedNotFired() {
+        var ambiguous = track()
+        ambiguous.isAmbiguous = true
+        let policy = FirePolicy()
+        guard case .aim = policy.decide(input(tracks: [ambiguous])) else {
+            return XCTFail("two tangled cats: follow, never fire")
         }
     }
 
@@ -2845,6 +2857,10 @@ public final class FirePolicy {
     private func canFire(_ track: Track, _ solution: AimSolution, _ input: PolicyInput) -> Bool {
         guard input.mode == .live || input.mode == .dryRun else { return false }
         guard track.isConfirmed, track.isStill else { return false }
+        // Nearest-neighbour association cannot tell two crossing animals apart, so the
+        // tracker flags the overlap rather than guessing. Water while two cats are tangled
+        // is exactly when the history behind "confirmed and still" is least trustworthy.
+        guard !track.isAmbiguous else { return false }
         guard !solution.isFlagged else { return false }
         guard solution.rangeM >= limits.minRangeM else { return false }
         guard !input.masks.isNoFire(track.groundPoint) else { return false }
@@ -2897,7 +2913,7 @@ its own cooldowns would predict nothing.
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `cd ios/DwarfCore && swift test --filter FirePolicyTests`
-Expected: `Executed 20 tests, with 0 failures`.
+Expected: `Executed 21 tests, with 0 failures`.
 
 - [ ] **Step 5: Commit**
 
