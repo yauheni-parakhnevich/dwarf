@@ -389,6 +389,31 @@ void test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alon
     TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
 }
 
+void test_status_reflects_every_field_of_a_live_controller() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"charge\",\"v\":false}"), now);
+    c.handle(cmd("{\"c\":\"fan\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":25.0,\"tilt\":-10.0}"), now);
+    advance(c, now, 500, /*tankClosed=*/true, /*temp=*/33.5f);  // head arrives
+
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":25.0,\"tilt\":-10.0,\"ms\":300}"), now);
+    advance(c, now, 500, true, 33.5f);  // settle and burst complete
+
+    Status s = c.status();
+    TEST_ASSERT_TRUE(s.armed);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 25.0f, s.pan);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -10.0f, s.tilt);
+    TEST_ASSERT_TRUE(s.tankOk);
+    TEST_ASSERT_TRUE(s.pump);      // armed && tankOk && no fault
+    TEST_ASSERT_FALSE(s.charge);   // explicitly turned off
+    TEST_ASSERT_TRUE(s.fan);       // commanded on
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 33.5f, s.temp);
+    TEST_ASSERT_TRUE(s.fault == Fault::None);
+    TEST_ASSERT_EQUAL_UINT32(1, s.shots);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -411,5 +436,6 @@ int main(int, char**) {
     RUN_TEST(test_arm_aim_shoot_cooldown_sequence);
     RUN_TEST(test_cfg_narrowing_limits_aborts_an_in_flight_shot_outside_the_new_cone);
     RUN_TEST(test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alone);
+    RUN_TEST(test_status_reflects_every_field_of_a_live_controller);
     return UNITY_END();
 }
