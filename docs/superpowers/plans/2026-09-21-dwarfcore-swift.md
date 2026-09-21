@@ -1675,6 +1675,36 @@ git add ios/DwarfCore
 git commit -m "feat(core): add calibration store and quadratic surface fit"
 ```
 
+**Post-review addendum (applied in commit `f38cabe`):** numerical analysis of the committed
+fit, plus one correction to this plan's own test code.
+
+1. **Duplicate ranges produced a step in the aim correction.** Two height-offset samples at
+   the same range — an owner re-shooting the same distance on a breezy day — gave
+   `3.9 → 3.1`, `4.0 → 3.0`, `4.1 → 1.05`: a two-degree discontinuity at one range. Two
+   readings at one range are repeat measurements of one quantity, so they are now averaged
+   before interpolating. The same collapse applies at the clamped ends.
+2. **The `1e-12` pivot threshold is now documented as conditional.** It is only correct
+   because the matrix is built from coordinates normalised to 0...1, which bounds its entries
+   to roughly the sample count regardless of the pan, tilt and range magnitudes being fitted
+   — those enter only the right-hand side. Raw pixel coordinates would need a relative
+   tolerance instead.
+
+**Measurements worth keeping** (from the same analysis): `cond(AᵀA)` is about 9.4e2 for
+samples spread over the frame, 2.5e4 for the realistic case of samples clustered in the
+lower half where the ground is, and 3.2e5 for a tight band — all far above the threshold, so
+the solver's rejection path fires only on genuinely degenerate layouts. Extrapolating 0.35
+beyond the calibrated band roughly triples the error under plausible click noise, which is
+why the Aimer flags solutions from outside that band rather than trusting them. And a single
+mis-clicked sample moves the surface by ~9.45 pan units while showing a residual of 26.6
+against a typical 1–3, so the per-point residuals in the web UI do make a bad shot obvious —
+which is why no automatic outlier rejection was added.
+
+Declined: outlier rejection (the residual display already exposes bad shots, and automatic
+rejection would risk discarding a legitimate sample from an awkward corner) and any
+extrapolation handling here (the Aimer's flag covers it).
+
+The suite is 73 tests after this task.
+
 ---
 
 ### Task 7: Aimer
