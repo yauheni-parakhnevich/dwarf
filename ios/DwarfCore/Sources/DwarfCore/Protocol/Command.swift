@@ -31,14 +31,24 @@ public enum Command: Equatable, Sendable {
     /// this file will start rejecting requests the firmware would now honour.
     public static let maxBurstMs: UInt16 = 500
 
+    /// The spec's welfare ceiling on a single burst, deliberately below the firmware's
+    /// cap: 500 ms is what the hardware refuses to exceed, 400 ms is the most water an
+    /// animal should ever receive at once. `FirePolicy` already clamps its own `burstMs`
+    /// into 200...400, but it is not the only thing that can build a `shoot` — a
+    /// calibration test shot and any manual control in the web UI construct one directly,
+    /// because calibration is impossible without firing outside the policy. Checking it
+    /// here too means the welfare limit holds on every path to the nozzle, not only the
+    /// vetted one.
+    public static let maxWelfareBurstMs: UInt16 = 400
+
     public enum EncodingError: Error, Equatable {
         /// An angle was NaN or infinite. The firmware rejects these, and sending one
         /// would mean a silently dropped command.
         case nonFiniteValue(field: String)
         /// A zero-length burst. The firmware rejects it as "bad".
         case zeroBurst
-        /// A burst longer than the firmware will ever actually fire. See
-        /// `Command.maxBurstMs`.
+        /// A burst longer than an animal should ever receive. See
+        /// `Command.maxWelfareBurstMs` and `Command.maxBurstMs`.
         case burstTooLong(ms: UInt16)
     }
 
@@ -60,7 +70,7 @@ public enum Command: Equatable, Sendable {
             try check(pan, "pan")
             try check(tilt, "tilt")
             guard ms > 0 else { throw EncodingError.zeroBurst }
-            guard ms <= Command.maxBurstMs else { throw EncodingError.burstTooLong(ms: ms) }
+            guard ms <= Command.maxWelfareBurstMs else { throw EncodingError.burstTooLong(ms: ms) }
             // Int, not Double: the firmware requires a JSON integer here.
             object = ["c": "shoot", "pan": round2(pan), "tilt": round2(tilt), "ms": Int(ms)]
         case .charge(let on):

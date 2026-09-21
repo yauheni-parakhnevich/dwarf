@@ -63,11 +63,20 @@ final class CommandTests: XCTestCase {
         XCTAssertThrowsError(try Command.shoot(pan: 0, tilt: 0, ms: 0).encoded())
     }
 
-    func testBurstAtTheFirmwareCapIsAccepted() throws {
-        // Shooter::request clamps at exactly maxBurstMs; a request for exactly that
-        // many milliseconds is not "too long", it is the longest legal one.
-        let object = try json(.shoot(pan: 0, tilt: 0, ms: Command.maxBurstMs))
-        XCTAssertEqual(object["ms"] as? Int, Int(Command.maxBurstMs))
+    func testBurstAtTheWelfareCapIsAccepted() throws {
+        // A request for exactly the welfare maximum is not "too long", it is the longest
+        // legal one.
+        let object = try json(.shoot(pan: 0, tilt: 0, ms: Command.maxWelfareBurstMs))
+        XCTAssertEqual(object["ms"] as? Int, Int(Command.maxWelfareBurstMs))
+    }
+
+    func testBurstBetweenTheWelfareCapAndTheFirmwareCapIsRefused() {
+        // The firmware would happily fire 500 ms: its cap is about what the hardware
+        // will do, not about what the animal should receive. This is the boundary that
+        // holds even on paths that never consult FirePolicy, such as a calibration shot.
+        XCTAssertThrowsError(try json(.shoot(pan: 0, tilt: 0, ms: Command.maxBurstMs))) { error in
+            XCTAssertEqual(error as? Command.EncodingError, .burstTooLong(ms: Command.maxBurstMs))
+        }
     }
 
     func testBurstLongerThanTheFirmwareCapIsRefused() {
@@ -112,7 +121,7 @@ final class CommandTests: XCTestCase {
     func testEveryMessageFitsOneBLEWrite() throws {
         let commands: [Command] = [
             .heartbeat, .arm(true), .aim(pan: -59.9, tilt: -29.9), .park,
-            .shoot(pan: -59.9, tilt: 39.9, ms: 500), .charge(false), .fan(true),
+            .shoot(pan: -59.9, tilt: 39.9, ms: 400), .charge(false), .fan(true),
             .config(panMin: -60, panMax: 60, tiltMin: -30, tiltMax: 40)
         ]
         for command in commands {

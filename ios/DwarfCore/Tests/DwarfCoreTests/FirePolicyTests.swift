@@ -387,4 +387,116 @@ final class FirePolicyTests: XCTestCase {
             }
         }
     }
+
+    // MARK: more than one cat
+
+    /// Two cats a good distance apart, each with its own aim solution, so which one a
+    /// decision was about can be read off the pan angle.
+    private func twoCats(uptime: TimeInterval, confidences: (Double, Double) = (0.9, 0.9)) -> PolicyInput {
+        func cat(id: Int, x: Double, confidence: Double) -> Track {
+            Track(id: id, box: Rect(x: x - 0.04, y: 0.64, width: 0.08, height: 0.06),
+                  confidence: confidence, lastSeen: uptime,
+                  isConfirmed: true, isStill: true, isAmbiguous: false)
+        }
+        let tracks = [cat(id: 1, x: 0.3, confidence: confidences.0),
+                      cat(id: 2, x: 0.7, confidence: confidences.1)]
+        return PolicyInput(
+            mode: .live,
+            tracks: tracks,
+            solutions: [1: AimSolution(pan: -20, tilt: 4, rangeM: 5, target: .head,
+                                       isFlagged: false, flagReason: nil, flagReasons: []),
+                        2: AimSolution(pan: 20, tilt: 4, rangeM: 5, target: .head,
+                                       isFlagged: false, flagReason: nil, flagReasons: [])],
+            masks: .empty,
+            status: healthyStatus(),
+            meanLuma: 120,
+            now: noon(),
+            uptime: uptime
+        )
+    }
+
+    func testASecondCatIsNotStarvedByTheFirst() {
+        // Ranking candidates by confidence alone and only ever acting on the top one let
+        // a cat that had already spent its budget keep the head to itself for as long as
+        // it stayed in frame — it was merely rate-limited, never structurally unfireable,
+        // so every cycle aimed at it again. A second cat sitting a metre away got nothing.
+        let policy = FirePolicy()
+        var pans: [Double] = []
+
+        for i in 0..<300 {   // 30 s at 10 Hz, both cats sitting still in the open
+            if case .shoot(let pan, _, _) = policy.decide(twoCats(uptime: 100 + Double(i) * 0.1)) {
+                pans.append(pan)
+            }
+        }
+
+        XCTAssertTrue(pans.contains { $0 < 0 }, "the first cat was never sprayed: \(pans)")
+        XCTAssertTrue(pans.contains { $0 > 0 }, "the second cat was never sprayed: \(pans)")
+    }
+
+    func testShotsAreSpacedByWhatTheHardwareCanDo() {
+        // One nozzle, and a firmware cooldown that would refuse anything sooner. Two
+        // different cats must not produce two shots inside that gap: the second would be
+        // bounced by the ESP32 and still spend the animal's budget here.
+        let policy = FirePolicy()
+        var times: [TimeInterval] = []
+
+        for i in 0..<300 {
+            let uptime = 100 + Double(i) * 0.1
+            if case .shoot = policy.decide(twoCats(uptime: uptime)) { times.append(uptime) }
+        }
+
+        XCTAssertGreaterThanOrEqual(times.count, 2, "expected shots at both cats: \(times)")
+        for (earlier, later) in zip(times, times.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(later - earlier, FireLimits().minDeviceInterval - 1e-9,
+                                        "two shots \(later - earlier) s apart: \(times)")
+        }
+    }
+
+    func testTheHigherConfidenceCatIsStillPreferredWhenBothCanBeFiredAt() {
+        // Preferring a fireable candidate must not throw away the ranking itself.
+        let policy = FirePolicy()
+        guard case .shoot(let pan, _, _) = policy.decide(twoCats(uptime: 100, confidences: (0.6, 0.95))) else {
+            return XCTFail("expected a shot")
+        }
+        XCTAssertGreaterThan(pan, 0, "the more confident cat should have been chosen")
+    }
+
+    // MARK: the welfare envelope
+
+    func testBurstLengthIsClampedIntoTheWelfareRange() {
+        // burstMs is a plain setting a screen could bind straight to. The spec's range is
+        // 200...400 ms, and neither end is negotiable at the point water leaves the nozzle.
+        var tooLong = FireLimits(); tooLong.burstMs = 450
+        var tooShort = FireLimits(); tooShort.burstMs = 50
+
+        guard case .shoot(_, _, let longMs) = FirePolicy(limits: tooLong).decide(input()) else {
+            return XCTFail("expected a shot")
+        }
+        guard case .shoot(_, _, let shortMs) = FirePolicy(limits: tooShort).decide(input()) else {
+            return XCTFail("expected a shot")
+        }
+        XCTAssertEqual(longMs, 400)
+        XCTAssertEqual(shortMs, 200)
+    }
+
+    func testTheMinimumRangeCannotBeLoweredBelowTheHardStreamDistance() {
+        // Closer than 2 m the jet is a hard stream. Setting the limit lower must not work.
+        var reckless = FireLimits(); reckless.minRangeM = 0.2
+        let policy = FirePolicy(limits: reckless)
+        XCTAssertEqual(policy.decide(input(range: 1.5)), .aim(pan: 12, tilt: 4))
+    }
+
+    func testANonFiniteMinimumRangeFailsSafe() {
+        var broken = FireLimits(); broken.minRangeM = .nan
+        let policy = FirePolicy(limits: broken)
+        XCTAssertEqual(policy.decide(input(range: 1.5)), .aim(pan: 12, tilt: 4))
+    }
+
+    func testTheWelfareEnvelopeSurvivesAssigningLimitsLater() {
+        let policy = FirePolicy()
+        var reckless = FireLimits(); reckless.burstMs = 450; reckless.minRangeM = 0.2
+        policy.limits = reckless
+        XCTAssertEqual(policy.limits.burstMs, 400)
+        XCTAssertEqual(policy.limits.minRangeM, 2)
+    }
 }

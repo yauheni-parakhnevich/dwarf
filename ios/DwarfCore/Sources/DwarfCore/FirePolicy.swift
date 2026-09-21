@@ -26,8 +26,18 @@ public struct FireLimits: Equatable, Sendable {
     /// ages out. Generous on purpose: a cat that returns to a different corner ten minutes
     /// later is a new visit and should get a fresh budget, not inherit the last one's.
     public var animalWindow: TimeInterval = 600
+    /// Shortest gap between any two shots, whatever they are aimed at. The gnome has one
+    /// nozzle and one pump, and the firmware enforces its own 5 s cooldown: a `shoot` that
+    /// arrives inside it is refused, so asking anyway would spend an animal's budget on
+    /// water it never received. 6 s covers the firmware's 5 s (which starts when the valve
+    /// closes, not when the command arrives), plus the servo move, the 150 ms settle, the
+    /// burst itself and the BLE round trip. Distinct from `minShotInterval`, which is
+    /// about how often one animal should be sprayed rather than what the hardware can do.
+    public var minDeviceInterval: TimeInterval = 6
     /// A ceiling on the whole system, whatever the tracker believes it is seeing.
     public var maxShotsPerHour: Int = 20
+    /// Length of one burst. The spec's welfare range is 200...400 ms, and `FirePolicy`
+    /// clamps into it: see `FirePolicy.limits`.
     public var burstMs: UInt16 = 300
     /// Active window in local time, as hours.
     public var activeStartHour: Int = 7
@@ -96,7 +106,14 @@ public enum FireDecision: Equatable, Sendable {
 /// Decides what the gnome does this cycle. The only place in the project allowed to ask for
 /// water.
 public final class FirePolicy {
-    public var limits: FireLimits
+    /// Clamped into the spec's welfare envelope whenever it is set: the burst length into
+    /// 200...400 ms, and the minimum range to no less than 2 m. Those two numbers are what
+    /// decide whether this is water landing on a cat or a hard stream aimed at one, and
+    /// both are plain settings a screen that does not exist yet could bind straight to.
+    /// Everything else is taken exactly as given.
+    public var limits: FireLimits {
+        didSet { limits = FirePolicy.withinWelfareEnvelope(limits) }
+    }
 
     private var lastShotByTrack: [Int: TimeInterval] = [:]
     /// Every shot's ground point and uptime, live or dry-run, pruned to `animalWindow` on
@@ -112,7 +129,16 @@ public final class FirePolicy {
     private var parked = true
 
     public init(limits: FireLimits = FireLimits()) {
-        self.limits = limits
+        self.limits = FirePolicy.withinWelfareEnvelope(limits)
+    }
+
+    private static func withinWelfareEnvelope(_ limits: FireLimits) -> FireLimits {
+        var clamped = limits
+        clamped.burstMs = min(max(limits.burstMs, 200), 400)
+        // A non-finite minimum range would make every range comparison false, which reads
+        // as "never too close" — the wrong way for this particular guard to fail.
+        clamped.minRangeM = limits.minRangeM.isFinite ? max(limits.minRangeM, 2) : 2
+        return clamped
     }
 
     public func decide(_ input: PolicyInput) -> FireDecision {
@@ -124,11 +150,25 @@ public final class FirePolicy {
 
         let candidates = input.tracks
             .filter { !input.masks.isIgnored($0.groundPoint) }
-            .sorted { $0.confidence > $1.confidence }
+            // Ties broken by id so the choice does not depend on sort stability or on the
+            // order the tracker happens to hand its states over in.
+            .sorted { $0.confidence == $1.confidence ? $0.id < $1.id : $0.confidence > $1.confidence }
 
-        guard let best = candidates.first else {
+        guard !candidates.isEmpty else {
             return parkIfIdle(input.uptime)
         }
+
+        // One nozzle means one animal at a time, but it must not mean the same animal
+        // forever. Ranking by confidence alone let a cat that had already used up its
+        // budget keep the head pointed at itself for as long as it stayed in frame, while
+        // a second cat sat untreated a metre away: every cycle picked the top-ranked track,
+        // found it merely rate-limited rather than structurally unfireable, and aimed at it
+        // again. So a candidate that can actually be fired at now wins; if none can, the
+        // best-ranked one still gets the head pre-positioned as before.
+        let best = candidates.first { candidate in
+            guard let solution = input.solutions[candidate.id] else { return false }
+            return canFire(candidate, solution, input)
+        } ?? candidates[0]
 
         guard let solution = input.solutions[best.id] else {
             lastActivity = input.uptime
@@ -188,6 +228,10 @@ public final class FirePolicy {
         guard shotsInLastHour(endingAt: input.uptime) < limits.maxShotsPerHour else { return false }
         if let last = lastShotByTrack[track.id],
            input.uptime - last < limits.minShotInterval { return false }
+        // The hardware itself, not the animal: one nozzle, and a firmware cooldown that
+        // would refuse this shot anyway. See `FireLimits.minDeviceInterval`.
+        if let last = recentShots.last,
+           input.uptime - last < limits.minDeviceInterval { return false }
         return true
     }
 
