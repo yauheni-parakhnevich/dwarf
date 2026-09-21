@@ -11,7 +11,17 @@ public struct GrayFrame: Equatable, Sendable {
     public let pixels: [UInt8]
 
     /// Trusting initialiser for callers that already know the buffer is the right size.
+    ///
+    /// The `assert` is debug-only by design: this initialiser exists so hot internal
+    /// paths can skip the check `init(validating:)` does, so release builds pay nothing
+    /// for it. Anything that cannot already guarantee the buffer size should use
+    /// `init(validating:)` instead.
     public init(width: Int, height: Int, pixels: [UInt8]) {
+        assert(
+            pixels.count == width * height,
+            "GrayFrame buffer size mismatch: \(width)x\(height) expects \(width * height) " +
+            "pixels but got \(pixels.count)"
+        )
         self.width = width
         self.height = height
         self.pixels = pixels
@@ -23,8 +33,21 @@ public struct GrayFrame: Equatable, Sendable {
         self.init(width: width, height: height, pixels: pixels)
     }
 
+    /// Reads one pixel. Traps outside the frame — including a negative `x` paired with a
+    /// positive `y`, which would otherwise compute a flat index that still lands inside
+    /// the buffer and silently returns a pixel from the wrong row. A loud crash beats a
+    /// quietly wrong frame diff.
+    ///
+    /// Not the hot path: the motion detector scans every pixel by iterating
+    /// `pixels.indices` directly, so this check does not run once per pixel per frame.
+    /// Do not remove it on the assumption that it does.
     public func luma(x: Int, y: Int) -> UInt8 {
-        pixels[y * width + x]
+        precondition(
+            x >= 0 && x < width && y >= 0 && y < height,
+            "GrayFrame.luma(x:y:) out of range: (x: \(x), y: \(y)) not within " +
+            "0..<\(width) x 0..<\(height)"
+        )
+        return pixels[y * width + x]
     }
 
     /// Average brightness, used to pause detection once the yard goes dark.
