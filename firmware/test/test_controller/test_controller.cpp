@@ -303,6 +303,49 @@ void test_shoot_is_rejected_when_disarmed() {
     TEST_ASSERT_FALSE(c.valveOpen());
 }
 
+void test_arm_aim_shoot_cooldown_sequence() {
+    Controller c;
+    Millis now = 0;
+    char buf[256];
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":12.5,\"tilt\":-3.0}"), now);
+    advance(c, now, 500);  // head arrives
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 12.5f, c.pan());
+
+    Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":14.0,\"tilt\":-2.5,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("shoot", a.cmd);
+
+    advance(c, now, 100);  // moving 1.5 degrees, then settling
+    TEST_ASSERT_FALSE(c.valveOpen());
+
+    advance(c, now, 200);  // settle finished, valve opens
+    TEST_ASSERT_TRUE(c.valveOpen());
+
+    advance(c, now, 400);  // burst over
+    TEST_ASSERT_FALSE(c.valveOpen());
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
+
+    a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":14.0,\"tilt\":-2.5,\"ms\":300}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("cooldown", a.why);
+
+    // The rejection serialises exactly as the shared fixture says it should.
+    formatAck(a.cmd, a.ok, a.why, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("{\"ack\":\"shoot\",\"ok\":false,\"why\":\"cooldown\"}", buf);
+
+    // Wait out the 5 s cooldown while keeping the link alive, exactly as the
+    // phone does. Without the heartbeats the 3 s timeout would disarm first.
+    for (int i = 0; i < 6; ++i) {
+        advance(c, now, 1000);
+        c.handle(cmd("{\"c\":\"hb\"}"), now);
+    }
+
+    a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":14.0,\"tilt\":-2.5,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -322,5 +365,6 @@ int main(int, char**) {
     RUN_TEST(test_overtemp_disarms_and_clears_with_hysteresis);
     RUN_TEST(test_fan_runs_on_command_or_heat);
     RUN_TEST(test_shoot_is_rejected_when_disarmed);
+    RUN_TEST(test_arm_aim_shoot_cooldown_sequence);
     return UNITY_END();
 }
