@@ -251,6 +251,42 @@ void test_move_arriving_just_under_the_timeout_fires_normally() {
     TEST_ASSERT_TRUE(s.valveOpen());
 }
 
+void test_settle_to_open_reverifies_position_and_abandons_if_drifted() {
+    Shooter s;
+    const char* why = nullptr;
+    TEST_ASSERT_TRUE(s.request(10.0f, 0.0f, 300, 0, &why));
+    s.update(10, 10.0f, 0.0f);  // arrived immediately -> Settle
+    TEST_ASSERT_TRUE(s.state() == ShooterState::Settle);
+
+    s.update(100, 15.0f, 0.0f);  // still inside the settle window, drifting
+    TEST_ASSERT_TRUE(s.state() == ShooterState::Settle);
+    TEST_ASSERT_FALSE(s.valveOpen());
+
+    // Settle window elapses (150 ms since t=10) but the head is now 5 degrees
+    // off target -- something moved it. Abandon the shot: valve never opens,
+    // no shot is counted, and there is no retry loop.
+    s.update(160, 15.0f, 0.0f);
+    TEST_ASSERT_TRUE(s.state() == ShooterState::Idle);
+    TEST_ASSERT_FALSE(s.valveOpen());
+    TEST_ASSERT_EQUAL_UINT32(0, s.shots());
+
+    // Nothing was sprayed, so a fresh request is accepted right away.
+    why = nullptr;
+    TEST_ASSERT_TRUE(s.request(0.0f, 0.0f, 300, 161, &why));
+}
+
+void test_settle_to_open_fires_normally_when_still_on_target() {
+    Shooter s;
+    const char* why = nullptr;
+    TEST_ASSERT_TRUE(s.request(10.0f, 0.0f, 300, 0, &why));
+    s.update(10, 10.0f, 0.0f);  // arrived -> Settle
+    TEST_ASSERT_TRUE(s.state() == ShooterState::Settle);
+
+    s.update(160, 10.2f, 0.0f);  // small jitter, still within tolerance
+    TEST_ASSERT_TRUE(s.state() == ShooterState::Open);
+    TEST_ASSERT_TRUE(s.valveOpen());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_full_shot_sequence);
@@ -266,5 +302,7 @@ int main(int, char**) {
     RUN_TEST(test_move_times_out_after_2000ms);
     RUN_TEST(test_move_with_nan_angles_times_out_instead_of_wedging);
     RUN_TEST(test_move_arriving_just_under_the_timeout_fires_normally);
+    RUN_TEST(test_settle_to_open_reverifies_position_and_abandons_if_drifted);
+    RUN_TEST(test_settle_to_open_fires_normally_when_still_on_target);
     return UNITY_END();
 }

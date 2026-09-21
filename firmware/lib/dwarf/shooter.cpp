@@ -46,9 +46,22 @@ void Shooter::update(Millis now, float currentPan, float currentTilt) {
         }
         case ShooterState::Settle:
             if (now - stamp_ >= cfg_.settleMs) {
-                state_ = ShooterState::Open;
-                stamp_ = now;
-                valve_ = true;
+                // Defence in depth: re-verify the head is still where it was
+                // when it "arrived", rather than trusting a single check made
+                // a whole settle window ago. Something (an external force, or
+                // a bug elsewhere) may have moved it since. If it has, do not
+                // fire: abandon the shot outright -- valve stays closed, no
+                // shot counted, no retry, no loop.
+                const bool stillOnTarget =
+                    std::fabs(currentPan - targetPan_) <= cfg_.settleToleranceDeg &&
+                    std::fabs(currentTilt - targetTilt_) <= cfg_.settleToleranceDeg;
+                if (stillOnTarget) {
+                    state_ = ShooterState::Open;
+                    stamp_ = now;
+                    valve_ = true;
+                } else {
+                    state_ = ShooterState::Idle;
+                }
             }
             break;
         case ShooterState::Open:

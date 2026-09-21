@@ -2,6 +2,18 @@
 
 namespace dwarf {
 
+namespace {
+
+// True while a shot owns the head: Move (slewing in), Settle (holding still
+// before firing) or Open (water actually leaving the nozzle). Re-pointing the
+// head during any of these phases is exactly the bug that let a shot land, or
+// a valve open, somewhere other than where it was aimed.
+bool shooterBusy(ShooterState s) {
+    return s == ShooterState::Move || s == ShooterState::Settle || s == ShooterState::Open;
+}
+
+}  // namespace
+
 Ack Controller::handle(const Command& c, Millis now) {
     Ack ack;
     if (c.type == CmdType::None) {
@@ -33,15 +45,26 @@ Ack Controller::handle(const Command& c, Millis now) {
             break;
 
         case CmdType::Aim:
-            targetPan_ = clampf(c.pan, cfg_.limits.panMin, cfg_.limits.panMax);
-            targetTilt_ = clampf(c.tilt, cfg_.limits.tiltMin, cfg_.limits.tiltMax);
+            // A shot in flight owns the head until it lands: re-pointing it
+            // now is exactly how a shot ends up landing, or a valve opening,
+            // somewhere other than where it was aimed. aim is unacked by
+            // design, so silently dropping it is not a reporting gap.
+            if (!shooterBusy(shooter_.state())) {
+                targetPan_ = clampf(c.pan, cfg_.limits.panMin, cfg_.limits.panMax);
+                targetTilt_ = clampf(c.tilt, cfg_.limits.tiltMin, cfg_.limits.tiltMax);
+            }
             break;
 
         case CmdType::Park:
-            targetPan_ = 0.0f;
-            targetTilt_ = 0.0f;
             ack.present = true;
             ack.cmd = "park";
+            if (shooterBusy(shooter_.state())) {
+                ack.ok = false;
+                ack.why = "busy";
+                break;
+            }
+            targetPan_ = 0.0f;
+            targetTilt_ = 0.0f;
             ack.ok = true;
             break;
 

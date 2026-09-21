@@ -389,6 +389,165 @@ void test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alon
     TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
 }
 
+void test_aim_mid_move_does_not_repoint_the_shot() {
+    Controller c;  // default limits, default slew 120 deg/s
+    Millis now = 0;
+    c.update(now, true, 22.0f);  // prime the first tick
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    Ack shot = c.handle(cmd("{\"c\":\"shoot\",\"pan\":20.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(shot.ok);
+
+    advance(c, now, 50);  // partway there, still Move
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);
+    TEST_ASSERT_TRUE(c.pan() > 0.0f && c.pan() < 20.0f);
+
+    // A cat moved: the phone tries to redirect the head mid-flight. This must
+    // be silently ignored -- the shot in flight owns the head until it lands.
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":60.0,\"tilt\":40.0}"), now);
+
+    bool sawOpen = false;
+    for (int i = 0; i < 300 && !sawOpen; ++i) {
+        now += 10;
+        c.update(now, true, 22.0f);
+        if (c.valveOpen()) {
+            sawOpen = true;
+            // The valve must never open anywhere but the originally requested angle.
+            TEST_ASSERT_FLOAT_WITHIN(0.6f, 20.0f, c.pan());
+            TEST_ASSERT_FLOAT_WITHIN(0.6f, 0.0f, c.tilt());
+        }
+    }
+    TEST_ASSERT_TRUE(sawOpen);
+
+    advance(c, now, 1000);  // let the burst and cooldown machinery settle
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
+    // The dropped aim was never queued: the head never heads toward (60,40).
+    TEST_ASSERT_FLOAT_WITHIN(0.6f, 20.0f, c.pan());
+}
+
+void test_aim_mid_settle_does_not_repoint_the_shot() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    Ack shot = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(shot.ok);
+
+    now += 10;
+    c.update(now, true, 22.0f);  // already at (0,0): arrives immediately -> Settle
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Settle);
+
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":60.0,\"tilt\":40.0}"), now);
+
+    bool sawOpen = false;
+    for (int i = 0; i < 50 && !sawOpen; ++i) {
+        now += 10;
+        c.update(now, true, 22.0f);
+        if (c.valveOpen()) {
+            sawOpen = true;
+            TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, c.pan());
+            TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, c.tilt());
+        }
+    }
+    TEST_ASSERT_TRUE(sawOpen);
+}
+
+void test_aim_mid_open_does_not_repoint_the_head() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+
+    advance(c, now, 200);  // settle finished, valve open
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Open);
+    TEST_ASSERT_TRUE(c.valveOpen());
+
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":60.0,\"tilt\":40.0}"), now);
+    advance(c, now, 50);  // still mid-burst
+    TEST_ASSERT_TRUE(c.valveOpen());
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, c.pan());  // never budged toward the aim
+
+    advance(c, now, 400);  // burst finishes
+    TEST_ASSERT_FALSE(c.valveOpen());
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, c.pan());  // aim was dropped entirely
+}
+
+void test_park_is_refused_busy_during_move() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":20.0,\"tilt\":0.0,\"ms\":300}"), now);
+
+    advance(c, now, 50);
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);
+
+    Ack a = c.handle(cmd("{\"c\":\"park\"}"), now);
+    TEST_ASSERT_TRUE(a.present);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("busy", a.why);
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);  // untouched
+
+    advance(c, now, 1000);  // the shot still lands where it was aimed
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
+}
+
+void test_park_is_refused_busy_during_settle() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+
+    now += 10;
+    c.update(now, true, 22.0f);
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Settle);
+
+    Ack a = c.handle(cmd("{\"c\":\"park\"}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("busy", a.why);
+}
+
+void test_park_is_refused_busy_during_open() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+
+    advance(c, now, 200);  // settle finished, valve open
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Open);
+
+    Ack a = c.handle(cmd("{\"c\":\"park\"}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("busy", a.why);
+    TEST_ASSERT_TRUE(c.valveOpen());  // untouched by the refused park
+}
+
+void test_aim_and_park_allowed_during_cooldown() {
+    Controller c;
+    Millis now = 0;
+    c.update(now, true, 22.0f);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+
+    advance(c, now, 500);  // settle + burst complete -> Cooldown
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Cooldown);
+
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":30.0,\"tilt\":10.0}"), now);
+    advance(c, now, 500);
+    TEST_ASSERT_TRUE(c.pan() > 0.0f);  // aim took effect: the head is moving
+
+    Ack a = c.handle(cmd("{\"c\":\"park\"}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+    advance(c, now, 2000);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.pan());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.tilt());
+}
+
 void test_status_reflects_every_field_of_a_live_controller() {
     Controller c;
     Millis now = 0;
@@ -437,5 +596,12 @@ int main(int, char**) {
     RUN_TEST(test_cfg_narrowing_limits_aborts_an_in_flight_shot_outside_the_new_cone);
     RUN_TEST(test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alone);
     RUN_TEST(test_status_reflects_every_field_of_a_live_controller);
+    RUN_TEST(test_aim_mid_move_does_not_repoint_the_shot);
+    RUN_TEST(test_aim_mid_settle_does_not_repoint_the_shot);
+    RUN_TEST(test_aim_mid_open_does_not_repoint_the_head);
+    RUN_TEST(test_park_is_refused_busy_during_move);
+    RUN_TEST(test_park_is_refused_busy_during_settle);
+    RUN_TEST(test_park_is_refused_busy_during_open);
+    RUN_TEST(test_aim_and_park_allowed_during_cooldown);
     return UNITY_END();
 }
