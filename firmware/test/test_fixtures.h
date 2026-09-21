@@ -27,10 +27,11 @@ inline constexpr Fixture kStatus[] = {
     {"armed_shooting", "{\"armed\":true,\"pan\":12.5,\"tilt\":-3,\"tank\":\"ok\",\"pump\":true,\"charge\":false,\"fan\":false,\"temp\":31.3,\"fault\":null,\"shots\":12}"},
     {"tank_empty", "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"low\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":24,\"fault\":\"TANK_EMPTY\",\"shots\":3}"},
     {"overtemp", "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"ok\",\"pump\":false,\"charge\":true,\"fan\":true,\"temp\":63.4,\"fault\":\"OVERTEMP\",\"shots\":8}"},
+    {"valve_timeout", "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"ok\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":24,\"fault\":\"VALVE_TIMEOUT\",\"shots\":9}"},
     {"ack_reject", "{\"ack\":\"shoot\",\"ok\":false,\"why\":\"cooldown\"}"},
     {"ack_ok", "{\"ack\":\"arm\",\"ok\":true}"}
 };
-inline constexpr int kStatusCount = 6;
+inline constexpr int kStatusCount = 7;
 
 }  // namespace fixtures
 }  // namespace dwarf

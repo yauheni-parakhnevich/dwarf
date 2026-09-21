@@ -37,6 +37,24 @@ class Controller {
     // tankSwitchClosed is true while the float switch reports water.
     void update(Millis now, bool tankSwitchClosed, float tempC);
 
+    // Performs exactly what the heartbeat-loss path does -- disarm, abort the
+    // shot, park the target, charger on -- but does NOT touch the phone
+    // heartbeat bookkeeping (lastCmd_/linkUp_). Call this for any LOCAL safety
+    // action (a synthesised command through handle() would look like real
+    // phone traffic and could mask genuine silence forever). This is also
+    // what a BLE onDisconnect callback should call, so a known disconnect is
+    // handled at once instead of waiting out the full heartbeat timeout.
+    void forceSafe(Millis now);
+
+    // Called when a hardware interrupt has force-closed the valve GPIO
+    // because the main loop stalled mid-burst. Aborts the shot through the
+    // shooter (so an open burst is counted and the cooldown starts from
+    // `now`), disarms, and latches a sticky Fault::ValveTimeout that
+    // outranks every other fault and does NOT clear on its own -- only an
+    // explicit {"c":"arm","v":false} from the phone (the operator
+    // acknowledging the fault) clears it. Recovery is: disarm, then re-arm.
+    void notifyValveForceClosed(Millis now);
+
     Status status() const;
 
     bool armed() const { return armed_; }
@@ -63,6 +81,7 @@ class Controller {
     bool tankLowPending_ = false;
     bool linkUp_ = false;
     Fault fault_ = Fault::None;
+    bool valveTimeoutLatched_ = false;
     float pan_ = 0.0f;
     float tilt_ = 0.0f;
     float targetPan_ = 0.0f;

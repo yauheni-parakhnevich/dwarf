@@ -39,6 +39,12 @@ Ack Controller::handle(const Command& c, Millis now) {
                 ack.why = "fault";
                 break;
             }
+            // An explicit disarm is the operator acknowledging a latched
+            // fault: it is the only thing that clears Fault::ValveTimeout.
+            if (!c.flag && valveTimeoutLatched_) {
+                valveTimeoutLatched_ = false;
+                fault_ = Fault::None;
+            }
             armed_ = c.flag;
             if (!armed_) shooter_.abort(now);
             ack.ok = true;
@@ -168,16 +174,24 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
         tankOk_ = true;
     }
 
-    // Overtemp outranks tank level and disarms immediately.
-    if (temp_ >= cfg_.overtempC) {
-        fault_ = Fault::Overtemp;
-        armed_ = false;
-        shooter_.abort(now);
-    } else if (fault_ == Fault::Overtemp && temp_ <= cfg_.overtempClearC) {
-        fault_ = Fault::None;
-    }
-    if (fault_ != Fault::Overtemp) {
-        fault_ = tankOk_ ? Fault::None : Fault::TankEmpty;
+    // Fault::ValveTimeout outranks everything and is sticky: it does not
+    // clear on its own from a healthy tank or temperature reading, only from
+    // an explicit disarm (handled in handle()). Skip the ordinary fault
+    // computation entirely while it is latched.
+    if (valveTimeoutLatched_) {
+        fault_ = Fault::ValveTimeout;
+    } else {
+        // Overtemp outranks tank level and disarms immediately.
+        if (temp_ >= cfg_.overtempC) {
+            fault_ = Fault::Overtemp;
+            armed_ = false;
+            shooter_.abort(now);
+        } else if (fault_ == Fault::Overtemp && temp_ <= cfg_.overtempClearC) {
+            fault_ = Fault::None;
+        }
+        if (fault_ != Fault::Overtemp) {
+            fault_ = tankOk_ ? Fault::None : Fault::TankEmpty;
+        }
     }
 
     if (linkUp_ && now - lastCmd_ > cfg_.heartbeatTimeoutMs) {
@@ -192,6 +206,23 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     if (temp_ >= cfg_.fanOnC) fanAuto_ = true;
     if (temp_ <= cfg_.fanOffC) fanAuto_ = false;
     fan_ = fanCmd_ || fanAuto_;
+}
+
+void Controller::forceSafe(Millis now) {
+    // Deliberately identical to the heartbeat-loss path, and deliberately
+    // does not touch lastCmd_/linkUp_: those belong exclusively to real phone
+    // traffic, so this can never masquerade as a heartbeat.
+    enterSafeState(now);
+}
+
+void Controller::notifyValveForceClosed(Millis now) {
+    // abort() while Open counts the shot and starts the cooldown from `now`;
+    // in any other phase it is a safe no-op or simply closes an already-shut
+    // valve.
+    shooter_.abort(now);
+    armed_ = false;
+    valveTimeoutLatched_ = true;
+    fault_ = Fault::ValveTimeout;
 }
 
 void Controller::enterSafeState(Millis now) {

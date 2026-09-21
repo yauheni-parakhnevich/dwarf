@@ -136,6 +136,8 @@ const char* faultName(Fault f) {
             return "TANK_EMPTY";
         case Fault::Overtemp:
             return "OVERTEMP";
+        case Fault::ValveTimeout:
+            return "VALVE_TIMEOUT";
         case Fault::None:
             return "";
     }

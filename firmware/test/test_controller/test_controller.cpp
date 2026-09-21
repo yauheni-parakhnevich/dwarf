@@ -573,6 +573,91 @@ void test_status_reflects_every_field_of_a_live_controller() {
     TEST_ASSERT_EQUAL_UINT32(1, s.shots);
 }
 
+void test_forceSafe_reaches_full_safe_state_without_using_handle() {
+    Controller c;
+    Millis now = 0;
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"charge\",\"v\":false}"), now);
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":40.0,\"tilt\":0.0}"), now);
+    advance(c, now, 2000);  // head arrives at 40 degrees
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 40.0f, c.pan());
+    TEST_ASSERT_TRUE(c.armed());
+    TEST_ASSERT_FALSE(c.chargeOn());
+
+    // Simulate the Arduino recovery path noticing the link is bad and calling
+    // the local safe-state API repeatedly, with no real phone traffic at all
+    // for 10 seconds -- exactly the measured scenario from the bug report,
+    // but via forceSafe() instead of a synthesised {"c":"arm","v":false}
+    // pushed through handle(). A synthesised handle() call would have kept
+    // the link "looking alive" and left the charger off and the head aimed
+    // at 40 degrees forever.
+    for (int i = 0; i < 5; ++i) {
+        advance(c, now, 2000);
+        c.forceSafe(now);
+    }
+
+    TEST_ASSERT_FALSE(c.armed());
+    TEST_ASSERT_TRUE(c.chargeOn());  // charger actually recovered
+    advance(c, now, 2000);           // let the head slew back
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.pan());  // actually parked
+
+    // forceSafe must not have refreshed the heartbeat bookkeeping either: a
+    // real re-arm afterwards still runs its own, ordinary 3 s heartbeat
+    // clock from the moment it happens, unaffected by any of the forceSafe
+    // calls in its past.
+    Ack rearm = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(rearm.ok);
+    TEST_ASSERT_TRUE(c.armed());
+    advance(c, now, 2999);
+    TEST_ASSERT_TRUE(c.armed());
+    advance(c, now, 2);
+    TEST_ASSERT_FALSE(c.armed());
+}
+
+void test_notifyValveForceClosed_counts_shot_and_latches_fault() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    advance(c, now, 200);  // settle done, valve open
+    TEST_ASSERT_TRUE(c.valveOpen());
+
+    c.notifyValveForceClosed(now);
+    TEST_ASSERT_FALSE(c.valveOpen());
+    TEST_ASSERT_FALSE(c.armed());
+    TEST_ASSERT_TRUE(c.fault() == Fault::ValveTimeout);
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);                  // burst counted
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Cooldown);   // cooldown from now
+}
+
+void test_valve_timeout_fault_rejects_arm_until_explicit_disarm_then_recovers() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    advance(c, now, 200);
+    c.notifyValveForceClosed(now);
+
+    Ack rearm = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_FALSE(rearm.ok);
+    TEST_ASSERT_EQUAL_STRING("fault", rearm.why);
+
+    // Sticky: time alone must not clear it.
+    advance(c, now, 10000);
+    TEST_ASSERT_TRUE(c.fault() == Fault::ValveTimeout);
+
+    // The operator's explicit disarm is what acknowledges the fault.
+    Ack disarm = c.handle(cmd("{\"c\":\"arm\",\"v\":false}"), now);
+    TEST_ASSERT_TRUE(disarm.ok);
+    TEST_ASSERT_TRUE(c.fault() == Fault::None);
+
+    // Recovery: disarm, then re-arm.
+    Ack rearm2 = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(rearm2.ok);
+    TEST_ASSERT_TRUE(c.armed());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -603,5 +688,8 @@ int main(int, char**) {
     RUN_TEST(test_park_is_refused_busy_during_settle);
     RUN_TEST(test_park_is_refused_busy_during_open);
     RUN_TEST(test_aim_and_park_allowed_during_cooldown);
+    RUN_TEST(test_forceSafe_reaches_full_safe_state_without_using_handle);
+    RUN_TEST(test_notifyValveForceClosed_counts_shot_and_latches_fault);
+    RUN_TEST(test_valve_timeout_fault_rejects_arm_until_explicit_disarm_then_recovers);
     return UNITY_END();
 }

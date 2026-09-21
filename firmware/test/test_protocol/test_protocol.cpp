@@ -112,6 +112,7 @@ void test_parse_shoot_ms_bounds() {
 void test_fault_name() {
     TEST_ASSERT_EQUAL_STRING("TANK_EMPTY", faultName(Fault::TankEmpty));
     TEST_ASSERT_EQUAL_STRING("OVERTEMP", faultName(Fault::Overtemp));
+    TEST_ASSERT_EQUAL_STRING("VALVE_TIMEOUT", faultName(Fault::ValveTimeout));
     TEST_ASSERT_EQUAL_STRING("", faultName(Fault::None));
 }
 
@@ -431,6 +432,18 @@ void test_status_and_ack_fixtures_roundtrip() {
         formatStatus(s, buf, sizeof(buf));
         const char* expected =
             findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "overtemp");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // valve_timeout: the sticky fault, disarmed, no pump, valve force-closed.
+        Status s;
+        s.temp = 24.0f;
+        s.fault = Fault::ValveTimeout;
+        s.shots = 9;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "valve_timeout");
         TEST_ASSERT_NOT_NULL(expected);
         TEST_ASSERT_EQUAL_STRING(expected, buf);
     }

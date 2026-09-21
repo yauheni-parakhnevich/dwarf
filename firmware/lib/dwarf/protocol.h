@@ -31,7 +31,7 @@ size_t formatStatus(const Status& s, char* out, size_t cap);
 // NUL-terminated string (when `cap` > 0) and 0 is returned.
 size_t formatAck(const char* cmd, bool ok, const char* why, char* out, size_t cap);
 
-// "TANK_EMPTY", "OVERTEMP", or "" for Fault::None.
+// "TANK_EMPTY", "OVERTEMP", "VALVE_TIMEOUT", or "" for Fault::None.
 const char* faultName(Fault f);
 
 }  // namespace dwarf
