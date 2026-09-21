@@ -2312,6 +2312,14 @@ Expected:
 - on `shoot`, the valve MOSFET switches on for 300 ms about 150 ms after the servos stop (put a multimeter or an LED on the valve output to see it);
 - with no commands for 3 seconds, a status line shows `"armed":false` and `"charge":true`.
 
+Also check the temperature sensor is genuine while you are here. Warm the DS18B20 probe in
+your hand and confirm the reported `temp` actually moves. Counterfeit DS18B20 chips are
+common on the cheap end of the market and report **exactly 85.0 °C** — the power-on default
+value a clone never updates away from. The firmware would read that as over its 60 °C
+threshold, raise `OVERTEMP` and disarm permanently, which is fail-safe but sends you
+debugging the wrong subsystem. A reading pinned at 85.0 that does not respond to warmth
+means the probe is fake, not that the gnome is on fire.
+
 - [ ] **Step 6: Set the servo trims**
 
 With the head mechanically attached, command `{"c":"park"}` and check that the head points straight ahead. If it does not, adjust `PAN_TRIM_US` in `firmware/src/pins.h` by ±50 µs at a time (about 4.5°), re-flash, and repeat until it does. Do the same for the tilt axis with the nozzle horizontal.
