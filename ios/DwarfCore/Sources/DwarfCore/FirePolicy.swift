@@ -194,10 +194,12 @@ public final class FirePolicy {
     /// Refusal reasons that are about the aim itself — where the animal is standing, or
     /// whether the computed solution can be trusted — as opposed to the animal's momentary
     /// behaviour (not yet confirmed, not yet still, tangled with another track) or a rate
-    /// limit (cooldown, the per-animal or hourly cap). The behavioural reasons are expected
-    /// to resolve only if the head keeps looking — a track cannot become confirmed if
-    /// nothing keeps sampling it — and the rate limits resolve on their own as time passes
-    /// regardless of where the animal is standing. A cat standing in a no-fire zone, or
+    /// limit (cooldown, the per-animal or hourly cap). Behavioural reasons can clear within
+    /// a second or two — the next look confirms the track, the animal settles — so the head
+    /// stays pre-positioned and a shot can follow immediately, and the rate limits resolve
+    /// on their own as time passes regardless of where the animal is standing. Note that
+    /// aiming has no effect on whether a track is seen at all: the camera is fixed in the
+    /// gnome's belly and does not move with the head. A cat standing in a no-fire zone, or
     /// beyond the calibrated area, can do that for the rest of the afternoon: aiming at it
     /// is a pure cost with no chance of ever becoming a shot until it moves. See
     /// `FireLimits.aimBackoffAfter`.

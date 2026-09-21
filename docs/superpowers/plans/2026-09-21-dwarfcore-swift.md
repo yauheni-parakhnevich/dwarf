@@ -3109,6 +3109,39 @@ git add ios/DwarfCore
 git commit -m "feat(core): add fire policy with welfare limits"
 ```
 
+**Post-review addendum (applied in commits `0df44ec` and `1dd527f`):** the adversarial pass
+on this file found the most serious defect in the package — the project's central welfare
+guarantee did not hold.
+
+1. **The per-animal shot cap was defeated by ordinary tracker churn.** Budgets were keyed by
+   `Track.id`, but the tracker mints a fresh id after any occlusion, any detector gap longer
+   than its 3 s drop, or two cats crossing. Demonstrated: three shots at one id, then the
+   same animal at a new id fired immediately. A cap that resets when a cat walks behind a
+   bush is not a cap. Shots are now budgeted **by place and time** — each shot records its
+   ground point, and the cap counts shots within `animalRadius` (0.15 of frame width) over
+   `animalWindow` (10 minutes). The id-churn attempt is now refused; a genuinely different
+   cat across the yard is unaffected; the same cat an hour later gets a fresh budget, which
+   is the intent. The per-id `minShotInterval` stays as it was, since a churned id only
+   makes that cooldown stricter.
+2. **The head never parked when the system stopped operating.** The disarmed and
+   after-dark guards returned before any bookkeeping, so the head stayed wherever it last
+   aimed — all night, pointed at a fence. Both guards now park once on the way out.
+3. **Aiming at an unfireable cat cost 91,612 servo commands per afternoon.** A cat napping
+   in a no-fire zone was tracked at 5 Hz indefinitely. After 30 s of continuous *structural*
+   refusal — no-fire zone, flagged solution, inside minimum range — the policy parks and
+   stops aiming until the refusal clears. Same scenario now: 90 aim commands and one park.
+   Behavioural refusals (unconfirmed, not still, ambiguous) deliberately do not back off,
+   since they can clear within a second and the head should stay pre-positioned.
+
+Kept deliberately: a dry-run shot consumes real budget, because a dry run whose logs do not
+predict live behaviour is worthless. That justification now lives in the source, not only in
+this plan.
+
+Also fixed in this plan: the test helper hardcoded `solutions: [1: ...]` while accepting
+arbitrary track ids, so a test using track 2 got no solution at all.
+
+The suite is 142 tests after this task.
+
 ---
 
 ### Task 11: Cycle
