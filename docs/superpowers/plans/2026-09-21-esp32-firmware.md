@@ -22,7 +22,7 @@
 | `firmware/lib/dwarf/servo.h/.cpp` | Pure math: angle clamping, angle→microseconds, slew limiting |
 | `firmware/lib/dwarf/shooter.h/.cpp` | Shot state machine: move → settle → open → close → cooldown |
 | `firmware/lib/dwarf/controller.h/.cpp` | Owns arm state, limits, faults, heartbeat, pump/fan/charger rules; drives `Shooter` |
-| `firmware/lib/dwarf/test_fixtures.h` | Generated from `protocol/fixtures/`; canonical messages for tests |
+| `firmware/test/test_fixtures.h` | Generated from `protocol/fixtures/`; canonical messages for tests |
 | `firmware/src/pins.h` | Board pin map |
 | `firmware/src/main.cpp` | Arduino setup/loop: sensors, servos, GPIO, BLE, watchdog |
 | `firmware/test/test_protocol/test_protocol.cpp` | Parser and formatter tests |
@@ -587,7 +587,7 @@ The suite is 21 tests after this task.
 - Create: `protocol/fixtures/commands.json`
 - Create: `protocol/fixtures/status.json`
 - Create: `tools/gen_fixtures.py`
-- Create: `firmware/lib/dwarf/test_fixtures.h` (generated, committed)
+- Create: `firmware/test/test_fixtures.h` (generated, committed)
 - Modify: `firmware/test/test_protocol/test_protocol.cpp`
 
 Why this exists: the iOS app and the firmware must agree on every byte. Both test suites read the same fixture files, so a change on one side that breaks the other fails a test instead of failing in the yard.
@@ -637,7 +637,7 @@ import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "protocol" / "fixtures"
-OUT = ROOT / "firmware" / "lib" / "dwarf" / "test_fixtures.h"
+OUT = ROOT / "firmware" / "test" / "test_fixtures.h"
 
 
 def cpp_escape(text: str) -> str:
@@ -687,7 +687,7 @@ if __name__ == "__main__":
 - [ ] **Step 3: Run the generator**
 
 Run: `cd /Users/Yauheni_Parakhnevich/Workspace/dwarf && python3 tools/gen_fixtures.py`
-Expected: `wrote firmware/lib/dwarf/test_fixtures.h: 9 commands, 4 status`
+Expected: `wrote firmware/test/test_fixtures.h: 9 commands, 4 status`
 
 - [ ] **Step 4: Write the failing test**
 
@@ -741,9 +741,40 @@ Expected: `23 Tests 0 Failures 0 Ignored` (21 from Tasks 1–2 plus the 2 added 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add protocol/fixtures tools/gen_fixtures.py firmware/lib/dwarf/test_fixtures.h firmware/test/test_protocol/test_protocol.cpp
+git add protocol/fixtures tools/gen_fixtures.py firmware/test/test_fixtures.h firmware/test/test_protocol/test_protocol.cpp
 git commit -m "test(protocol): add shared message fixtures and generator"
 ```
+
+**Post-review addendum (applied in commit `0e16b54`):** review of this task found a
+demonstrated build-breaking bug plus several contract gaps. Six accepted changes, already
+in the committed files:
+
+1. **`cpp_escape` mangled control characters.** It escaped only backslash and quote, so a
+   fixture containing a newline or tab emitted a raw control byte inside a C++ string
+   literal and the generated header failed to compile (`missing terminating '"'
+   character`). It now escapes `\n`, `\r`, `\t` and emits any other character below
+   0x20, or 0x7F, as a **three-digit** octal escape — three digits because a shorter escape
+   followed by an ASCII digit would be misparsed. `\uXXXX` is not used: C++ forbids
+   universal character names below 0xA0. Non-ASCII UTF-8 passes through untouched.
+2. **The generated header moved** from `firmware/lib/dwarf/` to `firmware/test/`, so
+   test-only content no longer sits beside the production library sources. The include in
+   the test file is now `#include "../test_fixtures.h"`. PlatformIO still discovers only
+   the real suites.
+3. **Two missing wire shapes added** to `status.json`, both generated from the real
+   formatter: `ack_ok` (`{"ack":"arm","ok":true}`, the optional-field-absent shape the iOS
+   decoder must handle) and `overtemp` (the other of the two fault codes).
+4. **Every status and ack fixture is now regression-tested**, not just `armed_shooting`.
+   Hand-editing any fixture fails a test.
+5. **`python3 tools/gen_fixtures.py --check`** re-renders in memory and exits non-zero on
+   drift without writing, so a fixture edit that skips regeneration is detectable. There is
+   no CI in this repo, so this is a manual guard.
+6. **Command fixtures assert real values**, not merely that they parse, which catches a
+   transposed `pan`/`tilt` or a typo'd limit.
+
+Declined: fixtures for the remaining `why` codes (string variations of a shape already
+covered) and any CI or git-hook configuration.
+
+The suite is 24 tests after this task.
 
 **Correction applied during implementation (commit `c679491`):** the `tank_empty` fixture
 above originally read `"temp":24.0`. ArduinoJson renders a whole-number float without the
