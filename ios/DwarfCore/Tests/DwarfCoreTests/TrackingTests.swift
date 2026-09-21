@@ -195,4 +195,50 @@ final class TrackingTests: XCTestCase {
         }
         XCTAssertEqual(ids.count, 1, "a fixed gate would have fragmented this into a new track almost every frame")
     }
+
+    func testSilenceIsNotAMiss() {
+        // A cycle the detector has not answered for is not evidence that the animal is
+        // gone. Counting it as a miss would starve confirmation on any pipeline whose
+        // detector is slower than its caller, which is every real one.
+        let tracker = Tracker()
+        let box = Rect(x: 0.4, y: 0.4, width: 0.1, height: 0.1)
+        var confirmed = false
+
+        for i in 0..<30 {
+            let t = Double(i) * 0.1
+            let report: DetectorReport = i % 3 == 0
+                ? .answer([Detection(box: box, confidence: 0.9)], capturedAt: t)
+                : .pending
+            let tracks = tracker.update(report, asOf: t)
+            if tracks.contains(where: { $0.isConfirmed }) { confirmed = true }
+        }
+
+        XCTAssertTrue(confirmed, "a motionless, perfectly detected cat must become confirmed")
+    }
+
+    func testAnEmptyAnswerStillCountsAgainstConfirmation() {
+        // The other half of the same rule: when the detector did look and saw nothing,
+        // that is real evidence, and it must still block confirmation.
+        let tracker = Tracker()
+        let box = Rect(x: 0.4, y: 0.4, width: 0.1, height: 0.1)
+        tracker.update(.answer([Detection(box: box, confidence: 0.9)], capturedAt: 0), asOf: 0)
+        tracker.update(.answer([], capturedAt: 0.1), asOf: 0.1)
+        let tracks = tracker.update(.answer([], capturedAt: 0.2), asOf: 0.2)
+
+        XCTAssertEqual(tracks.count, 1, "the track is still alive, just not trusted")
+        XCTAssertFalse(tracks[0].isConfirmed)
+    }
+
+    func testTracksStillExpireWhileTheDetectorIsSilent() {
+        // Ageing runs on the caller's clock, so a detector that dies does not leave a
+        // phantom cat on the lawn forever.
+        let tracker = Tracker()
+        let box = Rect(x: 0.4, y: 0.4, width: 0.1, height: 0.1)
+        tracker.update(.answer([Detection(box: box, confidence: 0.9)], capturedAt: 0), asOf: 0)
+
+        var tracks = tracker.update(.pending, asOf: 2.9)
+        XCTAssertEqual(tracks.count, 1, "still within dropAfter")
+        tracks = tracker.update(.pending, asOf: 3.1)
+        XCTAssertTrue(tracks.isEmpty, "a track unseen for longer than dropAfter is forgotten")
+    }
 }

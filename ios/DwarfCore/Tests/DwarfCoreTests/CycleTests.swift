@@ -42,8 +42,8 @@ final class CycleTests: XCTestCase {
 
     func testAlwaysAsksForSomethingToLookAt() {
         let cycle = Cycle(calibration: calibration())
-        let output = cycle.process(frame: brightFrame(), detections: [], status: healthyStatus(),
-                                   now: noon(), uptime: 0)
+        let output = cycle.process(frame: brightFrame(), detector: .answer([], capturedAt: 0),
+                                   status: healthyStatus(), now: noon(), uptime: 0)
         XCTAssertFalse(output.cropRequests.isEmpty, "the sweep runs even with nothing moving")
     }
 
@@ -54,7 +54,7 @@ final class CycleTests: XCTestCase {
         var decisions: [FireDecision] = []
 
         for _ in 0..<15 {
-            let output = cycle.process(frame: brightFrame(), detections: [cat()],
+            let output = cycle.process(frame: brightFrame(), detector: .answer([cat()], capturedAt: uptime),
                                        status: healthyStatus(), now: noon(), uptime: uptime)
             decisions.append(output.decision)
             uptime += 0.1
@@ -69,7 +69,7 @@ final class CycleTests: XCTestCase {
         cycle.mode = .live
         var uptime = 0.0
         for _ in 0..<15 {
-            let output = cycle.process(frame: darkFrame(), detections: [cat()],
+            let output = cycle.process(frame: darkFrame(), detector: .answer([cat()], capturedAt: uptime),
                                        status: healthyStatus(), now: noon(), uptime: uptime)
             XCTAssertEqual(output.decision, .none)
             uptime += 0.1
@@ -78,7 +78,7 @@ final class CycleTests: XCTestCase {
 
     func testTracksAreExposedForTheUI() {
         let cycle = Cycle(calibration: calibration())
-        let output = cycle.process(frame: brightFrame(), detections: [cat()],
+        let output = cycle.process(frame: brightFrame(), detector: .answer([cat()], capturedAt: 0),
                                    status: healthyStatus(), now: noon(), uptime: 0)
         XCTAssertEqual(output.tracks.count, 1)
         XCTAssertEqual(output.solutions.count, 1)
@@ -91,7 +91,7 @@ final class CycleTests: XCTestCase {
 
         var uptime = 0.0
         for _ in 0..<15 {
-            let output = cycle.process(frame: brightFrame(), detections: [cat()],
+            let output = cycle.process(frame: brightFrame(), detector: .answer([cat()], capturedAt: uptime),
                                        status: healthyStatus(), now: noon(), uptime: uptime)
             XCTAssertFalse(output.tracks.isEmpty, "tracking works without calibration")
             XCTAssertTrue(output.solutions.isEmpty, "but there are no aim solutions")
@@ -107,12 +107,54 @@ final class CycleTests: XCTestCase {
         var sawWouldShoot = false
 
         for _ in 0..<15 {
-            let output = cycle.process(frame: brightFrame(), detections: [cat()],
+            let output = cycle.process(frame: brightFrame(), detector: .answer([cat()], capturedAt: uptime),
                                        status: healthyStatus(), now: noon(), uptime: uptime)
             if case .wouldShoot = output.decision { sawWouldShoot = true }
             if case .shoot = output.decision { XCTFail("dry-run must not fire") }
             uptime += 0.1
         }
         XCTAssertTrue(sawWouldShoot)
+    }
+
+    func testAnIntermittentDetectorStillConfirmsAndFires() {
+        // The real pipeline answers a fraction of the cycles it is asked about. Silence is
+        // not a miss: a cat detected perfectly every time the detector actually looks must
+        // still be confirmed, and must still be fired at.
+        let cycle = Cycle(calibration: calibration())
+        cycle.mode = .live
+        var decisions: [FireDecision] = []
+
+        for i in 0..<45 {
+            let uptime = Double(i) * 0.1
+            let detector: DetectorReport = i % 3 == 0
+                ? .answer([cat()], capturedAt: uptime)
+                : .pending
+            let output = cycle.process(frame: brightFrame(), detector: detector,
+                                       status: healthyStatus(), now: noon(), uptime: uptime)
+            decisions.append(output.decision)
+        }
+
+        XCTAssertTrue(decisions.contains { if case .shoot = $0 { return true } else { return false } },
+                      "a detector answering every third cycle should still get a shot off: \(decisions)")
+    }
+
+    func testAnAnswerOlderThanTheLastOneIsIgnored() {
+        // Two detection requests in flight can come back out of order. Applying the older
+        // one would rewind the track it touches, so it is dropped.
+        let cycle = Cycle(calibration: calibration())
+        _ = cycle.process(frame: brightFrame(), detector: .answer([cat(x: 0.5)], capturedAt: 1.0),
+                          status: healthyStatus(), now: noon(), uptime: 1.0)
+        let output = cycle.process(frame: brightFrame(), detector: .answer([cat(x: 0.2)], capturedAt: 0.5),
+                                   status: healthyStatus(), now: noon(), uptime: 1.1)
+        XCTAssertEqual(output.tracks.count, 1, "the stale answer must not start a second track")
+        XCTAssertEqual(output.tracks[0].groundPoint.x, 0.5, accuracy: 1e-9,
+                       "the track must not be rewound to the older position")
+    }
+
+    func testANonFiniteCaptureTimeIsIgnored() {
+        let cycle = Cycle(calibration: calibration())
+        let output = cycle.process(frame: brightFrame(), detector: .answer([cat()], capturedAt: .nan),
+                                   status: healthyStatus(), now: noon(), uptime: 0)
+        XCTAssertTrue(output.tracks.isEmpty, "a NaN capture time cannot be placed on any timeline")
     }
 }

@@ -69,6 +69,23 @@ public struct Track: Equatable, Identifiable, Sendable {
     public var headPoint: Point { box.topCenter }
 }
 
+/// What the detector has to say about one moment.
+///
+/// Detection runs outside this package and answers late, so most cycles carry no news at
+/// all. The difference between "looked and saw nothing" and "has not answered yet" is not
+/// cosmetic: a miss counts against `TrackerConfig.confirmHits`, so if every silent cycle
+/// counted as a miss, a detector answering once every three cycles could never confirm a
+/// cat it recognises perfectly every single time it actually looks.
+public enum DetectorReport: Sendable {
+    /// The detector answered for the frame captured at `capturedAt`, and an empty array is
+    /// real evidence of absence. `capturedAt` is a monotonic uptime, and it is when the
+    /// *frame* was taken rather than when the answer came back, so that a track's speed is
+    /// measured over the interval the animal actually moved in.
+    case answer(_ detections: [Detection], capturedAt: TimeInterval)
+    /// Nothing has come back since the last cycle. Says nothing about any track.
+    case pending
+}
+
 /// Turns per-frame detections into tracks with enough history to fire on.
 public final class Tracker {
     public var config: TrackerConfig
@@ -100,7 +117,32 @@ public final class Tracker {
 
     public var tracks: [Track] { computeTracks() }
 
+    /// Convenience for a detector answering in lockstep with the caller, which in practice
+    /// means tests: the frame is assumed to have been captured at `time`.
+    @discardableResult
     public func update(detections: [Detection], at time: TimeInterval) -> [Track] {
+        update(.answer(detections, capturedAt: time), asOf: time)
+    }
+
+    /// - Parameters:
+    ///   - report: what the detector has to say about this moment, if anything.
+    ///   - now: the current monotonic uptime. Used only for ageing, so that a detector
+    ///     which stops answering entirely still lets its tracks expire on the caller's
+    ///     clock rather than freezing them alive forever.
+    @discardableResult
+    public func update(_ report: DetectorReport, asOf now: TimeInterval) -> [Track] {
+        guard case .answer(let detections, let capturedAt) = report, capturedAt.isFinite else {
+            // No answer came back. This moment is not evidence about anything, so every
+            // look history is left exactly as it was; only ageing runs.
+            for index in states.indices { trimSamples(&states[index], now: now) }
+            states.removeAll { now - $0.lastSeen > config.dropAfter }
+            return tracks
+        }
+        return associate(detections, capturedAt: capturedAt, asOf: now)
+    }
+
+    private func associate(_ detections: [Detection], capturedAt time: TimeInterval,
+                           asOf now: TimeInterval) -> [Track] {
         var unmatched = Array(detections.indices)
 
         // Pass 1: greedy nearest-neighbour association against tracks that already
@@ -138,7 +180,7 @@ public final class Tracker {
                 states[index].lastLookTime = time
             }
 
-            trimSamples(&states[index], now: time)
+            trimSamples(&states[index], now: now)
         }
 
         // Pass 2: detections left over after pass 1 either belong to a track this same
@@ -164,7 +206,7 @@ public final class Tracker {
 
             if let index = bestIndex {
                 apply(detection, to: &states[index], at: time)
-                trimSamples(&states[index], now: time)
+                trimSamples(&states[index], now: now)
             } else {
                 var state = State(id: nextID, box: detection.box, confidence: detection.confidence,
                                   lastSeen: time, lastLookTime: time)
@@ -175,7 +217,7 @@ public final class Tracker {
             }
         }
 
-        states.removeAll { time - $0.lastSeen > config.dropAfter }
+        states.removeAll { now - $0.lastSeen > config.dropAfter }
         return tracks
     }
 

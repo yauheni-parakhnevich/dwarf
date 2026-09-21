@@ -24,6 +24,8 @@ public final class Cycle {
     private let tracker: Tracker
     private let policy: FirePolicy
     private var aimer: Aimer?
+    /// Capture time of the newest detector answer applied so far.
+    private var lastAnswerAt: TimeInterval?
 
     /// Never fails. The *aimer* is what may be absent: an uncalibrated gnome must still
     /// boot, track and show a live view, otherwise it could never be calibrated in the
@@ -48,14 +50,23 @@ public final class Cycle {
         aimer = Aimer(calibration: calibration, limits: limits)
     }
 
+    /// - Parameters:
+    ///   - frame: the small grayscale frame motion detection runs on.
+    ///   - detector: what the detector has to say about this moment. Most cycles carry
+    ///     `.pending`, because detection answers a cycle or two after the crops that
+    ///     produced it; passing `.answer([], capturedAt:)` instead would tell the tracker
+    ///     that the detector looked and saw nothing, which counts against confirmation.
+    ///   - status: the newest device status, or nil when the link's health is in doubt.
+    ///   - now: wall clock, for the active-hours window.
+    ///   - uptime: monotonic, for every interval this package measures.
     public func process(frame: GrayFrame,
-                        detections: [Detection],
+                        detector: DetectorReport,
                         status: DeviceStatus?,
                         now: Date,
                         uptime: TimeInterval) -> CycleOutput {
         let blobs = motion.process(frame)
         let requests = scheduler.next(blobs: blobs)
-        let tracks = tracker.update(detections: detections, at: uptime)
+        let tracks = tracker.update(accepted(detector), asOf: uptime)
 
         var solutions: [Int: AimSolution] = [:]
         if let aimer {
@@ -77,5 +88,18 @@ public final class Cycle {
 
         return CycleOutput(decision: decision, cropRequests: requests, tracks: tracks,
                            solutions: solutions, blobs: blobs, meanLuma: frame.meanLuma)
+    }
+
+    /// Detector answers can overtake each other whenever the app keeps more than one
+    /// request in flight. An answer older than one already applied would rewind every
+    /// track it touches, so it is dropped instead: losing one look costs a fraction of a
+    /// second of confirmation, where a rewind corrupts position, speed, stillness and the
+    /// association gate at once. A non-finite capture time is dropped for the same reason.
+    private func accepted(_ report: DetectorReport) -> DetectorReport {
+        guard case .answer(_, let capturedAt) = report else { return report }
+        guard capturedAt.isFinite else { return .pending }
+        if let last = lastAnswerAt, capturedAt < last { return .pending }
+        lastAnswerAt = capturedAt
+        return report
     }
 }
