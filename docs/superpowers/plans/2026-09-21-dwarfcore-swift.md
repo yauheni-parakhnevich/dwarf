@@ -838,6 +838,27 @@ git add ios/DwarfCore
 git commit -m "feat(core): add detector scheduler with motion crops and sweep tiles"
 ```
 
+**Post-review addendum (applied in commit `e337743`):** analysis of the committed version
+found two design gaps, both fixed before later tasks built on this output.
+
+1. **Crop size hardcoded the capture resolution.** `cropWidth = 640/1920` and
+   `cropHeight = 640/1080` encoded an assumption the type could not check, and it would fail
+   silently the day capture resolution changed — the pixel crop would stop being square and
+   something downstream would have to letterbox or stretch it. The config now stores
+   `cropPixels`, `frameWidthPixels` and `frameHeightPixels`, and derives the normalised crop
+   from them, guarding division by zero and clamping into 0...1. A square model input is a
+   pixel-space property, so it is now expressed in pixels. The defaults are numerically
+   identical, so no existing test changed.
+2. **The smallest blob could be starved forever.** Selection re-sorted by area every cycle
+   and took the top N, so with a stable size ordering the smallest blob was *never* given a
+   fitted crop — only ever glanced at by a sweep tile at a fraction of the effective
+   resolution. That is exactly the small, distant cat the system most wants to discourage.
+   The largest blob is still served every cycle, and the remaining slots now rotate through
+   the rest, so every blob is served within `rest.count` cycles. No blob identity tracking
+   was needed: the rotation walks positions in each cycle's freshly sorted list.
+
+The suite is 29 tests after this task.
+
 ---
 
 ### Task 4: Tracker
