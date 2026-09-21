@@ -1310,6 +1310,9 @@ void test_unknown_command_is_acked_as_bad() {
 void test_aim_is_clamped_to_limits_and_slews() {
     Controller c;  // default limits: pan -60..60, tilt -30..40
     Millis now = 0;
+    c.update(now, true, 22.0f);  // prime the first-ever tick, as main.cpp's
+                                 // setup() does, so the boot tick is not part
+                                 // of the 100 ms window measured below
 
     c.handle(cmd("{\"c\":\"aim\",\"pan\":90.0,\"tilt\":80.0}"), now);
     advance(c, now, 100);  // 120 deg/s for 100 ms is 12 degrees
@@ -1661,6 +1664,34 @@ Expected: `7 Tests 0 Failures 0 Ignored`.
 git add firmware/lib/dwarf/controller.h firmware/lib/dwarf/controller.cpp firmware/test/test_controller/test_controller.cpp
 git commit -m "feat(firmware): add controller with arm, aim, park and limit config"
 ```
+
+**Post-review addendum (applied in commit `02ccad3`):** analysis found one real defect,
+introduced by this plan rather than by the implementation.
+
+**The first `update()` after boot charged the whole elapsed setup time to the slew
+limiter.** `lastUpdate_` defaulted to 0, so `dt = now - lastUpdate_` on the first call
+equalled the time since boot. Demonstrated: an aim command at `now = 500` followed by a
+genuine 10 ms tick snapped pan straight to 60° instead of moving ~1.2°. On hardware,
+`setup()` (BLE, servos, sensors) takes hundreds of milliseconds before `loop()` first runs,
+so the head would lurch at full speed on every boot — exactly what slew limiting exists to
+prevent.
+
+`Controller` now carries `bool started_ = false;`, and the first `update()` contributes
+`dt = 0` while still running sensors, faults, heartbeat and the shooter tick. This mirrors
+how `linkUp_` already guards the heartbeat from tripping before a link ever existed.
+
+`test_aim_is_clamped_to_limits_and_slews` gained the priming `update()` call shown above:
+it measures slew across a 100 ms window, and the zero-length boot tick belongs to boot, not
+to motion. Adjusting its expected value to 10.8° instead would have baked boot semantics
+into a test about slewing.
+
+Declined findings: a backward-jumping `now` (ESP32 `millis()` is monotonic, and the wrap
+case is handled correctly by the unsigned idiom), `pumpOn()` reading true before the first
+`update()` (it requires `armed_`, false until a command arrives, and `setup()` primes a
+tick first), and one-tick staleness of tank and fault state between `handle()` and
+`update()` (a 2 s debounce against a 10 ms loop).
+
+The controller suite is 9 tests after this addendum; the whole native suite is 58.
 
 ---
 
