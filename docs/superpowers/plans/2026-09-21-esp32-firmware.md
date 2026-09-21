@@ -1414,7 +1414,7 @@ class Controller {
     ShooterState shooterState() const { return shooter_.state(); }
 
   private:
-    void enterSafeState();
+    void enterSafeState(Millis now);
 
     ControllerConfig cfg_;
     Shooter shooter_;
@@ -1475,7 +1475,7 @@ Ack Controller::handle(const Command& c, Millis now) {
                 break;
             }
             armed_ = c.flag;
-            if (!armed_) shooter_.abort();
+            if (!armed_) shooter_.abort(now);
             ack.ok = true;
             break;
 
@@ -1579,7 +1579,7 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     if (temp_ >= cfg_.overtempC) {
         fault_ = Fault::Overtemp;
         armed_ = false;
-        shooter_.abort();
+        shooter_.abort(now);
     } else if (fault_ == Fault::Overtemp && temp_ <= cfg_.overtempClearC) {
         fault_ = Fault::None;
     }
@@ -1588,7 +1588,7 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     }
 
     if (linkUp_ && now - lastCmd_ > cfg_.heartbeatTimeoutMs) {
-        enterSafeState();
+        enterSafeState(now);
         linkUp_ = false;
     }
 
@@ -1601,9 +1601,9 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     fan_ = fanCmd_ || fanAuto_;
 }
 
-void Controller::enterSafeState() {
+void Controller::enterSafeState(Millis now) {
     armed_ = false;
-    shooter_.abort();
+    shooter_.abort(now);
     targetPan_ = 0.0f;
     targetTilt_ = 0.0f;
     charge_ = true;
@@ -1998,6 +1998,24 @@ Servo g_tiltServo;
 OneWire g_oneWire(PIN_ONEWIRE);
 DallasTemperature g_tempSensor(&g_oneWire);
 
+// Independent backstop for the burst cap. Shooter enforces the cap in software,
+// but only while loop() keeps calling update(). If the loop ever blocks while
+// the valve is open, the solenoid would stay energised until the task watchdog
+// resets the board — seconds of water at a cat. This timer closes the valve
+// from an interrupt, whatever the loop is doing.
+hw_timer_t* g_valveTimer = nullptr;
+volatile bool g_valveHardStop = false;
+bool g_valveWasOpen = false;
+
+constexpr uint32_t kValveHardStopMs = 600;  // Shooter's 500 ms cap plus margin
+
+void IRAM_ATTR onValveTimeout() {
+    // Register write rather than digitalWrite: this must be safe from an ISR.
+    // Valid for GPIO 0-31, which PIN_VALVE is.
+    GPIO.out_w1tc = (1u << PIN_VALVE);
+    g_valveHardStop = true;
+}
+
 float g_tempC = 22.0f;
 Millis g_lastSensorRead = 0;
 Millis g_lastStatus = 0;
@@ -2024,7 +2042,17 @@ void emit(const char* json, size_t n) {
 void applyOutputs() {
     g_panServo.writeMicroseconds(angleToMicros(g_controller.pan(), PAN_TRIM_US));
     g_tiltServo.writeMicroseconds(angleToMicros(g_controller.tilt(), TILT_TRIM_US));
-    digitalWrite(PIN_VALVE, g_controller.valveOpen() ? HIGH : LOW);
+    const bool valve = g_controller.valveOpen();
+    if (valve && !g_valveWasOpen) {
+        timerWrite(g_valveTimer, 0);
+        timerAlarmWrite(g_valveTimer, kValveHardStopMs * 1000ULL, false);
+        timerAlarmEnable(g_valveTimer);
+    } else if (!valve && g_valveWasOpen) {
+        timerAlarmDisable(g_valveTimer);
+    }
+    g_valveWasOpen = valve;
+
+    digitalWrite(PIN_VALVE, valve ? HIGH : LOW);
     digitalWrite(PIN_PUMP, g_controller.pumpOn() ? HIGH : LOW);
     digitalWrite(PIN_FAN, g_controller.fanOn() ? HIGH : LOW);
     digitalWrite(PIN_CHARGER, g_controller.chargeOn() ? HIGH : LOW);
@@ -2096,6 +2124,11 @@ void setup() {
 
     g_tempSensor.begin();
 
+    // 80 MHz APB clock divided by 80 gives a 1 MHz tick, so the alarm value is
+    // microseconds. Counting up, no auto-reload: one shot per burst.
+    g_valveTimer = timerBegin(0, 80, true);
+    timerAttachInterrupt(g_valveTimer, &onValveTimeout, true);
+
     esp_task_wdt_init(5, true);
     esp_task_wdt_add(nullptr);
 
@@ -2107,6 +2140,15 @@ void loop() {
     const Millis now = millis();
 
     pollSerial(now);
+
+    if (g_valveHardStop) {
+        g_valveHardStop = false;
+        g_valveWasOpen = false;
+        static const char kValveTimeoutMsg[] = "{\"fault\":\"VALVE_TIMEOUT\"}";
+        emit(kValveTimeoutMsg, sizeof(kValveTimeoutMsg) - 1);
+        handleJson("{\"c\":\"arm\",\"v\":false}", now);  // disarm; needs a human
+    }
+
     readSensors(now);
     g_controller.update(now, tankOk(), g_tempC);
     applyOutputs();
@@ -2348,6 +2390,7 @@ Task 10. Commands are sent from nRF Connect or the USB serial monitor.
 | 10 | Refill recovery | Drop the float switch back | Fault clears, arming works again | |
 | 11 | Overtemp | Warm the DS18B20 in a hand or with a hairdryer above 60 °C | Disarms, `"fault":"OVERTEMP"`, fan output on | |
 | 12 | Power cut | Pull the 12 V supply mid-burst | Valve shuts, nothing sprays | |
+| 13 | Burst hard stop | Temporary test build: add `delay(3000)` immediately after the valve opens, so the loop stalls mid-burst | Valve closes at about 600 ms by interrupt, not after 3 s; `VALVE_TIMEOUT` is reported and the system disarms. Remove the delay afterwards | |
 
 ## Reach tuning
 
