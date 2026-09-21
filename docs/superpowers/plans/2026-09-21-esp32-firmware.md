@@ -551,6 +551,34 @@ git add firmware/lib/dwarf/protocol.cpp firmware/test/test_protocol/test_protoco
 git commit -m "feat(firmware): format status and ack messages"
 ```
 
+**Post-review addendum (applied in commit `c9d9624`):** code quality review produced four
+accepted changes, already in the committed files:
+
+1. **Truncation is now detectable.** `serializeJson` clamps to `cap` and returns
+   `min(needed, cap)`, and it writes no NUL terminator on an exact fit, so a caller could
+   neither detect a cut-off message nor safely `strlen` the buffer. A private `writeJson`
+   helper now wraps it: `cap == 0` or a null `out` returns 0, `n >= cap` writes an empty
+   string and returns 0, and success NUL-terminates and returns `n == strlen(out)`. Both
+   formatters go through it. The header documents the contract. The pre-fix test run
+   crashed with SIGILL while `strcmp`-ing an unterminated buffer, which is what this
+   prevents.
+2. **Truncation tests**, including the exact-fit boundary: `cap == n` fails, `cap == n + 1`
+   succeeds byte-for-byte.
+3. **The budget test is now the true worst case**: every field at its longest rendering at
+   once (`armed:false`, `tank:"low"`, all outputs false, `fault:"TANK_EMPTY"`,
+   `shots:4294967295`, `pan:-59.9`, `tilt:-29.9`, `temp:-127.5`). Measured at **147 bytes**
+   against the 180-byte budget. An ack worst case measures 44 bytes.
+4. **Non-finite and sensor-sentinel behaviour is pinned**: NaN and ±infinity serialise as
+   `null`, and -127.0 (the DS18B20 "no sensor" value) passes through as `-127`. The test
+   exists so that a library upgrade flipping `ARDUINOJSON_ENABLE_NAN` cannot silently start
+   emitting bare `NaN` tokens, which are not valid JSON.
+
+Declined: reusing one `JsonDocument` or supplying a custom allocator (one malloc/free of
+the same size per second does not meaningfully fragment a heap, since identical-size blocks
+get reused), and asserting on a null `cmd` in `formatAck` (every caller passes a literal).
+
+The suite is 21 tests after this task.
+
 ---
 
 ### Task 3: Shared protocol fixtures
@@ -708,7 +736,7 @@ Add to `main`:
 - [ ] **Step 5: Run the tests**
 
 Run: `cd firmware && pio test -e native -f test_protocol`
-Expected: `17 Tests 0 Failures 0 Ignored`. If `test_status_fixture_roundtrips` fails, the fixture and the formatter disagree; fix `protocol/fixtures/status.json` to match the formatter's real output, then re-run the generator.
+Expected: `23 Tests 0 Failures 0 Ignored` (21 from Tasks 1–2 plus the 2 added here). If `test_status_fixture_roundtrips` fails, the fixture and the formatter disagree; fix `protocol/fixtures/status.json` to match the formatter's real output, then re-run the generator.
 
 - [ ] **Step 6: Commit**
 
