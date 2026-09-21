@@ -1206,7 +1206,7 @@ void Shooter::abort() {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `cd firmware && pio test -e native -f test_shooter`
-Expected: `5 Tests 0 Failures 0 Ignored`.
+Expected: `5 Tests 0 Failures 0 Ignored` (13 after the addendum below).
 
 - [ ] **Step 6: Commit**
 
@@ -1214,6 +1214,29 @@ Expected: `5 Tests 0 Failures 0 Ignored`.
 git add firmware/lib/dwarf/shooter.h firmware/lib/dwarf/shooter.cpp firmware/test/test_shooter/test_shooter.cpp
 git commit -m "feat(firmware): add shot state machine with settle, burst cap and cooldown"
 ```
+
+**Post-review addendum (applied in commit `33ca4cf`):** hostile-case analysis found three
+problems. Two are fixed in this component; the third is handled in Task 10.
+
+1. **`abort()` discarded a running cooldown**, so a disarm/re-arm or fault-clear cycle could
+   fire two shots back to back and defeat the 5 s backstop. `abort` now takes `now` and is
+   state-aware: `Move`/`Settle` return to `Idle` (nothing sprayed, so nothing to cool down);
+   `Open` closes the valve, **counts the shot** and starts the cooldown from the abort
+   moment; `Cooldown` closes the valve and leaves the original stamp untouched. The
+   signature is `void abort(Millis now)`.
+2. **The `Move` phase could wedge forever** — on a NaN angle, or a target the head cannot
+   reach — leaving every later request rejected as "busy" until something called `abort()`,
+   which nothing did. `ShooterConfig` gains `moveTimeoutMs = 2000`; a move that has not
+   arrived by then abandons the shot with the valve closed and no shot counted. 2000 ms is
+   generous: the widest reachable move is 120° of pan at 120°/s, which is one second.
+3. **A stalled loop could leave the solenoid energised past the burst cap**, because a pure
+   state machine enforces the cap only while `update()` keeps being called. This cannot be
+   fixed here. Task 10 adds a one-shot hardware timer that closes the valve from an
+   interrupt at 600 ms regardless of the loop, reports `VALVE_TIMEOUT` and disarms.
+
+`test_abort_closes_the_valve_immediately` changed its expectation as part of item 1: it
+aborts while the valve is open, which now yields `Cooldown` with the shot counted rather
+than `Idle`. The shooter suite is 13 tests; the whole native suite is 49.
 
 ---
 
