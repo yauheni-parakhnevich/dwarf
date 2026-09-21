@@ -150,10 +150,12 @@ Create `.gitignore` in the repository root:
 .DS_Store
 ```
 
-- [ ] **Step 5: Verify the native environment builds**
+- [ ] **Step 5: Verify the config parses**
 
-Run: `cd firmware && pio run -e native`
-Expected: `SUCCESS`. A warning about no source files is fine, since `build_src_filter` excludes `src/`.
+Run: `cd firmware && pio project config -e native`
+Expected: the parsed `[env:native]` section is printed, including `platform = native` and `test_framework = unity`.
+
+Do not run `pio run -e native` yet. At this point it fails with `Error: Nothing to build`, because `build_src_filter` excludes `src/` and the only file under `lib/dwarf/` is a header. PlatformIO 6.2 treats "no compilable sources" as an error rather than a warning. The native environment first compiles something real in Task 1, where `pio test -e native -f test_protocol` is the check.
 
 - [ ] **Step 6: Commit**
 
