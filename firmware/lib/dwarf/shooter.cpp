@@ -27,6 +27,14 @@ bool Shooter::request(float pan, float tilt, uint16_t ms, Millis now, const char
 void Shooter::update(Millis now, float currentPan, float currentTilt) {
     switch (state_) {
         case ShooterState::Move: {
+            if (now - stamp_ >= cfg_.moveTimeoutMs) {
+                // The head never arrived in time (bad target, unreachable
+                // angle, or a stuck/lying sensor). Abandon the shot: the
+                // valve never opened, so nothing was sprayed and there is no
+                // cooldown to serve.
+                state_ = ShooterState::Idle;
+                break;
+            }
             const bool arrived =
                 std::fabs(currentPan - targetPan_) <= cfg_.settleToleranceDeg &&
                 std::fabs(currentTilt - targetTilt_) <= cfg_.settleToleranceDeg;
@@ -59,9 +67,25 @@ void Shooter::update(Millis now, float currentPan, float currentTilt) {
     }
 }
 
-void Shooter::abort() {
-    valve_ = false;
-    state_ = ShooterState::Idle;
+void Shooter::abort(Millis now) {
+    switch (state_) {
+        case ShooterState::Idle:
+            break;
+        case ShooterState::Move:
+        case ShooterState::Settle:
+            valve_ = false;
+            state_ = ShooterState::Idle;
+            break;
+        case ShooterState::Open:
+            valve_ = false;
+            ++shots_;
+            state_ = ShooterState::Cooldown;
+            stamp_ = now;
+            break;
+        case ShooterState::Cooldown:
+            valve_ = false;
+            break;
+    }
 }
 
 }  // namespace dwarf

@@ -10,6 +10,10 @@ struct ShooterConfig {
     uint16_t maxBurstMs = 500;       // hard cap, independent of what the phone asks
     uint32_t cooldownMs = 5000;      // hard minimum gap between shots
     float settleToleranceDeg = 0.5f; // "arrived" window for both axes
+    uint32_t moveTimeoutMs = 2000;   // longest the head may take to reach a
+                                     // commanded angle before the shot is
+                                     // abandoned (widest reachable move is
+                                     // 120 deg of pan at 120 deg/s, i.e. 1 s)
 };
 
 class Shooter {
@@ -24,8 +28,18 @@ class Shooter {
     // Advances the state machine. currentPan/currentTilt are the live servo angles.
     void update(Millis now, float currentPan, float currentTilt);
 
-    // Closes the valve and returns to Idle. Used by safety paths.
-    void abort();
+    // Aborts the in-flight shot. Behavior depends on the current phase:
+    //  - Idle: no effect.
+    //  - Move/Settle: the valve was never open, so this returns to Idle
+    //    immediately; nothing was sprayed, so a retry may follow at once.
+    //  - Open: water was leaving the nozzle, so this closes the valve, counts
+    //    the shot, and starts the cooldown from `now` -- the full backstop
+    //    applies from this moment.
+    //  - Cooldown: closes the valve (already closed) and stays in Cooldown
+    //    with its original stamp untouched. Aborting a cooldown has no
+    //    physical meaning and must not shorten it.
+    // Used by safety paths.
+    void abort(Millis now);
 
     ShooterState state() const { return state_; }
     bool valveOpen() const { return valve_; }
