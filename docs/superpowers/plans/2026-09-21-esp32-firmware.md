@@ -2237,9 +2237,12 @@ void loop() {
     if (g_valveHardStop) {
         g_valveHardStop = false;
         g_valveWasOpen = false;
-        static const char kValveTimeoutMsg[] = "{\"fault\":\"VALVE_TIMEOUT\"}";
-        emit(kValveTimeoutMsg, sizeof(kValveTimeoutMsg) - 1);
-        handleJson("{\"c\":\"arm\",\"v\":false}", now);  // disarm; needs a human
+        // Tell the library the valve was closed behind its back: it aborts the
+        // shot, counts it, starts the cooldown, disarms and latches
+        // VALVE_TIMEOUT until the phone explicitly disarms. Never synthesise a
+        // command here: handle() treats any command as proof the phone is
+        // alive, so a synthesised disarm would starve the heartbeat safety net.
+        g_controller.notifyValveForceClosed(now);
     }
 
     readSensors(now);
