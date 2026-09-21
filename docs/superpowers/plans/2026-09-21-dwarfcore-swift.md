@@ -2004,6 +2004,40 @@ git add ios/DwarfCore
 git commit -m "feat(core): add aimer with body and head targeting"
 ```
 
+**Post-review addendum (applied in commit `3bc8ffd`):** four fixes, one of them the largest
+single behavioural improvement in this package so far.
+
+1. **The body/head split was a cliff, not a boundary.** Measured: crossing 4 m moved tilt by
+   **3.34°** — the whole height offset appearing at once — from a range change under a
+   centimetre, which is far smaller than ordinary detector box jitter. A cat pausing near
+   4 m would have seen the aim hop between its body and its head, shot after shot. The
+   offset now ramps linearly across a 40 cm band (`bodyHeadBlendM`), so the same crossing
+   moves tilt by **0.0137°**, with no step across the band larger than 0.172°. Mid-band the
+   gnome aims at the shoulders, which is a perfectly good place to put water. `target` still
+   flips its label at the midpoint for logs, which is documented, since a `.head` solution
+   near the split legitimately carries only part of the offset.
+2. **The head point was never checked against the calibrated area.** A stretched or merged
+   box could put it far outside anything ever measured — and that is the point pan is
+   computed from for head shots — with no flag raised. It is now checked whenever the target
+   is `.head`.
+3. **Flag reasons are ranked by severity**, worst first: non-finite fit, outside servo
+   limits, outside the calibrated area, missing height offset. Previously the first check to
+   run won, so a servo that physically could not reach the computed aim was reported as "no
+   height offset calibrated". `flagReasons` carries them all; `flagReason` is the worst.
+   When the fit returns non-finite the limit check is skipped, since NaN comparisons would
+   otherwise manufacture a second spurious reason.
+4. **The head-point pan choice is now tested against a yard that can show it.** The original
+   synthetic yard had pan depending only on x, so head-point and ground-point pan agreed to
+   1e-12 and the design decision was untested. A calibration with real x·y coupling makes
+   the difference measurable (0.36° at the frame edge) and pins it.
+
+Declined: a tighter shape than the bounding box for the calibrated area. A convex hull still
+would not detect an interior gap — the skipped flowerbed case — so the honest mitigation is
+the per-point residuals the UI already shows. The limitation is now documented on
+`isInsideCalibratedArea`.
+
+The suite is 86 tests after this task.
+
 ---
 
 ### Task 8: Outgoing commands
@@ -2584,7 +2618,8 @@ final class FirePolicyTests: XCTestCase {
     private func solution(range: Double = 5, flagged: Bool = false) -> AimSolution {
         AimSolution(pan: 12, tilt: 4, rangeM: range,
                     target: range >= 4 ? .head : .body,
-                    isFlagged: flagged, flagReason: flagged ? "test" : nil)
+                    isFlagged: flagged, flagReason: flagged ? "test" : nil,
+                    flagReasons: flagged ? ["test"] : [])
     }
 
     private func input(mode: Mode = .live, tracks: [Track]? = nil,
