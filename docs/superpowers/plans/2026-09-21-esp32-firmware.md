@@ -387,6 +387,25 @@ git add firmware/lib/dwarf/protocol.h firmware/lib/dwarf/protocol.cpp firmware/t
 git commit -m "feat(firmware): parse BLE JSON commands"
 ```
 
+
+**Post-review addendum (applied in commit `209ce5b`):** code quality review of this task
+produced three accepted changes, which are already in the committed files:
+
+1. `parseCommand` also rejects non-finite floats. ArduinoJson's `is<float>()` is true for a
+   number that overflowed to infinity while parsing, so `1e400` is valid JSON that yields
+   `+inf`. A `cfg` carrying `panMax = +inf` would pass the controller's ordering check and
+   silently widen the aim limits. Every parsed angle now goes through `std::isfinite`, and a
+   non-finite value is rejected exactly like a missing field.
+2. `faultName` lost its `default:` label, so a future `Fault` enumerator becomes a
+   `-Wswitch` warning instead of silently serialising as `""`.
+3. Five test groups were added: non-finite rejection, `ms` bounds (negative, fractional,
+   over-range, string), `faultName` return values, wrong-type-but-present keys, and the
+   previously untested `park`, `charge` and `fan` commands. The suite is 11 tests.
+
+Two review suggestions were declined: adding a reason code or raw command name to rejected
+messages (BLE writes are sequential and each gets one ack, so the phone already knows which
+command was rejected), and removing the redundant `case CmdType::None: return c;`.
+
 ---
 
 ### Task 2: Status and ack formatting
@@ -521,7 +540,7 @@ Note: this block uses an anonymous namespace that already exists higher in the f
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd firmware && pio test -e native -f test_protocol`
-Expected: `10 Tests 0 Failures 0 Ignored`.
+Expected: `15 Tests 0 Failures 0 Ignored` (11 from Task 1 plus the 4 added here).
 
 If `test_format_status` fails on the `tilt` field, check the expected string: ArduinoJson prints `-3.0f` as `-3`, not `-3.0`. Match the library's output rather than changing the library.
 
@@ -689,7 +708,7 @@ Add to `main`:
 - [ ] **Step 5: Run the tests**
 
 Run: `cd firmware && pio test -e native -f test_protocol`
-Expected: `12 Tests 0 Failures 0 Ignored`. If `test_status_fixture_roundtrips` fails, the fixture and the formatter disagree; fix `protocol/fixtures/status.json` to match the formatter's real output, then re-run the generator.
+Expected: `17 Tests 0 Failures 0 Ignored`. If `test_status_fixture_roundtrips` fails, the fixture and the formatter disagree; fix `protocol/fixtures/status.json` to match the formatter's real output, then re-run the generator.
 
 - [ ] **Step 6: Commit**
 
