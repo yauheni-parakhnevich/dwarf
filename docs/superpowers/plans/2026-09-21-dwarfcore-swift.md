@@ -1176,6 +1176,36 @@ git add ios/DwarfCore
 git commit -m "feat(core): add tracker with confirmation and stillness"
 ```
 
+**Post-review addendum (applied in commit `cee5af7`):** adversarial analysis of the
+committed version found four real defects in this design. All were measured, not argued,
+and all are fixed. `isConfirmed` and `isStill` are what license a shot, so these matter.
+
+1. **A pacing cat read as still.** Stillness compared only the first and last sample, so a
+   cat that walked out and back within the window — or paced side to side — reported
+   `isStill == true`. Stillness is now **path length** across the retained samples divided
+   by elapsed time, which is strictly more conservative: anything genuinely stationary still
+   passes.
+2. **Two crops of one cat counted as two independent looks.** Confirmation wants 2 of 3
+   looks at *different moments*, but `update` appended a look per call, so a cat covered by
+   both a motion crop and a sweep tile in one cycle was confirmed off one instant. Looks at
+   the same timestamp now merge, keeping the higher confidence. Track creation is also
+   deduplicated within a call, so overlapping detections cannot mint two tracks on one
+   animal and double its shot budget.
+3. **Identity swaps at crossings.** Traced: two cats converging swap tracks at the crossing
+   point, carrying confirmation, stillness and later their shot counts to the wrong animal.
+   Nearest-neighbour association cannot fix this without velocity or appearance modelling,
+   which is out of scope. Instead `Track.isAmbiguous` marks tracks within
+   `ambiguityFactor * gate` of each other, and FirePolicy refuses to fire on them. The
+   tie-break also changed from `<=` to `<` so near-ties resolve by order considered rather
+   than by array position.
+4. **The association gate shattered tracks under throttling.** Measured: a cat crossing at
+   0.25 frame-widths/s held one id at 10 fps but produced **ten** ids at 3 fps, never
+   confirming. The gate now widens with the time since that track was last seen
+   (`gate + maxTrackSpeed * dt`), the same reasoning already applied to the motion
+   detector's alpha. After the fix the 3 fps case holds a single id and confirms.
+
+The suite is 47 tests after this task.
+
 ---
 
 ### Task 5: Mask zones
