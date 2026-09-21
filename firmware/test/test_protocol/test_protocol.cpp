@@ -51,6 +51,74 @@ void test_parse_rejects_garbage() {
     TEST_ASSERT_TRUE(parseCommand(nullptr).type == CmdType::None);
 }
 
+void test_parse_rejects_nonfinite() {
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1e400,\"tilt\":0,\"ms\":300}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"aim\",\"pan\":0,\"tilt\":-1e400}").type == CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand(
+            "{\"c\":\"cfg\",\"panMin\":-45,\"panMax\":1e400,\"tiltMin\":-20,\"tiltMax\":30}")
+            .type == CmdType::None);
+}
+
+void test_parse_shoot_ms_bounds() {
+    // Rejected: negative, fractional, out of range, wrong type.
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":-1}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":300.7}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":300.0}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":70000}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":\"300\"}").type ==
+        CmdType::None);
+
+    // Accepted: valid boundary values.
+    Command low = parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":1}");
+    TEST_ASSERT_TRUE(low.type == CmdType::Shoot);
+    TEST_ASSERT_EQUAL_UINT16(1, low.ms);
+
+    Command high = parseCommand("{\"c\":\"shoot\",\"pan\":1.0,\"tilt\":1.0,\"ms\":65535}");
+    TEST_ASSERT_TRUE(high.type == CmdType::Shoot);
+    TEST_ASSERT_EQUAL_UINT16(65535, high.ms);
+}
+
+void test_fault_name() {
+    TEST_ASSERT_EQUAL_STRING("TANK_EMPTY", faultName(Fault::TankEmpty));
+    TEST_ASSERT_EQUAL_STRING("OVERTEMP", faultName(Fault::Overtemp));
+    TEST_ASSERT_EQUAL_STRING("", faultName(Fault::None));
+}
+
+void test_parse_rejects_wrong_type_present() {
+    TEST_ASSERT_TRUE(
+        parseCommand("{\"c\":\"shoot\",\"pan\":\"x\",\"tilt\":1,\"ms\":300}").type ==
+        CmdType::None);
+    TEST_ASSERT_TRUE(parseCommand("{\"c\":\"arm\",\"v\":1}").type == CmdType::None);
+}
+
+void test_parse_park_charge_fan() {
+    TEST_ASSERT_TRUE(parseCommand("{\"c\":\"park\"}").type == CmdType::Park);
+
+    Command chargeOff = parseCommand("{\"c\":\"charge\",\"v\":false}");
+    TEST_ASSERT_TRUE(chargeOff.type == CmdType::Charge);
+    TEST_ASSERT_FALSE(chargeOff.flag);
+
+    Command fanOn = parseCommand("{\"c\":\"fan\",\"v\":true}");
+    TEST_ASSERT_TRUE(fanOn.type == CmdType::Fan);
+    TEST_ASSERT_TRUE(fanOn.flag);
+
+    TEST_ASSERT_TRUE(parseCommand("{\"c\":\"charge\"}").type == CmdType::None);
+    TEST_ASSERT_TRUE(parseCommand("{\"c\":\"fan\"}").type == CmdType::None);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_parse_heartbeat);
@@ -59,5 +127,10 @@ int main(int, char**) {
     RUN_TEST(test_parse_shoot);
     RUN_TEST(test_parse_cfg);
     RUN_TEST(test_parse_rejects_garbage);
+    RUN_TEST(test_parse_rejects_nonfinite);
+    RUN_TEST(test_parse_shoot_ms_bounds);
+    RUN_TEST(test_fault_name);
+    RUN_TEST(test_parse_rejects_wrong_type_present);
+    RUN_TEST(test_parse_park_charge_fan);
     return UNITY_END();
 }

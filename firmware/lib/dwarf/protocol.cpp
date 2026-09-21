@@ -47,6 +47,7 @@ Command parseCommand(const char* json) {
             if (!doc["pan"].is<float>() || !doc["tilt"].is<float>()) return c;
             c.pan = doc["pan"].as<float>();
             c.tilt = doc["tilt"].as<float>();
+            if (!std::isfinite(c.pan) || !std::isfinite(c.tilt)) return c;
             break;
         case CmdType::Shoot:
             if (!doc["pan"].is<float>() || !doc["tilt"].is<float>() ||
@@ -56,6 +57,7 @@ Command parseCommand(const char* json) {
             c.pan = doc["pan"].as<float>();
             c.tilt = doc["tilt"].as<float>();
             c.ms = doc["ms"].as<uint16_t>();
+            if (!std::isfinite(c.pan) || !std::isfinite(c.tilt)) return c;
             break;
         case CmdType::Cfg:
             if (!doc["panMin"].is<float>() || !doc["panMax"].is<float>() ||
@@ -66,6 +68,10 @@ Command parseCommand(const char* json) {
             c.panMax = doc["panMax"].as<float>();
             c.tiltMin = doc["tiltMin"].as<float>();
             c.tiltMax = doc["tiltMax"].as<float>();
+            if (!std::isfinite(c.panMin) || !std::isfinite(c.panMax) ||
+                !std::isfinite(c.tiltMin) || !std::isfinite(c.tiltMax)) {
+                return c;
+            }
             break;
     }
 
@@ -80,9 +86,9 @@ const char* faultName(Fault f) {
         case Fault::Overtemp:
             return "OVERTEMP";
         case Fault::None:
-        default:
             return "";
     }
+    return "";
 }
 
 }  // namespace dwarf
