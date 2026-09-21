@@ -71,6 +71,7 @@ class Controller {
     Millis lastCmd_ = 0;
     Millis lastUpdate_ = 0;
     Millis tankLowSince_ = 0;
+    bool started_ = false;  // guards the first update() call's slew dt
 };
 
 }  // namespace dwarf

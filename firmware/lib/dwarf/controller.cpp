@@ -112,7 +112,14 @@ Ack Controller::handle(const Command& c, Millis now) {
 }
 
 void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
-    const Millis dt = now - lastUpdate_;
+    // The first update() call has no prior tick to measure against: charging
+    // it with now - lastUpdate_(0) would count however long setup() took
+    // (hundreds of ms on real hardware) as slew time and snap the head to
+    // whatever target was already commanded. Treat the first call as dt = 0
+    // instead, the same way linkUp_ guards the heartbeat check before any
+    // command has ever arrived.
+    const Millis dt = started_ ? now - lastUpdate_ : 0;
+    started_ = true;
     lastUpdate_ = now;
     temp_ = tempC;
 
