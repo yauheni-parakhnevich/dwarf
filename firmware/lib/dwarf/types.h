@@ -26,7 +26,7 @@ struct Limits {
     float tiltMax = 40.0f;
 };
 
-enum class Fault { None, TankEmpty, Overtemp, ValveTimeout };
+enum class Fault { None, TankEmpty, Overtemp, ValveTimeout, TempSensor };
 
 struct Status {
     bool armed = false;         // pump powered and shots allowed

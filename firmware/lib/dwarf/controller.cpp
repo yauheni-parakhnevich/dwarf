@@ -1,5 +1,7 @@
 #include "controller.h"
 
+#include <cmath>
+
 namespace dwarf {
 
 namespace {
@@ -10,6 +12,21 @@ namespace {
 // a valve open, somewhere other than where it was aimed.
 bool shooterBusy(ShooterState s) {
     return s == ShooterState::Move || s == ShooterState::Settle || s == ShooterState::Open;
+}
+
+// The mechanical envelope of the pan/tilt hardware: a limit outside this is
+// physically nonsensical and would drive a servo into a stalled end stop.
+// Written as an inclusive "is it inside" test (rather than "is it outside")
+// so that a NaN limit -- which compares false against everything -- fails
+// this check and is rejected rather than silently sliding through.
+bool withinMechanicalEnvelope(float v) { return v >= -90.0f && v <= 90.0f; }
+
+// A live sensor reading must be finite and within the physically possible
+// span for the dry-zone. -127 (the DS18B20 "disconnected probe" sentinel) is
+// an ordinary finite number, so it fails this range check rather than a
+// finiteness check alone.
+bool isValidTempReading(float t) {
+    return std::isfinite(t) && t >= -40.0f && t <= 125.0f;
 }
 
 }  // namespace
@@ -69,8 +86,11 @@ Ack Controller::handle(const Command& c, Millis now) {
                 ack.why = "busy";
                 break;
             }
-            targetPan_ = 0.0f;
-            targetTilt_ = 0.0f;
+            // Park means "the nominal centre", but cfg is not required to
+            // leave 0 inside the configured range: clamp into whatever the
+            // current limits actually are, same as every other target.
+            targetPan_ = clampf(0.0f, cfg_.limits.panMin, cfg_.limits.panMax);
+            targetTilt_ = clampf(0.0f, cfg_.limits.tiltMin, cfg_.limits.tiltMax);
             ack.ok = true;
             break;
 
@@ -122,7 +142,14 @@ Ack Controller::handle(const Command& c, Millis now) {
         case CmdType::Cfg:
             ack.present = true;
             ack.cmd = "cfg";
-            if (c.panMin >= c.panMax || c.tiltMin >= c.tiltMax) {
+            if (c.panMin >= c.panMax || c.tiltMin >= c.tiltMax ||
+                !withinMechanicalEnvelope(c.panMin) || !withinMechanicalEnvelope(c.panMax) ||
+                !withinMechanicalEnvelope(c.tiltMin) || !withinMechanicalEnvelope(c.tiltMax)) {
+                // Also rejects a NaN limit for free: withinMechanicalEnvelope()
+                // is written as an "inside" test, so NaN (which compares false
+                // against everything) fails it and is caught here, closing a
+                // defence-in-depth gap for a Command built directly in code
+                // rather than parsed (parseCommand already screens NaN out).
                 ack.ok = false;
                 ack.why = "bad";
                 break;
@@ -174,6 +201,9 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
         tankOk_ = true;
     }
 
+    // Fault precedence, highest first: ValveTimeout, Overtemp, TempSensor,
+    // TankEmpty.
+    //
     // Fault::ValveTimeout outranks everything and is sticky: it does not
     // clear on its own from a healthy tank or temperature reading, only from
     // an explicit disarm (handled in handle()). Skip the ordinary fault
@@ -181,20 +211,40 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     if (valveTimeoutLatched_) {
         fault_ = Fault::ValveTimeout;
     } else {
-        // Overtemp outranks tank level and disarms immediately.
-        if (temp_ >= cfg_.overtempC) {
+        const bool tempValid = isValidTempReading(temp_);
+
+        // Overtemp outranks tank level and disarms immediately. A reading
+        // that fails isValidTempReading() (NaN, or DallasTemperature's -127
+        // "disconnected probe" sentinel) can never satisfy `>= overtempC`
+        // here, so it falls through to the TempSensor check below instead of
+        // ever being misread as "not hot".
+        if (tempValid && temp_ >= cfg_.overtempC) {
             fault_ = Fault::Overtemp;
             armed_ = false;
             shooter_.abort(now);
-        } else if (fault_ == Fault::Overtemp && temp_ <= cfg_.overtempClearC) {
+        } else if (fault_ == Fault::Overtemp && tempValid && temp_ <= cfg_.overtempClearC) {
             fault_ = Fault::None;
         }
+
         if (fault_ != Fault::Overtemp) {
+            if (!tempValid) {
+                // A dead or disconnected sensor must not silently disable
+                // thermal protection: disarm, same as overtemp itself.
+                fault_ = Fault::TempSensor;
+                armed_ = false;
+            } else if (fault_ == Fault::TempSensor) {
+                fault_ = Fault::None;  // a valid reading returned
+            }
+        }
+
+        if (fault_ != Fault::Overtemp && fault_ != Fault::TempSensor) {
             fault_ = tankOk_ ? Fault::None : Fault::TankEmpty;
         }
     }
 
-    if (linkUp_ && now - lastCmd_ > cfg_.heartbeatTimeoutMs) {
+    // The spec says "after 3 s", so silence measured as exactly 3000 ms must
+    // already count as timed out, not wait for the next tick past it.
+    if (linkUp_ && now - lastCmd_ >= cfg_.heartbeatTimeoutMs) {
         enterSafeState(now);
         linkUp_ = false;
     }
@@ -228,9 +278,12 @@ void Controller::notifyValveForceClosed(Millis now) {
 void Controller::enterSafeState(Millis now) {
     armed_ = false;
     shooter_.abort(now);
-    targetPan_ = 0.0f;
-    targetTilt_ = 0.0f;
+    // Park means "the nominal centre", clamped into whatever the configured
+    // limits actually are (cfg is not required to leave 0 inside them).
+    targetPan_ = clampf(0.0f, cfg_.limits.panMin, cfg_.limits.panMax);
+    targetTilt_ = clampf(0.0f, cfg_.limits.tiltMin, cfg_.limits.tiltMax);
     charge_ = true;
+    fanCmd_ = false;  // a phone-commanded fan must not latch on forever
 }
 
 Status Controller::status() const {

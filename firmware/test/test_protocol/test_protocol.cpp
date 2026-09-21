@@ -113,6 +113,7 @@ void test_fault_name() {
     TEST_ASSERT_EQUAL_STRING("TANK_EMPTY", faultName(Fault::TankEmpty));
     TEST_ASSERT_EQUAL_STRING("OVERTEMP", faultName(Fault::Overtemp));
     TEST_ASSERT_EQUAL_STRING("VALVE_TIMEOUT", faultName(Fault::ValveTimeout));
+    TEST_ASSERT_EQUAL_STRING("TEMP_SENSOR", faultName(Fault::TempSensor));
     TEST_ASSERT_EQUAL_STRING("", faultName(Fault::None));
 }
 
@@ -444,6 +445,18 @@ void test_status_and_ack_fixtures_roundtrip() {
         formatStatus(s, buf, sizeof(buf));
         const char* expected =
             findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "valve_timeout");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // temp_sensor: a dead/disconnected probe reading serialises as null.
+        Status s;
+        s.temp = std::numeric_limits<float>::quiet_NaN();
+        s.fault = Fault::TempSensor;
+        s.shots = 5;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "temp_sensor");
         TEST_ASSERT_NOT_NULL(expected);
         TEST_ASSERT_EQUAL_STRING(expected, buf);
     }

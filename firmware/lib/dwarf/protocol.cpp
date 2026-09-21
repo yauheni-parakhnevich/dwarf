@@ -138,6 +138,8 @@ const char* faultName(Fault f) {
             return "OVERTEMP";
         case Fault::ValveTimeout:
             return "VALVE_TIMEOUT";
+        case Fault::TempSensor:
+            return "TEMP_SENSOR";
         case Fault::None:
             return "";
     }

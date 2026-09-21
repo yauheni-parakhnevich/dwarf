@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <limits>
+
 #include "controller.h"
 
 using namespace dwarf;
@@ -609,9 +611,9 @@ void test_forceSafe_reaches_full_safe_state_without_using_handle() {
     Ack rearm = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
     TEST_ASSERT_TRUE(rearm.ok);
     TEST_ASSERT_TRUE(c.armed());
-    advance(c, now, 2999);
+    advance(c, now, 2990);  // comfortably under the 3 s heartbeat window
     TEST_ASSERT_TRUE(c.armed());
-    advance(c, now, 2);
+    advance(c, now, 20);    // now safely past it
     TEST_ASSERT_FALSE(c.armed());
 }
 
@@ -658,6 +660,139 @@ void test_valve_timeout_fault_rejects_arm_until_explicit_disarm_then_recovers() 
     TEST_ASSERT_TRUE(c.armed());
 }
 
+void test_dead_temp_sensor_raises_temp_sensor_fault_and_disarms() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_TRUE(c.armed());
+
+    // -127 is the DS18B20 "disconnected probe" sentinel: an ordinary finite
+    // number that must not be read as "a cold day".
+    advance(c, now, 100, true, -127.0f);
+    TEST_ASSERT_TRUE(c.fault() == Fault::TempSensor);
+    TEST_ASSERT_FALSE(c.armed());
+
+    Ack a = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("fault", a.why);
+
+    advance(c, now, 100, true, 22.0f);  // the sensor recovers
+    TEST_ASSERT_TRUE(c.fault() == Fault::None);
+
+    a = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+}
+
+void test_nan_temp_raises_temp_sensor_fault_and_disarms() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_TRUE(c.armed());
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    advance(c, now, 100, true, nan);
+    TEST_ASSERT_TRUE(c.fault() == Fault::TempSensor);
+    TEST_ASSERT_FALSE(c.armed());
+}
+
+void test_out_of_envelope_temp_raises_temp_sensor_fault() {
+    Controller c;
+    Millis now = 0;
+    advance(c, now, 100, true, 200.0f);  // above the physically possible envelope
+    TEST_ASSERT_TRUE(c.fault() == Fault::TempSensor);
+}
+
+void test_park_clamps_into_limits_that_exclude_zero() {
+    Controller c;
+    Millis now = 0;
+    Ack cfgAck = c.handle(
+        cmd("{\"c\":\"cfg\",\"panMin\":10,\"panMax\":50,\"tiltMin\":5,\"tiltMax\":30}"), now);
+    TEST_ASSERT_TRUE(cfgAck.ok);
+
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":40.0,\"tilt\":20.0}"), now);
+    advance(c, now, 2000);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 40.0f, c.pan());
+
+    Ack a = c.handle(cmd("{\"c\":\"park\"}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+    advance(c, now, 2000);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 10.0f, c.pan());   // nearest bound to 0
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 5.0f, c.tilt());   // nearest bound to 0
+}
+
+void test_forceSafe_parks_within_limits_that_exclude_zero() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"cfg\",\"panMin\":10,\"panMax\":50,\"tiltMin\":5,\"tiltMax\":30}"), now);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":40.0,\"tilt\":20.0}"), now);
+    advance(c, now, 2000);
+
+    c.forceSafe(now);
+    advance(c, now, 2000);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 10.0f, c.pan());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 5.0f, c.tilt());
+}
+
+void test_cfg_with_absurd_limits_is_rejected() {
+    Controller c;
+    Millis now = 0;
+    Ack a = c.handle(
+        cmd("{\"c\":\"cfg\",\"panMin\":-1000,\"panMax\":1000,\"tiltMin\":-30,\"tiltMax\":40}"),
+        now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("bad", a.why);
+
+    // the old limits still apply
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":55.0,\"tilt\":0.0}"), now);
+    advance(c, now, 2000);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 55.0f, c.pan());
+}
+
+void test_cfg_with_nan_limits_is_rejected() {
+    Controller c;
+    Millis now = 0;
+
+    // A Command built directly in code, bypassing parseCommand's own
+    // isfinite() screen entirely -- the defence-in-depth gap this closes.
+    Command bad;
+    bad.type = CmdType::Cfg;
+    bad.panMin = std::numeric_limits<float>::quiet_NaN();
+    bad.panMax = 60.0f;
+    bad.tiltMin = -30.0f;
+    bad.tiltMax = 40.0f;
+
+    Ack a = c.handle(bad, now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("bad", a.why);
+}
+
+void test_heartbeat_times_out_at_exactly_3_seconds() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    advance(c, now, 2990);  // 2.99 s since the last command: not yet
+    TEST_ASSERT_TRUE(c.armed());
+    advance(c, now, 10);    // exactly 3 s since the last command: times out now
+    TEST_ASSERT_FALSE(c.armed());
+}
+
+void test_safe_state_clears_a_commanded_fan() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"fan\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_TRUE(c.fanOn());
+
+    c.forceSafe(now);
+    advance(c, now, 100, true, 22.0f);  // cool: no auto-fan reason either
+    TEST_ASSERT_FALSE(c.fanOn());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -691,5 +826,14 @@ int main(int, char**) {
     RUN_TEST(test_forceSafe_reaches_full_safe_state_without_using_handle);
     RUN_TEST(test_notifyValveForceClosed_counts_shot_and_latches_fault);
     RUN_TEST(test_valve_timeout_fault_rejects_arm_until_explicit_disarm_then_recovers);
+    RUN_TEST(test_dead_temp_sensor_raises_temp_sensor_fault_and_disarms);
+    RUN_TEST(test_nan_temp_raises_temp_sensor_fault_and_disarms);
+    RUN_TEST(test_out_of_envelope_temp_raises_temp_sensor_fault);
+    RUN_TEST(test_park_clamps_into_limits_that_exclude_zero);
+    RUN_TEST(test_forceSafe_parks_within_limits_that_exclude_zero);
+    RUN_TEST(test_cfg_with_absurd_limits_is_rejected);
+    RUN_TEST(test_cfg_with_nan_limits_is_rejected);
+    RUN_TEST(test_heartbeat_times_out_at_exactly_3_seconds);
+    RUN_TEST(test_safe_state_clears_a_commanded_fan);
     return UNITY_END();
 }
