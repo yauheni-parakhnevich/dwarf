@@ -2582,6 +2582,38 @@ git add ios/DwarfCore
 git commit -m "feat(core): decode device status and check both sides against the fixtures"
 ```
 
+**Post-review addendum (applied in commits `494babe` and `6717ca3`):** the cross-check
+earned its keep on its first run, and analysis found the incoming twin of the encoder's
+crash.
+
+1. **This plan's decoder would have rejected a real firmware message.** `formatStatus`
+   serialises a non-finite temperature — a dead or disconnected probe — as `"temp":null`,
+   and the `temp_sensor` fixture contains exactly that. The plan's `number()` treated null
+   as a missing field. Null now decodes to NaN, with the `TEMP_SENSOR` fault carrying the
+   meaning alongside it. This is precisely the disagreement the shared fixtures exist to
+   surface.
+2. **`UInt32(shots)` terminated the process** for a negative or out-of-range value —
+   verified in a subprocess, uncatchable, exactly the failure class found in the encoder.
+   One corrupted BLE notification that still parsed as JSON would have killed an app sealed
+   inside a gnome that needs the body opened to restart. Counters are now validated before
+   narrowing and throw `DecodingError.outOfRange`; a fractional value truncates
+   deliberately, with a comment saying so.
+3. The fixture switch gained the `valve_timeout` and `temp_sensor` cases the plan's template
+   predated, per its own instruction to add cases rather than relax the `default: XCTFail`.
+
+Declined, with reasons: no `.unknown` case for `tank` (it fails closed today, an
+unrecognised string reads as "not ok", and the firmware's field is strictly two-valued);
+no distinction between truncated and garbage input (`notAnObject` is right for both, and the
+next notification is a second away).
+
+**Fixture gaps recorded for later**, should a bug ever point this way: every fault fixture
+has the head centred and charging on, so no fixture crosses a fault with an off-centre aim
+or with charging disabled; the transient where the pump may still read on at the instant
+`VALVE_TIMEOUT` latches is uncovered; and ack coverage exercises one reject reason and one
+success only.
+
+The suite is 113 tests after this task.
+
 ---
 
 ### Task 10: Fire policy
