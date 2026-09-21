@@ -4,9 +4,23 @@
 #include <limits>
 
 #include "protocol.h"
-#include "test_fixtures.h"
+#include "../test_fixtures.h"
 
 using namespace dwarf;
+
+namespace {
+
+// Looks up a fixture's canonical wire text by name, or returns nullptr if the
+// name is not in the table (which a test should treat as a failure, not a
+// skip -- it usually means the fixture file and this test have drifted).
+const char* findFixtureJson(const fixtures::Fixture* table, int count, const char* name) {
+    for (int i = 0; i < count; ++i) {
+        if (std::strcmp(table[i].name, name) == 0) return table[i].json;
+    }
+    return nullptr;
+}
+
+}  // namespace
 
 void setUp() {}
 void tearDown() {}
@@ -316,27 +330,125 @@ void test_every_command_fixture_parses() {
     }
 }
 
-void test_status_fixture_roundtrips() {
-    Status s;
-    s.armed = true;
-    s.pan = 12.5f;
-    s.tilt = -3.0f;
-    s.pump = true;
-    s.charge = false;
-    s.temp = 31.3f;
-    s.shots = 12;
+// A parse that merely succeeds cannot catch a fixture whose pan and tilt were
+// transposed, or a cfg limit with a typo that still happens to parse. This
+// checks the actual parsed field values against each fixture by name, so a
+// hand-edit of any command fixture's numbers fails a test.
+void test_command_fixtures_parse_expected_values() {
+    for (int i = 0; i < fixtures::kCommandsCount; ++i) {
+        const fixtures::Fixture& f = fixtures::kCommands[i];
+        Command c = parseCommand(f.json);
 
-    char buf[256];
-    formatStatus(s, buf, sizeof(buf));
-
-    const char* expected = nullptr;
-    for (int i = 0; i < fixtures::kStatusCount; ++i) {
-        if (std::strcmp(fixtures::kStatus[i].name, "armed_shooting") == 0) {
-            expected = fixtures::kStatus[i].json;
+        if (std::strcmp(f.name, "hb") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Hb, f.name);
+        } else if (std::strcmp(f.name, "arm_on") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Arm, f.name);
+            TEST_ASSERT_TRUE_MESSAGE(c.flag, f.name);
+        } else if (std::strcmp(f.name, "arm_off") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Arm, f.name);
+            TEST_ASSERT_FALSE_MESSAGE(c.flag, f.name);
+        } else if (std::strcmp(f.name, "aim") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Aim, f.name);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, 12.5f, c.pan);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, -3.0f, c.tilt);
+        } else if (std::strcmp(f.name, "park") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Park, f.name);
+        } else if (std::strcmp(f.name, "shoot") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Shoot, f.name);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, 14.0f, c.pan);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, -2.5f, c.tilt);
+            TEST_ASSERT_EQUAL_UINT16(300, c.ms);
+        } else if (std::strcmp(f.name, "charge_off") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Charge, f.name);
+            TEST_ASSERT_FALSE_MESSAGE(c.flag, f.name);
+        } else if (std::strcmp(f.name, "fan_on") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Fan, f.name);
+            TEST_ASSERT_TRUE_MESSAGE(c.flag, f.name);
+        } else if (std::strcmp(f.name, "cfg") == 0) {
+            TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Cfg, f.name);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, -60.0f, c.panMin);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, 60.0f, c.panMax);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, -30.0f, c.tiltMin);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, 40.0f, c.tiltMax);
+        } else {
+            // A new command fixture appeared with no value assertions above.
+            TEST_FAIL_MESSAGE(f.name);
         }
     }
-    TEST_ASSERT_NOT_NULL(expected);
-    TEST_ASSERT_EQUAL_STRING(expected, buf);
+}
+
+// Every status and ack fixture, round-tripped against the real formatter, not
+// just one. The point is that hand-editing any fixture's bytes -- or the
+// formatter changing under it -- fails a test, the same guarantee the iOS
+// suite will rely on when it reads these fixtures directly.
+void test_status_and_ack_fixtures_roundtrip() {
+    char buf[256];
+
+    {  // idle: an all-defaults status except for the temperature.
+        Status s;
+        s.temp = 21.5f;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected = findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "idle");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // armed_shooting
+        Status s;
+        s.armed = true;
+        s.pan = 12.5f;
+        s.tilt = -3.0f;
+        s.pump = true;
+        s.charge = false;
+        s.temp = 31.3f;
+        s.shots = 12;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "armed_shooting");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // tank_empty
+        Status s;
+        s.tankOk = false;
+        s.temp = 24.0f;
+        s.fault = Fault::TankEmpty;
+        s.shots = 3;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "tank_empty");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // overtemp: disarmed, pump off, fan on, temp above 60, fault OVERTEMP.
+        Status s;
+        s.fan = true;
+        s.temp = 63.4f;
+        s.fault = Fault::Overtemp;
+        s.shots = 8;
+        formatStatus(s, buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "overtemp");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // ack_reject: ok == false, "why" present.
+        formatAck("shoot", false, "cooldown", buf, sizeof(buf));
+        const char* expected =
+            findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "ack_reject");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
+
+    {  // ack_ok: ok == true, "why" absent -- a structurally different shape.
+        formatAck("arm", true, nullptr, buf, sizeof(buf));
+        const char* expected = findFixtureJson(fixtures::kStatus, fixtures::kStatusCount, "ack_ok");
+        TEST_ASSERT_NOT_NULL(expected);
+        TEST_ASSERT_EQUAL_STRING(expected, buf);
+    }
 }
 
 int main(int, char**) {
@@ -363,6 +475,7 @@ int main(int, char**) {
     RUN_TEST(test_format_ack_exact_fit_boundary);
     RUN_TEST(test_format_status_nonfinite_and_sentinel_temp);
     RUN_TEST(test_every_command_fixture_parses);
-    RUN_TEST(test_status_fixture_roundtrips);
+    RUN_TEST(test_command_fixtures_parse_expected_values);
+    RUN_TEST(test_status_and_ack_fixtures_roundtrip);
     return UNITY_END();
 }

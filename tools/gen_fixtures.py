@@ -3,17 +3,53 @@
 
 Run from the repository root:
     python3 tools/gen_fixtures.py
+
+Use --check to verify the committed header still matches the fixture files
+without writing anything; it exits non-zero and prints a message if they have
+drifted apart:
+    python3 tools/gen_fixtures.py --check
 """
 import json
 import pathlib
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "protocol" / "fixtures"
-OUT = ROOT / "firmware" / "lib" / "dwarf" / "test_fixtures.h"
+OUT = ROOT / "firmware" / "test" / "test_fixtures.h"
 
 
 def cpp_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape `text` for use inside a double-quoted C++ string literal.
+
+    Backslash and double-quote get the usual C++ escapes, and \\n, \\r, \\t
+    get their standard C escapes. Any other character below 0x20, or equal to
+    0x7F, is emitted as a three-digit octal escape (e.g. "\\007"); three
+    digits, not fewer, because a shorter octal escape immediately followed by
+    an ASCII digit in the fixture text would be misparsed as part of the
+    escape. \\uXXXX is deliberately not used: C++ forbids universal character
+    names below 0xA0 for most values, so those would fail to compile.
+
+    Non-ASCII UTF-8 bytes are left untouched; they pass through unescaped and
+    compile fine as extended source characters inside a string literal.
+    """
+    out = []
+    for ch in text:
+        code = ord(ch)
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif code < 0x20 or code == 0x7F:
+            out.append("\\%03o" % code)
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def emit_group(name: str, mapping: dict) -> str:
@@ -26,7 +62,7 @@ def emit_group(name: str, mapping: dict) -> str:
     )
 
 
-def main() -> None:
+def render():
     commands = json.loads((FIXTURES / "commands.json").read_text())
     status = json.loads((FIXTURES / "status.json").read_text())
 
@@ -48,8 +84,30 @@ def main() -> None:
         "}  // namespace dwarf",
         "",
     ]
-    OUT.write_text("\n".join(body))
-    print(f"wrote {OUT.relative_to(ROOT)}: {len(commands)} commands, {len(status)} status")
+    return "\n".join(body), len(commands), len(status)
+
+
+def main() -> None:
+    check = "--check" in sys.argv[1:]
+    text, n_commands, n_status = render()
+
+    if check:
+        current = OUT.read_text() if OUT.exists() else None
+        if current != text:
+            print(
+                f"FIXTURE DRIFT: {OUT.relative_to(ROOT)} does not match "
+                f"protocol/fixtures/. Run `python3 tools/gen_fixtures.py` "
+                f"and commit the result."
+            )
+            sys.exit(1)
+        print(
+            f"ok: {OUT.relative_to(ROOT)} matches protocol/fixtures/ "
+            f"({n_commands} commands, {n_status} status)"
+        )
+        return
+
+    OUT.write_text(text)
+    print(f"wrote {OUT.relative_to(ROOT)}: {n_commands} commands, {n_status} status")
 
 
 if __name__ == "__main__":
