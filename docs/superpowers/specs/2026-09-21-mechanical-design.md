@@ -8,6 +8,11 @@
 The printed body of the garden-gnome cat deterrent: how the head aims, how water reaches the
 nozzle, how the thing is serviced, and how it survives a season outdoors.
 
+![Vertical section through the assembly](diagrams/01-overview-section.svg)
+
+*Figure 1 — Vertical section, gnome facing right. Everything above the belt split lifts off as
+one piece.*
+
 ## 1. Decisions
 
 | Question | Decision | Why |
@@ -29,6 +34,12 @@ image point in, servo angles out, fitted from where water actually landed — so
 offset is absorbed: nozzle ahead of the pan axis, camera in the belly rather than the head,
 head height above the ground. This is why the calibration in the parent spec records
 `(x, y) → (pan, tilt, range_m)` from real test shots rather than from a model of the machine.
+
+![Aiming geometry in side and plan view](diagrams/04-aiming-geometry.svg)
+
+*Figure 2 — The camera sees 2–6 m from about 32 cm up, so the ground sits only 9° below
+horizontal at 2 m and 3° at 6 m. Below: the pan cone, and the two offsets — nozzle ahead of
+the pan axis, camera in the belly — that calibration absorbs rather than correcting.*
 
 **Travel:** pan ±60°, tilt −20° to +40°. Printed hard stops sit a few degrees outside the
 software limits, so a runaway command meets plastic instead of stripping a gearbox. The
@@ -58,10 +69,25 @@ through it, so nothing has to seal against rotation. Two slack loops absorb the 
 helix around the shaft for pan and a loop inside the head for the nod. Keep the bend radius
 above 25 mm; 8-bar PU tube tolerates this indefinitely at these cycle counts.
 
+![Neck assembly detail](diagrams/02-neck-detail.svg)
+
+*Figure 3 — The neck. Water and tilt wiring pass through the middle of the rotating joint, so
+nothing seals against rotation; a slack helix takes up the twist.*
+
+![Head assembly detail](diagrams/03-head-detail.svg)
+
+*Figure 4 — The head, shown at both travel extremes. With the axle through the centre of
+gravity the tilt servo carries imbalance and wind, not weight.*
+
 **Dead volume is not a problem.** The ~45 cm of tube between valve and nozzle holds about
 6 ml, but it stays full between shots and water is incompressible, so pressure propagates at
 the speed of sound and the jet starts when the valve opens. The tube must be pressure-rated so
 it does not balloon, which would soften the shot's leading edge.
+
+![Water path schematic](diagrams/05-water-path.svg)
+
+*Figure 5 — Water path. Every component in the pressurised run is bought; the printed parts
+hold things, they never contain pressure.*
 
 ## 4. Torso — the dry zone
 
@@ -121,6 +147,10 @@ first thing to sag would be the servo mounts.
 
 **Tolerances:** print a fit-test coupon before committing twenty hours to a torso section.
 0.2–0.3 mm clearance for sliding fits is the starting point.
+
+![Print sections and seam detail](diagrams/06-print-sections.svg)
+
+*Figure 6 — Where the body splits, and why horizontal seams shingle instead of butting.*
 
 ## 7. Assembly order
 

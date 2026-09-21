@@ -1,0 +1,76 @@
+/* Print stylesheet for project specs. Used by tools/md2pdf.sh */
+@page {
+  size: A4;
+  margin: 18mm 16mm 16mm 16mm;
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font: 8pt "Helvetica Neue", sans-serif;
+    color: #888;
+  }
+}
+body {
+  font: 10pt/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #1a1a1a;
+}
+h1 {
+  font-size: 19pt;
+  margin: 0 0 4pt;
+  border-bottom: 2px solid #333;
+  padding-bottom: 5pt;
+}
+h2 {
+  font-size: 13pt;
+  margin: 16pt 0 5pt;
+  border-bottom: 1px solid #bbb;
+  padding-bottom: 2pt;
+  break-after: avoid;
+}
+h3 { font-size: 11pt; margin: 11pt 0 3pt; break-after: avoid; }
+p, ul, ol { margin: 4pt 0; }
+li { margin: 1.5pt 0; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6pt 0;
+  font-size: 8.3pt;
+}
+th, td { border: 1px solid #ccc; padding: 3pt 4pt; text-align: left; vertical-align: top; }
+th { background: #f0f0f0; font-weight: 600; }
+tr { break-inside: avoid; }
+
+code {
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 8.5pt;
+  background: #f4f4f4;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+pre {
+  background: #f7f7f7;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  padding: 6pt 8pt;
+  font-size: 7.4pt;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+pre code { background: none; font-size: 7.4pt; padding: 0; }
+blockquote { border-left: 3px solid #ddd; margin: 4pt 0; padding-left: 8pt; color: #555; }
+
+/* Figures: keep the drawing and its caption together */
+img { max-width: 100%; display: block; margin: 8pt auto 2pt; }
+p > img + em, p > em { }
+img + br + em { }
+p:has(img) { break-inside: avoid; break-after: avoid; }
+p > em:only-child {
+  display: block;
+  text-align: center;
+  font-size: 8.5pt;
+  color: #555;
+  margin: 0 auto 10pt;
+  max-width: 90%;
+  break-before: avoid;
+}

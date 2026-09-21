@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 360" width="620" height="360" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a3" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0 0 L7 3.5 L0 7 z" fill="#666"/>
+    </marker>
+  </defs>
+  <style>
+    .lbl { font-size: 10.5px; fill: #222; }
+    .dim { font-size: 9px; fill: #666; }
+    .ln  { stroke: #666; stroke-width: 0.9; fill: none; }
+    .part{ stroke: #333; stroke-width: 1.4; fill: #fff; }
+    .fill{ fill: #ececec; stroke: #333; stroke-width: 1.3; }
+    .water{ stroke: #2b6cb0; stroke-width: 2.4; fill: none; }
+    .cl   { stroke: #aaa; stroke-width: 0.9; stroke-dasharray: 9 3 2 3; }
+    .ghost{ stroke: #bbb; stroke-width: 1.1; fill: none; stroke-dasharray: 4 3; }
+  </style>
+
+  <text class="lbl" x="310" y="20" text-anchor="middle" font-size="12">Head assembly — the axle passes through the centre of gravity, so the servo holds almost nothing</text>
+
+  <!-- travel ghosts -->
+  <g class="ghost" transform="rotate(-40 300 150)">
+    <path d="M244 100 q56 -38 112 0 l12 56 q-62 21 -136 0 z"/>
+  </g>
+  <g class="ghost" transform="rotate(20 300 150)">
+    <path d="M244 100 q56 -38 112 0 l12 56 q-62 21 -136 0 z"/>
+  </g>
+
+  <!-- head, neutral -->
+  <path d="M244 100 q56 -38 112 0 l12 56 q-62 21 -136 0 z" class="fill"/>
+
+  <!-- CG marker -->
+  <circle cx="300" cy="150" r="9" fill="#fff" stroke="#333" stroke-width="1.4"/>
+  <path d="M300 141 a9 9 0 0 1 9 9 h-9 z" fill="#333"/>
+  <path d="M300 159 a9 9 0 0 1 -9 -9 h9 z" fill="#333"/>
+  <path class="cl" d="M208 150 h226"/>
+
+  <!-- nozzle -->
+  <rect x="368" y="142" width="38" height="12" rx="2" class="part"/>
+  <path class="water" d="M408 148 l36 -12 M408 148 l36 -1"/>
+
+  <!-- slack loop -->
+  <path class="water" d="M300 172 q-34 22 -10 40 q24 16 36 -14"/>
+
+  <!-- yoke -->
+  <path class="part" d="M244 150 v82 M356 150 v82"/>
+  <rect x="234" y="232" width="132" height="14" class="fill"/>
+
+  <!-- tilt servo -->
+  <rect x="368" y="184" width="52" height="40" rx="4" class="part"/>
+  <text class="dim" x="394" y="208" text-anchor="middle">servo</text>
+
+  <!-- LEFT GUTTER ends x=200 -->
+  <text class="dim" x="236" y="66">+40°</text>
+  <text class="dim" x="214" y="214">−20°</text>
+
+  <text class="lbl" x="200" y="140" text-anchor="end">tilt axle = centre of gravity</text>
+  <text class="dim" x="200" y="152" text-anchor="end">balance the printed head on</text>
+  <text class="dim" x="200" y="163" text-anchor="end">a rod before assembly</text>
+  <path class="ln" d="M204 146 L288 149" marker-end="url(#a3)"/>
+
+  <text class="lbl" x="200" y="200" text-anchor="end">slack loop for the nod</text>
+  <path class="ln" d="M204 204 L276 196" marker-end="url(#a3)"/>
+
+  <!-- RIGHT GUTTER starts x=452 -->
+  <text class="lbl" x="452" y="132">brass nozzle</text>
+  <text class="dim" x="452" y="144">pressed into a printed holder,</text>
+  <text class="dim" x="452" y="155">rigid, aimed along the head</text>
+  <path class="ln" d="M448 136 L410 144" marker-end="url(#a3)"/>
+
+  <text class="lbl" x="452" y="200">tilt servo</text>
+  <text class="dim" x="452" y="212">MG996R class</text>
+  <path class="ln" d="M448 204 L424 204" marker-end="url(#a3)"/>
+
+  <text class="lbl" x="452" y="248">yoke</text>
+  <text class="dim" x="452" y="260">bolted to the head plate</text>
+  <path class="ln" d="M448 250 L370 242" marker-end="url(#a3)"/>
+
+  <!-- torque note -->
+  <rect x="196" y="282" width="330" height="58" rx="4" fill="#f6f6f6" stroke="#ccc"/>
+  <text class="lbl" x="210" y="302">Torque check</text>
+  <text class="dim" x="210" y="317">350 g head × 20 mm worst-case CG offset = 0.6 kg·cm</text>
+  <text class="dim" x="210" y="331">MG996R class ≈ 10 kg·cm → ample. MG90S at 2.2 kg·cm is marginal.</text>
+</svg>

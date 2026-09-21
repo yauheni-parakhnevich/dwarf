@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 340" width="620" height="340" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#2b6cb0"/>
+    </marker>
+  </defs>
+  <style>
+    .lbl { font-size: 10.5px; fill: #222; }
+    .dim { font-size: 9px; fill: #666; }
+    .part{ stroke: #333; stroke-width: 1.4; fill: #fff; }
+    .water{ stroke: #2b6cb0; stroke-width: 2.6; fill: none; }
+    .zone{ fill: #f6f6f6; stroke: #bbb; stroke-width: 1; stroke-dasharray: 5 4; }
+    .ln  { stroke: #666; stroke-width: 0.9; fill: none; }
+  </style>
+
+  <text class="lbl" x="310" y="20" text-anchor="middle" font-size="12">Water path — every component in the pressurised run is bought, never printed</text>
+
+  <!-- WET ZONE -->
+  <rect x="30" y="150" width="330" height="166" rx="6" class="zone"/>
+  <text class="dim" x="42" y="170">WET ZONE — base</text>
+
+  <!-- HEAD ZONE -->
+  <rect x="430" y="44" width="160" height="120" rx="6" class="zone"/>
+  <text class="dim" x="442" y="64">HEAD</text>
+
+  <!-- tank -->
+  <rect x="54" y="200" width="92" height="78" rx="6" class="part"/>
+  <text class="lbl" x="100" y="246" text-anchor="middle">3 L bottle</text>
+  <rect x="70" y="188" width="60" height="12" class="part"/>
+  <path class="water" d="M86 200 v62"/>
+  <circle cx="120" cy="228" r="6" class="part"/>
+  <path class="ln" d="M128 188 v-12"/>
+
+  <!-- pump -->
+  <rect x="178" y="212" width="62" height="42" rx="4" class="part"/>
+  <text class="lbl" x="209" y="237" text-anchor="middle">pump</text>
+  <path class="water" d="M146 233 h28" marker-end="url(#a5)"/>
+
+  <!-- valve -->
+  <rect x="268" y="212" width="52" height="42" rx="4" class="part"/>
+  <text class="lbl" x="294" y="237" text-anchor="middle">valve</text>
+  <path class="water" d="M240 233 h24" marker-end="url(#a5)"/>
+
+  <!-- up the shaft -->
+  <path class="water" d="M320 233 h58 v-44" marker-end="url(#a5)"/>
+
+  <!-- into the head -->
+  <path class="water" d="M378 189 v-58 q0 -22 22 -22 h60" marker-end="url(#a5)"/>
+  <rect x="470" y="103" width="44" height="12" rx="2" class="part"/>
+  <path class="water" d="M516 109 l34 -11 M516 109 l34 0"/>
+
+  <!-- labels, wet zone -->
+  <text class="dim" x="160" y="186">printed tank head</text>
+  <path class="ln" d="M156 183 L132 191" marker-end="url(#a5)" stroke="#666"/>
+  <text class="dim" x="160" y="172">vent</text>
+  <path class="ln" d="M156 169 L130 178" marker-end="url(#a5)" stroke="#666"/>
+  <text class="dim" x="160" y="204">float switch</text>
+  <path class="ln" d="M156 201 L128 224" marker-end="url(#a5)" stroke="#666"/>
+  <text class="dim" x="44" y="306">dip tube reaches the bottom</text>
+  <path class="ln" d="M96 300 L86 266" marker-end="url(#a5)" stroke="#666"/>
+  <text class="dim" x="209" y="270" text-anchor="middle">4 bar, pressure switch</text>
+  <text class="dim" x="294" y="270" text-anchor="middle">NC, direct-acting</text>
+
+  <!-- label, riser -->
+  <text class="dim" x="390" y="204">up the hollow shaft</text>
+  <text class="dim" x="390" y="216">(slack helix, ±60°)</text>
+
+  <!-- label, nozzle -->
+  <text class="dim" x="470" y="96">nozzle</text>
+
+  <!-- note -->
+  <rect x="30" y="44" width="380" height="88" rx="4" fill="#f6f6f6" stroke="#ccc"/>
+  <text class="lbl" x="44" y="64">Why the tube length costs nothing</text>
+  <text class="dim" x="44" y="82">The ~45 cm between valve and nozzle holds about 6 ml, but it stays full</text>
+  <text class="dim" x="44" y="96">between shots. Water is incompressible, so pressure propagates at the speed</text>
+  <text class="dim" x="44" y="110">of sound and the jet starts when the valve opens. The tube must be rated so it</text>
+  <text class="dim" x="44" y="124">cannot balloon, which would soften the shot's leading edge.</text>
+</svg>

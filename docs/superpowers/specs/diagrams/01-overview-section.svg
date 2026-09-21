@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 600" width="620" height="600" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a1" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0 0 L7 3.5 L0 7 z" fill="#666"/>
+    </marker>
+    <pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#bbb" stroke-width="1.6"/>
+    </pattern>
+  </defs>
+  <style>
+    .lbl { font-size: 10.5px; fill: #222; }
+    .dim { font-size: 9px; fill: #666; }
+    .ln  { stroke: #666; stroke-width: 0.9; fill: none; }
+    .part{ stroke: #333; stroke-width: 1.4; fill: #fff; }
+    .fill{ fill: #ececec; stroke: #333; stroke-width: 1.3; }
+    .cut { stroke: #c0392b; stroke-width: 2; stroke-dasharray: 8 5; fill: none; }
+    .water{ stroke: #2b6cb0; stroke-width: 2.2; fill: none; }
+  </style>
+
+  <!-- ================= DRAWING BAND: x 220..400 ================= -->
+
+  <!-- HEAD, nodded up 12° -->
+  <g transform="rotate(-12 300 120)">
+    <path d="M256 66 q44 -34 88 0 l10 52 q-50 19 -108 0 z" class="fill"/>
+    <path d="M256 66 q44 -62 88 0 z" fill="url(#hatch)" stroke="#333" stroke-width="1.2"/>
+    <rect x="350" y="106" width="30" height="10" rx="2" class="part"/>
+    <path d="M382 111 l34 -13 M382 111 l34 -2" class="water" opacity=".6"/>
+    <circle cx="300" cy="120" r="5.5" class="part"/>
+    <path d="M300 136 q-26 17 -7 30 q19 10 28 -10" class="water"/>
+  </g>
+
+  <!-- YOKE + TILT SERVO -->
+  <path class="part" d="M262 152 v-26 M338 152 v-26"/>
+  <rect x="254" y="152" width="92" height="11" class="fill"/>
+  <rect x="342" y="124" width="34" height="26" rx="3" class="part"/>
+
+  <!-- TURNTABLE -->
+  <rect x="256" y="163" width="88" height="13" class="part"/>
+  <circle cx="274" cy="169.5" r="3.6" fill="#333"/>
+  <circle cx="300" cy="169.5" r="3.6" fill="#333"/>
+  <circle cx="326" cy="169.5" r="3.6" fill="#333"/>
+  <rect x="242" y="176" width="116" height="11" class="fill"/>
+
+  <!-- HOLLOW SHAFT -->
+  <rect x="290" y="187" width="20" height="46" class="part"/>
+  <path class="water" d="M300 187 v46"/>
+
+  <!-- PAN SERVO -->
+  <rect x="268" y="233" width="64" height="46" rx="3" class="part"/>
+  <text class="lbl" x="300" y="261" text-anchor="middle">DS3218</text>
+
+  <!-- TORSO OUTLINE -->
+  <path class="ln" d="M224 152 q-26 108 -18 186 M376 152 q26 108 18 186" stroke="#333" stroke-width="1.4"/>
+
+  <!-- PHONE -->
+  <rect x="250" y="292" width="46" height="82" rx="5" class="part"/>
+
+  <!-- WINDOW + HOOD -->
+  <rect x="296" y="306" width="10" height="36" fill="#cfe4f7" stroke="#333" stroke-width="1.2"/>
+  <path class="part" d="M306 302 l18 -9"/>
+
+  <!-- ELECTRONICS -->
+  <rect x="240" y="382" width="124" height="11" class="fill"/>
+  <rect x="250" y="393" width="102" height="28" rx="3" class="part"/>
+
+  <!-- FAN + VENTS -->
+  <circle cx="232" cy="250" r="12" class="part"/>
+  <path class="ln" d="M232 236 v-12" marker-end="url(#a1)"/>
+  <path class="ln" d="M214 356 h-14 M214 366 h-14 M214 376 h-14" stroke-width="2"/>
+
+  <!-- BELT SPLIT -->
+  <path class="cut" d="M196 432 h212"/>
+
+  <!-- DIVIDER -->
+  <rect x="202" y="444" width="200" height="10" fill="#777" stroke="#333" stroke-width="1"/>
+
+  <!-- BASE -->
+  <path class="ln" d="M198 454 q-10 64 0 98 M406 454 q10 -34 0 98" stroke="#333" stroke-width="1.4"/>
+  <path class="ln" d="M198 552 h208" stroke="#333" stroke-width="1.4"/>
+  <rect x="222" y="466" width="94" height="78" rx="7" class="part"/>
+  <text class="lbl" x="269" y="510" text-anchor="middle">3 L bottle</text>
+  <rect x="240" y="456" width="58" height="11" class="fill"/>
+  <rect x="326" y="480" width="56" height="36" rx="3" class="part"/>
+  <text class="dim" x="354" y="502" text-anchor="middle">pump</text>
+  <rect x="326" y="520" width="36" height="24" rx="3" class="part"/>
+  <text class="dim" x="344" y="536" text-anchor="middle">valve</text>
+  <path class="part" d="M198 482 l-18 -9 v16 z"/>
+  <path class="ln" d="M228 552 v12 M370 552 v12" stroke-width="5"/>
+
+  <!-- ================= LEFT GUTTER: text ends at x=170 ================= -->
+  <text class="lbl" x="170" y="118" text-anchor="end">tilt axle</text>
+  <text class="dim" x="170" y="130" text-anchor="end">through head CG</text>
+  <path class="ln" d="M174 122 L288 122" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="186" text-anchor="end">torso deck</text>
+  <path class="ln" d="M174 183 L238 183" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="206" text-anchor="end">hollow shaft</text>
+  <text class="dim" x="170" y="218" text-anchor="end">water + tilt wiring</text>
+  <path class="ln" d="M174 210 L286 210" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="240" text-anchor="end">fan, exhaust high</text>
+  <path class="ln" d="M174 246 L218 249" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="310" text-anchor="end">iPhone 6s</text>
+  <text class="dim" x="170" y="322" text-anchor="end">slide-out sled,</text>
+  <text class="dim" x="170" y="333" text-anchor="end">fits one way only</text>
+  <path class="ln" d="M174 316 L246 320" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="368" text-anchor="end">intake low, rear</text>
+  <path class="ln" d="M174 366 L196 366" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="170" y="482" text-anchor="end">filler cap</text>
+  <path class="ln" d="M174 480 L178 480" marker-end="url(#a1)"/>
+
+  <!-- ================= RIGHT GUTTER: text starts at x=432 ================= -->
+  <text class="lbl" x="432" y="86">nozzle, rigid in mouth</text>
+  <text class="dim" x="432" y="98">a snug hole, not a slot</text>
+
+  <text class="lbl" x="432" y="140">tilt servo</text>
+  <text class="dim" x="432" y="152">MG996R class</text>
+  <path class="ln" d="M428 144 L380 140" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="432" y="172">thrust bearing, 60–80 mm</text>
+  <text class="dim" x="432" y="184">carries the head's weight</text>
+  <path class="ln" d="M428 172 L348 170" marker-end="url(#a1)"/>
+
+  <text class="dim" x="432" y="258">pan ±60°, printed hard stops</text>
+  <path class="ln" d="M428 256 L336 256" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="432" y="316">acrylic window + hood</text>
+  <text class="dim" x="432" y="328">lens &lt; 2 mm behind it</text>
+  <path class="ln" d="M428 318 L326 312" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="432" y="408">ESP32, bucks, MOSFETs</text>
+  <path class="ln" d="M428 406 L356 406" marker-end="url(#a1)"/>
+
+  <text class="lbl" x="432" y="430" fill="#c0392b">belt split</text>
+  <text class="dim" x="432" y="442">dowels + 4 screws</text>
+
+  <text class="dim" x="432" y="458">divider, 100 % infill</text>
+
+  <text class="lbl" x="432" y="476">printed tank head</text>
+  <text class="dim" x="432" y="488">dip tube, float, vent, filler</text>
+  <path class="ln" d="M428 478 L302 462" marker-end="url(#a1)"/>
+
+  <text class="dim" x="196" y="576">raised feet · slotted floor · stake holes in the base flange</text>
+</svg>

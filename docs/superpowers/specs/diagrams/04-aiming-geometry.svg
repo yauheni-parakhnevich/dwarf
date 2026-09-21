@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 560" width="620" height="560" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a4" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0 0 L7 3.5 L0 7 z" fill="#666"/>
+    </marker>
+  </defs>
+  <style>
+    .lbl { font-size: 10.5px; fill: #222; }
+    .dim { font-size: 9px; fill: #666; }
+    .ln  { stroke: #666; stroke-width: 0.9; fill: none; }
+    .fill{ fill: #ececec; stroke: #333; stroke-width: 1.3; }
+    .water{ stroke: #2b6cb0; stroke-width: 2; fill: none; }
+    .sight{ stroke: #7aa7d9; stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+    .cone { fill: #2b6cb0; opacity: .07; }
+    .nofire{ fill: #c0392b; opacity: .12; }
+  </style>
+
+  <!-- ===================== SIDE ELEVATION ===================== -->
+  <text class="lbl" x="310" y="20" text-anchor="middle" font-size="12">Side elevation — what the camera sees, and where the jet lands</text>
+
+  <!-- jet arcs -->
+  <path class="water" d="M136 166 q92 -34 196 64"/>
+  <path class="water" d="M136 166 q150 -54 356 66" stroke-dasharray="6 4"/>
+
+  <!-- gnome -->
+  <path class="fill" d="M110 230 v-52 q0 -24 20 -24 q20 0 20 24 v52 z"/>
+  <path class="fill" d="M116 154 q14 -28 28 0 z"/>
+  <circle cx="130" cy="188" r="4.5" fill="#2b6cb0"/>
+
+  <!-- sight lines -->
+  <path class="sight" d="M130 188 L230 230"/>
+  <path class="sight" d="M130 188 L490 230"/>
+
+  <!-- ground -->
+  <path class="ln" d="M100 230 H560" stroke="#333" stroke-width="1.4"/>
+  <path class="ln" d="M230 230 v8 M360 230 v8 M490 230 v8"/>
+  <text class="dim" x="230" y="250" text-anchor="middle">2 m</text>
+  <text class="dim" x="360" y="250" text-anchor="middle">4 m</text>
+  <text class="dim" x="490" y="250" text-anchor="middle">6 m</text>
+
+  <!-- no-fire zone, marked below the ground line -->
+  <rect x="150" y="230" width="80" height="10" class="nofire"/>
+  <path class="ln" d="M190 262 v-20" marker-end="url(#a4)"/>
+  <text class="dim" x="190" y="274" text-anchor="middle" fill="#c0392b">no fire inside 2 m</text>
+
+  <!-- sight-line annotations, clear of the artwork -->
+  <text class="dim" x="330" y="274">camera depression: 9° at 2 m, 3° at 6 m</text>
+  <path class="ln" d="M366 266 L330 234" marker-end="url(#a4)"/>
+
+  <!-- tilt range, left gutter -->
+  <path class="ln" d="M136 166 l34 -20" marker-end="url(#a4)"/>
+  <path class="ln" d="M136 166 l34 12" marker-end="url(#a4)"/>
+  <text class="dim" x="96" y="140" text-anchor="end">nozzle travel</text>
+  <text class="dim" x="96" y="152" text-anchor="end">+40° to −20°</text>
+  <path class="ln" d="M100 146 L132 160" marker-end="url(#a4)"/>
+
+  <text class="lbl" x="96" y="190" text-anchor="end">camera</text>
+  <text class="dim" x="96" y="202" text-anchor="end">≈32 cm up</text>
+  <path class="ln" d="M100 192 L124 189" marker-end="url(#a4)"/>
+
+  <text class="lbl" x="268" y="98">body aim, 2–4 m</text>
+  <path class="ln" d="M288 104 L286 140" marker-end="url(#a4)"/>
+
+  <text class="lbl" x="430" y="80">head aim, beyond 4 m</text>
+  <path class="ln" d="M452 86 L436 124" marker-end="url(#a4)"/>
+
+  <!-- ===================== PLAN VIEW ===================== -->
+  <text class="lbl" x="310" y="320" text-anchor="middle" font-size="12">Plan view — the pan cone, and the offsets calibration absorbs</text>
+
+  <path class="cone" d="M150 490 L410 356 A 292 292 0 0 0 150 198 Z"/>
+  <path class="ln" d="M150 490 L410 356 M150 490 L150 198" stroke="#2b6cb0"/>
+  <path class="ln" d="M226 382 a 120 120 0 0 0 -76 -40" stroke="#2b6cb0"/>
+  <text class="dim" x="238" y="374" fill="#2b6cb0">±60°</text>
+
+  <circle cx="150" cy="490" r="28" class="fill"/>
+  <circle cx="150" cy="490" r="4" fill="#333"/>
+  <circle cx="174" cy="472" r="4.5" fill="#2b6cb0"/>
+  <circle cx="150" cy="464" r="4.5" fill="#c0392b"/>
+
+  <text class="lbl" x="104" y="522" text-anchor="end">pan axis</text>
+  <path class="ln" d="M108 518 L144 496" marker-end="url(#a4)"/>
+
+  <text class="lbl" x="300" y="452">nozzle, forward of the axis</text>
+  <text class="dim" x="300" y="464">its exit swings on an arc</text>
+  <path class="ln" d="M296 456 L182 470" marker-end="url(#a4)"/>
+
+  <text class="lbl" x="300" y="490" fill="#c0392b">camera, in the belly</text>
+  <text class="dim" x="300" y="502">not in the head</text>
+  <path class="ln" d="M296 490 L160 468" marker-end="url(#a4)"/>
+
+  <rect x="196" y="516" width="376" height="36" rx="4" fill="#f6f6f6" stroke="#ccc"/>
+  <text class="dim" x="208" y="532">Neither offset is corrected in firmware: calibration maps an image point to servo</text>
+  <text class="dim" x="208" y="545">angles from where the water actually landed, absorbing both.</text>
+</svg>
