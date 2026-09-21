@@ -616,7 +616,7 @@ Create `protocol/fixtures/status.json`:
 {
   "idle": "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"ok\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":21.5,\"fault\":null,\"shots\":0}",
   "armed_shooting": "{\"armed\":true,\"pan\":12.5,\"tilt\":-3,\"tank\":\"ok\",\"pump\":true,\"charge\":false,\"fan\":false,\"temp\":31.3,\"fault\":null,\"shots\":12}",
-  "tank_empty": "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"low\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":24.0,\"fault\":\"TANK_EMPTY\",\"shots\":3}",
+  "tank_empty": "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"low\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":24,\"fault\":\"TANK_EMPTY\",\"shots\":3}",
   "ack_reject": "{\"ack\":\"shoot\",\"ok\":false,\"why\":\"cooldown\"}"
 }
 ```
@@ -744,6 +744,13 @@ Expected: `23 Tests 0 Failures 0 Ignored` (21 from Tasks 1–2 plus the 2 added 
 git add protocol/fixtures tools/gen_fixtures.py firmware/lib/dwarf/test_fixtures.h firmware/test/test_protocol/test_protocol.cpp
 git commit -m "test(protocol): add shared message fixtures and generator"
 ```
+
+**Correction applied during implementation (commit `c679491`):** the `tank_empty` fixture
+above originally read `"temp":24.0`. ArduinoJson renders a whole-number float without the
+trailing `.0`, the same way it renders `-3.0f` as `-3`, so the real formatter output is
+`"temp":24`. The fixture text above has been corrected to match. The other three fixtures
+were verified byte-for-byte against the real formatter and needed no change. The suite is
+23 tests after this task.
 
 ---
 
