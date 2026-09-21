@@ -3394,6 +3394,49 @@ git add ios/DwarfCore
 git commit -m "feat(core): wire the pipeline together in Cycle"
 ```
 
+**Post-review addendum (applied in commit `e3b60bc`):** the implementation needed no
+reconciliation against the amended components — every change from Tasks 0–10 turned out to
+be additive, and `Cycle` only ever passes whole config values through — so the plan's code
+compiled and passed as written. The review of the assembled pipeline found one defect, and
+it was the one that mattered most.
+
+1. **Silent cycles starved confirmation, so the finished gnome would never have fired.**
+   `Cycle.process` ran the tracker on every call, and the tracker logged a miss against
+   every track it did not match. But detection runs outside this package and answers *late*
+   — a cycle or two after the crops that produced it — so most cycles carry no detector news
+   at all. Those cycles were being counted as looks that saw nothing. With the default
+   `confirmHits: 2` of `confirmWindow: 3`, a detector answering once every three cycles can
+   never reach two hits in the last three looks. Demonstrated against the committed code: a
+   motionless cat, detected with 0.9 confidence every single time the detector actually
+   looked, sat in frame for three seconds and never became confirmed. Every component passed
+   its own tests; the assembled system was inert. The cause was that "a `process()` call" and
+   "a look at the animal" had been silently treated as the same unit of measure, and the
+   package's own tests fed detections every cycle, so nothing could see the difference.
+
+   Callers now say which it is. `DetectorReport.answer(_:capturedAt:)` carries the detections
+   with the uptime of the frame they came from; `.pending` says nothing has come back and
+   leaves every look history untouched. Ageing still runs on the caller's clock, so a
+   detector that dies outright does not leave a phantom cat on the lawn.
+
+2. **The capture time also fixes what speed is measured over.** Timestamping a late answer
+   with the current time makes a moving animal look stiller than it is — the distance is
+   real, the interval is not — and stillness is a precondition for firing. Constant latency
+   cancels out; jitter does not, and the jitter on an iPhone 6s running YOLO is the same
+   order as the stillness threshold. `Cycle` drops an answer older than one already applied,
+   or one whose capture time is not finite: losing a look costs a fraction of a second of
+   confirmation, where a rewind corrupts position, speed, stillness and the association gate
+   at once.
+
+Confirmed clean by the same pass: there is no route from an empty or failed calibration to a
+shot (`Aimer.init?` returns nil below six points, so `solutions` stays empty and the policy
+returns before `canFire` is ever consulted), while tracking, motion and the live view keep
+working — which is the only way a gnome can ever be calibrated in the first place. And
+`update(calibration:)` deliberately leaves shot budgets, cooldowns and track history alone:
+those are a record about the animal and the hardware, not about the aim model, and resetting
+them would let a recalibration launder a cat's recent shot count.
+
+The suite is 154 tests after this task.
+
 ---
 
 ## Definition of done
