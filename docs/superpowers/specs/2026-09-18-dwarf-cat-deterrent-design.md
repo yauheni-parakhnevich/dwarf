@@ -350,7 +350,7 @@ full line pressure (pump pressure switch refills between shots), so range is rep
 | BLE link lost | ESP32 enters safe state after 3 s. App reconnects continuously; web UI shows link state |
 | App crash | Same as link lost. Jailbreak daemon relaunches app when jailbreak active; otherwise manual restart |
 | Thermal serious / critical | See §5.7 |
-| Tank empty | Pump off, shots rejected with `tank`, web UI alert. Clears when float switch reads ok |
+| Tank empty | Pump off, shots rejected, web UI alert. The switch is debounced in both directions, so a float chattering in an empty tank cannot restart the pump. The fault disarms, like an overtemp, so a refill clears the fault but needs an explicit re-arm before anything sprays again |
 | Leak | Tank drains; float switch stops pump. Wet zone has drain holes |
 | Camera session interrupted | Restart session; 3 failures within 5 min → disarm and alert |
 | Power cut | Valve stays closed (NC). Phone runs on battery and disarms on link loss |
