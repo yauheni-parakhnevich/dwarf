@@ -1567,24 +1567,27 @@ final class CalibrationTests: XCTestCase {
         XCTAssertTrue(Calibration.empty.heightOffsets.isEmpty)
     }
 
-    func testHeightOffsetInterpolatesBetweenSamples() {
-        XCTAssertEqual(sample.heightOffset(atRange: 5.0), 2.65, accuracy: 1e-9)
-        XCTAssertEqual(sample.heightOffset(atRange: 4.5), 2.925, accuracy: 1e-9)
+    // heightOffset returns Double? — nil means "nothing was measured", which must stay
+    // distinguishable from a measured zero. XCTAssertEqual(_:_:accuracy:) needs a
+    // FloatingPoint, not an Optional, so unwrap first, exactly as the fit tests do.
+    func testHeightOffsetInterpolatesBetweenSamples() throws {
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 5.0)), 2.65, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 4.5)), 2.925, accuracy: 1e-9)
     }
 
-    func testHeightOffsetClampsOutsideTheCalibratedSpan() {
-        XCTAssertEqual(sample.heightOffset(atRange: 2.0), 3.2, accuracy: 1e-9)
-        XCTAssertEqual(sample.heightOffset(atRange: 9.0), 2.1, accuracy: 1e-9)
+    func testHeightOffsetClampsOutsideTheCalibratedSpan() throws {
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 2.0)), 3.2, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 9.0)), 2.1, accuracy: 1e-9)
     }
 
     func testHeightOffsetIsNilWithoutSamples() {
         XCTAssertNil(Calibration.empty.heightOffset(atRange: 5))
     }
 
-    func testASingleHeightSampleAppliesEverywhere() {
+    func testASingleHeightSampleAppliesEverywhere() throws {
         let one = Calibration(points: [], heightOffsets: [HeightOffsetSample(rangeM: 5, deltaTiltDeg: 2.7)])
-        XCTAssertEqual(one.heightOffset(atRange: 2), 2.7, accuracy: 1e-9)
-        XCTAssertEqual(one.heightOffset(atRange: 8), 2.7, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(one.heightOffset(atRange: 2)), 2.7, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(one.heightOffset(atRange: 8)), 2.7, accuracy: 1e-9)
     }
 }
 ```
