@@ -29,16 +29,16 @@ struct Limits {
 enum class Fault { None, TankEmpty, Overtemp };
 
 struct Status {
-    bool armed = false;
-    float pan = 0.0f;
-    float tilt = 0.0f;
-    bool tankOk = true;
-    bool pump = false;
-    bool charge = true;
-    bool fan = false;
-    float temp = 0.0f;
+    bool armed = false;         // pump powered and shots allowed
+    float pan = 0.0f;           // degrees from park, positive right
+    float tilt = 0.0f;          // degrees from park, positive up
+    bool tankOk = true;         // float switch reports water in the tank
+    bool pump = false;          // pump output state
+    bool charge = true;         // iPhone charger switch enabled
+    bool fan = false;           // fan output state
+    float temp = 0.0f;          // dry-zone temperature, degrees Celsius
     Fault fault = Fault::None;
-    uint32_t shots = 0;
+    uint32_t shots = 0;         // shots fired since boot
 };
 
 }  // namespace dwarf

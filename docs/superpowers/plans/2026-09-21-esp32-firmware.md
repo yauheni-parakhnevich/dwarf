@@ -81,6 +81,8 @@ build_src_filter = -<*>
 build_flags =
     ${env.build_flags}
     -DDWARF_NATIVE
+    -Wall
+    -Wextra
 ```
 
 Notes for the engineer:
@@ -124,16 +126,16 @@ struct Limits {
 enum class Fault { None, TankEmpty, Overtemp };
 
 struct Status {
-    bool armed = false;
-    float pan = 0.0f;
-    float tilt = 0.0f;
-    bool tankOk = true;
-    bool pump = false;
-    bool charge = true;
-    bool fan = false;
-    float temp = 0.0f;
+    bool armed = false;         // pump powered and shots allowed
+    float pan = 0.0f;           // degrees from park, positive right
+    float tilt = 0.0f;          // degrees from park, positive up
+    bool tankOk = true;         // float switch reports water in the tank
+    bool pump = false;          // pump output state
+    bool charge = true;         // iPhone charger switch enabled
+    bool fan = false;           // fan output state
+    float temp = 0.0f;          // dry-zone temperature, degrees Celsius
     Fault fault = Fault::None;
-    uint32_t shots = 0;
+    uint32_t shots = 0;         // shots fired since boot
 };
 
 }  // namespace dwarf
@@ -152,8 +154,8 @@ Create `.gitignore` in the repository root:
 
 - [ ] **Step 5: Verify the config parses**
 
-Run: `cd firmware && pio project config -e native`
-Expected: the parsed `[env:native]` section is printed, including `platform = native` and `test_framework = unity`.
+Run: `cd firmware && pio project config`
+Expected: all three sections are printed. Check that `env:native` shows `platform = native`, `test_framework = unity`, and `build_flags` containing `-std=gnu++17 -DDWARF_NATIVE -Wall -Wextra`, and that `env:esp32dev` lists all five libraries. (`pio project config` takes no `-e` option in PlatformIO 6.2.)
 
 Do not run `pio run -e native` yet. At this point it fails with `Error: Nothing to build`, because `build_src_filter` excludes `src/` and the only file under `lib/dwarf/` is a header. PlatformIO 6.2 treats "no compilable sources" as an error rather than a warning. The native environment first compiles something real in Task 1, where `pio test -e native -f test_protocol` is the check.
 
