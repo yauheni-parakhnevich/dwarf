@@ -328,6 +328,23 @@ git add ios/DwarfCore
 git commit -m "feat(core): add grayscale frame type"
 ```
 
+**Post-review addendum (applied in commit `9251a0f`):** two guards added after review.
+
+1. **`luma(x:y:)` gained a `precondition` on both coordinates.** A negative `x` with a
+   positive `y` can compute a flat index that lands *inside* the buffer, silently returning
+   a pixel from the wrong row — corrupting a frame diff rather than crashing. `precondition`
+   rather than `assert`, so it holds in release too; it is not on the hot path, because the
+   motion detector iterates `pixels.indices` directly rather than calling the accessor. The
+   doc comment says so, to stop a later reader "optimising" the check away.
+2. **The trusting initialiser gained a debug-only `assert`** on `pixels.count == width *
+   height`. A mismatched buffer otherwise produces a plausible-looking `meanLuma` over the
+   wrong denominator with no signal at all. It stays `assert` rather than `precondition`
+   because skipping that check is the whole reason this initialiser exists.
+
+The trap itself cannot be tested in-process, so the added tests pin the boundary that must
+*not* trap: every valid coordinate of a small frame, corners included. The suite is 11 tests
+after this task.
+
 ---
 
 ### Task 2: Motion detector
