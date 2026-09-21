@@ -42,8 +42,13 @@ public struct Calibration: Equatable, Codable, Sendable {
 
     /// Linear interpolation by range, clamped at both ends. Nil when nothing was measured,
     /// which makes head aim impossible and is treated as such by the Aimer.
+    ///
+    /// Samples at the same range are collapsed first: two shots at the same distance are two
+    /// measurements of one quantity, not two points on a curve, and interpolating through both
+    /// separately would put a step in the result at that exact range — exactly what an owner
+    /// re-shooting the same spot on a breezy day would produce.
     public func heightOffset(atRange range: Double) -> Double? {
-        let sorted = heightOffsets.sorted { $0.rangeM < $1.rangeM }
+        let sorted = Self.collapsedByRange(heightOffsets).sorted { $0.rangeM < $1.rangeM }
         guard let first = sorted.first, let last = sorted.last else { return nil }
         if range <= first.rangeM { return first.deltaTiltDeg }
         if range >= last.rangeM { return last.deltaTiltDeg }
@@ -55,5 +60,16 @@ public struct Calibration: Equatable, Codable, Sendable {
             return low.deltaTiltDeg + t * (high.deltaTiltDeg - low.deltaTiltDeg)
         }
         return last.deltaTiltDeg
+    }
+
+    /// Groups samples that share an exact `rangeM` and averages their `deltaTiltDeg`. Exact
+    /// match, not a tolerance: the duplicates this guards against come from re-measuring the
+    /// same distance, not from two nearby-but-different ones, so a fuzzier match would solve a
+    /// problem this doesn't have.
+    private static func collapsedByRange(_ samples: [HeightOffsetSample]) -> [HeightOffsetSample] {
+        Dictionary(grouping: samples, by: \.rangeM).map { rangeM, group in
+            let average = group.map(\.deltaTiltDeg).reduce(0, +) / Double(group.count)
+            return HeightOffsetSample(rangeM: rangeM, deltaTiltDeg: average)
+        }
     }
 }

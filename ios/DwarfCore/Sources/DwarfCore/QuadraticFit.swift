@@ -53,6 +53,18 @@ public struct QuadraticFit: Equatable, Codable, Sendable {
 
     /// Gaussian elimination with partial pivoting. Returns nil if the matrix is singular
     /// to within a tolerance, which is how a degenerate sample layout is detected.
+    ///
+    /// The `1e-12` pivot threshold is only correct because it is applied to `AᵀA`, built from
+    /// image coordinates normalised to 0...1: every entry is a sum of at most a few dozen
+    /// products of basis values already in that range, so entries stay bounded to roughly the
+    /// sample count no matter how large the fitted pan, tilt or range values are — those enter
+    /// only the right-hand side, never this matrix. That keeps `1e-12` many orders of magnitude
+    /// below the smallest pivots seen even for tightly clustered real calibration layouts
+    /// (measured down to ~1e-4), and comfortably above double-precision rounding noise on
+    /// entries of that scale. If raw pixel coordinates or unnormalised ranges ever fed this
+    /// matrix instead, entries could be arbitrarily large and a fixed absolute threshold like
+    /// this one would stop meaning anything — it would need to scale with the matrix, e.g. as a
+    /// tolerance relative to its norm.
     static func solve(_ matrix: [[Double]], _ rhs: [Double]) -> [Double]? {
         let n = rhs.count
         var a = matrix
