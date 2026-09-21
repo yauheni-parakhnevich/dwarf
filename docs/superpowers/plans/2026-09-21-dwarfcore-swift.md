@@ -2226,6 +2226,40 @@ git add ios/DwarfCore
 git commit -m "feat(core): encode outgoing BLE commands"
 ```
 
+**Post-review addendum (applied in commit `d30fcd6`):** analysis against the real firmware
+parser found the most dangerous property in this package, and it is not in the code — it is
+in what the code silently protects against.
+
+1. **`JSONSerialization` does not throw on a non-finite `Double`.** It raises an
+   Objective-C `NSInvalidArgumentException` ("Invalid number value (NaN) in JSON write")
+   that a Swift `do/catch` **cannot** intercept: the process dies. Verified empirically, not
+   assumed. So the `isFinite` checks are not protocol politeness — they are the only thing
+   between a bad angle and a crashed app inside a sealed gnome that needs the body opened to
+   restart. That protection now rests on structure rather than convention: every case routes
+   through one `serialize` helper that sweeps the finished dictionary for non-finite values
+   and throws before `JSONSerialization` sees them, so a future case that forgets its own
+   check still fails safely. The doc comment quotes the exception text and says plainly that
+   a regression means a process crash, not a red test.
+2. **A burst longer than the firmware's cap is now refused.** `.shoot(ms: 40000)` was
+   accepted by the parser and silently clamped to 500 ms by `Shooter::request`, with no ack
+   reporting the difference — so a policy bug would have fired a legal-looking shot and left
+   no trace. `Command.maxBurstMs` mirrors `ShooterConfig::maxBurstMs`, and exceeding it
+   throws.
+3. **Angles are rounded to two decimals**, which bounds precision an order of magnitude
+   below the servo's ~0.27° deadband and absorbs upstream floating-point drift.
+
+**A correction worth recording:** the stated reason for rounding — that it would shrink
+messages — is false, and the implementer measured it rather than agreeing. `JSONSerialization`
+prints near-full precision regardless, so `-59.9` serialises as `-59.899999999999999` either
+way; only values landing on power-of-two fractions shorten. A worst-case `shoot` is 74 bytes
+before and after, against a 180-byte budget. The fix was kept for the reason that does hold.
+
+Declined: tolerance-based `Equatable`. Equality on a command carrying `Double`s is exact, so
+`Command` is documented as unsuitable for use as a dictionary key or a change-detection
+cache when angles are computed; change detection should compare the decision instead.
+
+The suite is 100 tests after this task.
+
 ---
 
 ### Task 9: Incoming status and acks, checked against the firmware's fixtures
