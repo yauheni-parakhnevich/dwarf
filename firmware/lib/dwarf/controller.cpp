@@ -101,6 +101,16 @@ Ack Controller::handle(const Command& c, Millis now) {
             cfg_.limits = Limits{c.panMin, c.panMax, c.tiltMin, c.tiltMax};
             targetPan_ = clampf(targetPan_, c.panMin, c.panMax);
             targetTilt_ = clampf(targetTilt_, c.tiltMin, c.tiltMax);
+            // Narrowing limits is a safety action: the operator is saying
+            // "never point there." A shot already in flight latched its own
+            // target inside Shooter at request() time, so reclamping the
+            // controller's target above does not touch it -- without this,
+            // a shot could still land (and spray) outside the new cone.
+            if (shooter_.state() != ShooterState::Idle &&
+                (shooter_.targetPan() < c.panMin || shooter_.targetPan() > c.panMax ||
+                 shooter_.targetTilt() < c.tiltMin || shooter_.targetTilt() > c.tiltMax)) {
+                shooter_.abort(now);
+            }
             ack.ok = true;
             break;
 

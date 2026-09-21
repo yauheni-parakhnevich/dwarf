@@ -346,6 +346,49 @@ void test_arm_aim_shoot_cooldown_sequence() {
     TEST_ASSERT_TRUE(a.ok);
 }
 
+void test_cfg_narrowing_limits_aborts_an_in_flight_shot_outside_the_new_cone() {
+    Controller c;  // default limits: pan -60..60, tilt -30..40
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    Ack shot = c.handle(cmd("{\"c\":\"shoot\",\"pan\":55.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(shot.ok);
+
+    advance(c, now, 100);  // still moving toward 55 degrees (needs ~460 ms)
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);
+    TEST_ASSERT_FALSE(c.valveOpen());
+
+    // Narrow the cone so the in-flight target (pan 55) falls outside it.
+    Ack a = c.handle(
+        cmd("{\"c\":\"cfg\",\"panMin\":-30,\"panMax\":30,\"tiltMin\":-20,\"tiltMax\":20}"),
+        now);
+    TEST_ASSERT_TRUE(a.ok);
+    TEST_ASSERT_FALSE(c.valveOpen());
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Idle);  // in-flight shot aborted
+}
+
+void test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alone() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    Ack shot = c.handle(cmd("{\"c\":\"shoot\",\"pan\":20.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(shot.ok);
+
+    advance(c, now, 100);  // still moving toward 20 degrees
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);
+
+    // The in-flight target (pan 20) is still inside the narrowed cone.
+    Ack a = c.handle(
+        cmd("{\"c\":\"cfg\",\"panMin\":-30,\"panMax\":30,\"tiltMin\":-20,\"tiltMax\":20}"),
+        now);
+    TEST_ASSERT_TRUE(a.ok);
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Move);  // not aborted
+
+    advance(c, now, 600);  // plenty of time to settle, open and finish the burst
+    TEST_ASSERT_EQUAL_UINT32(1, c.status().shots);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -366,5 +409,7 @@ int main(int, char**) {
     RUN_TEST(test_fan_runs_on_command_or_heat);
     RUN_TEST(test_shoot_is_rejected_when_disarmed);
     RUN_TEST(test_arm_aim_shoot_cooldown_sequence);
+    RUN_TEST(test_cfg_narrowing_limits_aborts_an_in_flight_shot_outside_the_new_cone);
+    RUN_TEST(test_cfg_narrowing_limits_leaves_an_in_flight_shot_inside_the_new_cone_alone);
     return UNITY_END();
 }
