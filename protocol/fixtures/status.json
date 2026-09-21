@@ -1,0 +1,6 @@
+{
+  "idle": "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"ok\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":21.5,\"fault\":null,\"shots\":0}",
+  "armed_shooting": "{\"armed\":true,\"pan\":12.5,\"tilt\":-3,\"tank\":\"ok\",\"pump\":true,\"charge\":false,\"fan\":false,\"temp\":31.3,\"fault\":null,\"shots\":12}",
+  "tank_empty": "{\"armed\":false,\"pan\":0,\"tilt\":0,\"tank\":\"low\",\"pump\":false,\"charge\":true,\"fan\":false,\"temp\":24,\"fault\":\"TANK_EMPTY\",\"shots\":3}",
+  "ack_reject": "{\"ack\":\"shoot\",\"ok\":false,\"why\":\"cooldown\"}"
+}

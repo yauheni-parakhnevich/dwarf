@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "protocol.h"
+#include "test_fixtures.h"
 
 using namespace dwarf;
 
@@ -307,6 +308,37 @@ void test_format_status_nonfinite_and_sentinel_temp() {
     TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"temp\":-127"));
 }
 
+void test_every_command_fixture_parses() {
+    for (int i = 0; i < fixtures::kCommandsCount; ++i) {
+        const fixtures::Fixture& f = fixtures::kCommands[i];
+        Command c = parseCommand(f.json);
+        TEST_ASSERT_TRUE_MESSAGE(c.type != CmdType::None, f.name);
+    }
+}
+
+void test_status_fixture_roundtrips() {
+    Status s;
+    s.armed = true;
+    s.pan = 12.5f;
+    s.tilt = -3.0f;
+    s.pump = true;
+    s.charge = false;
+    s.temp = 31.3f;
+    s.shots = 12;
+
+    char buf[256];
+    formatStatus(s, buf, sizeof(buf));
+
+    const char* expected = nullptr;
+    for (int i = 0; i < fixtures::kStatusCount; ++i) {
+        if (std::strcmp(fixtures::kStatus[i].name, "armed_shooting") == 0) {
+            expected = fixtures::kStatus[i].json;
+        }
+    }
+    TEST_ASSERT_NOT_NULL(expected);
+    TEST_ASSERT_EQUAL_STRING(expected, buf);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_parse_heartbeat);
@@ -330,5 +362,7 @@ int main(int, char**) {
     RUN_TEST(test_format_status_exact_fit_boundary);
     RUN_TEST(test_format_ack_exact_fit_boundary);
     RUN_TEST(test_format_status_nonfinite_and_sentinel_temp);
+    RUN_TEST(test_every_command_fixture_parses);
+    RUN_TEST(test_status_fixture_roundtrips);
     return UNITY_END();
 }

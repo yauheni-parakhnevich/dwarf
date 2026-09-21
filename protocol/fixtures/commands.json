@@ -1,0 +1,11 @@
+{
+  "hb": "{\"c\":\"hb\"}",
+  "arm_on": "{\"c\":\"arm\",\"v\":true}",
+  "arm_off": "{\"c\":\"arm\",\"v\":false}",
+  "aim": "{\"c\":\"aim\",\"pan\":12.5,\"tilt\":-3.0}",
+  "park": "{\"c\":\"park\"}",
+  "shoot": "{\"c\":\"shoot\",\"pan\":14.0,\"tilt\":-2.5,\"ms\":300}",
+  "charge_off": "{\"c\":\"charge\",\"v\":false}",
+  "fan_on": "{\"c\":\"fan\",\"v\":true}",
+  "cfg": "{\"c\":\"cfg\",\"panMin\":-60,\"panMax\":60,\"tiltMin\":-30,\"tiltMax\":40}"
+}
