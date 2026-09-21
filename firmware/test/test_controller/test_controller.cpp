@@ -210,6 +210,99 @@ void test_link_loss_disarms_but_does_not_shorten_cooldown() {
     TEST_ASSERT_TRUE(again.ok);
 }
 
+void test_pump_runs_only_while_armed_and_healthy() {
+    Controller c;
+    Millis now = 0;
+    advance(c, now, 100);
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    advance(c, now, 100);
+    TEST_ASSERT_TRUE(c.pumpOn());
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":false}"), now);
+    advance(c, now, 100);
+    TEST_ASSERT_FALSE(c.pumpOn());
+}
+
+void test_tank_low_is_debounced_then_faults_and_blocks_shots() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    advance(c, now, 1000, /*tankClosed=*/false);  // 1 s of low, under the 2 s debounce
+    TEST_ASSERT_TRUE(c.fault() == Fault::None);
+    TEST_ASSERT_TRUE(c.pumpOn());
+
+    advance(c, now, 1500, /*tankClosed=*/false);  // now past 2 s
+    TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("tank", a.why);
+
+    advance(c, now, 100, /*tankClosed=*/true);  // refilled
+    TEST_ASSERT_TRUE(c.fault() == Fault::None);
+    TEST_ASSERT_TRUE(c.pumpOn());
+}
+
+void test_overtemp_disarms_and_clears_with_hysteresis() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_TRUE(c.armed());
+
+    advance(c, now, 100, true, 61.0f);
+    TEST_ASSERT_TRUE(c.fault() == Fault::Overtemp);
+    TEST_ASSERT_FALSE(c.armed());
+
+    Ack a = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("fault", a.why);
+
+    advance(c, now, 100, true, 57.0f);  // still above the clear threshold
+    TEST_ASSERT_TRUE(c.fault() == Fault::Overtemp);
+
+    advance(c, now, 100, true, 54.0f);
+    TEST_ASSERT_TRUE(c.fault() == Fault::None);
+
+    a = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(a.ok);
+}
+
+void test_fan_runs_on_command_or_heat() {
+    Controller c;
+    Millis now = 0;
+
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_FALSE(c.fanOn());
+
+    c.handle(cmd("{\"c\":\"fan\",\"v\":true}"), now);
+    advance(c, now, 100, true, 22.0f);
+    TEST_ASSERT_TRUE(c.fanOn());
+
+    c.handle(cmd("{\"c\":\"fan\",\"v\":false}"), now);
+    advance(c, now, 100, true, 41.0f);  // hot: auto mode takes over
+    TEST_ASSERT_TRUE(c.fanOn());
+
+    advance(c, now, 100, true, 37.0f);  // between the thresholds: stays on
+    TEST_ASSERT_TRUE(c.fanOn());
+
+    advance(c, now, 100, true, 34.0f);  // below the off threshold
+    TEST_ASSERT_FALSE(c.fanOn());
+}
+
+void test_shoot_is_rejected_when_disarmed() {
+    Controller c;
+    Millis now = 0;
+    Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("disarmed", a.why);
+    TEST_ASSERT_FALSE(c.valveOpen());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -224,5 +317,10 @@ int main(int, char**) {
     RUN_TEST(test_link_loss_disarms_parks_and_restores_charging);
     RUN_TEST(test_heartbeats_keep_the_link_alive);
     RUN_TEST(test_link_loss_disarms_but_does_not_shorten_cooldown);
+    RUN_TEST(test_pump_runs_only_while_armed_and_healthy);
+    RUN_TEST(test_tank_low_is_debounced_then_faults_and_blocks_shots);
+    RUN_TEST(test_overtemp_disarms_and_clears_with_hysteresis);
+    RUN_TEST(test_fan_runs_on_command_or_heat);
+    RUN_TEST(test_shoot_is_rejected_when_disarmed);
     return UNITY_END();
 }
