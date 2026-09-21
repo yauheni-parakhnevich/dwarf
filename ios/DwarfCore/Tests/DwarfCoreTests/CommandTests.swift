@@ -63,6 +63,52 @@ final class CommandTests: XCTestCase {
         XCTAssertThrowsError(try Command.shoot(pan: 0, tilt: 0, ms: 0).encoded())
     }
 
+    func testBurstAtTheFirmwareCapIsAccepted() throws {
+        // Shooter::request clamps at exactly maxBurstMs; a request for exactly that
+        // many milliseconds is not "too long", it is the longest legal one.
+        let object = try json(.shoot(pan: 0, tilt: 0, ms: Command.maxBurstMs))
+        XCTAssertEqual(object["ms"] as? Int, Int(Command.maxBurstMs))
+    }
+
+    func testBurstLongerThanTheFirmwareCapIsRefused() {
+        // Shooter::request would silently clamp this to maxBurstMs and never say so
+        // in its ack. Refusing it here, loudly, is better than a phone and a gnome
+        // that quietly disagree about how long water flowed.
+        XCTAssertThrowsError(try Command.shoot(pan: 0, tilt: 0, ms: Command.maxBurstMs + 1).encoded()) { error in
+            XCTAssertEqual(error as? Command.EncodingError, .burstTooLong(ms: Command.maxBurstMs + 1))
+        }
+    }
+
+    func testAnglesAreRoundedToTwoDecimalPlaces() throws {
+        // Upstream floating-point drift (e.g. from a calibration fit) should not
+        // survive onto the wire as noise the servo cannot act on anyway.
+        let object = try json(.aim(pan: 12.344, tilt: -3.006))
+        XCTAssertEqual(object["pan"] as? Double, 12.34)
+        XCTAssertEqual(object["tilt"] as? Double, -3.01)
+    }
+
+    func testSerializeSweepCatchesWhatAPerFieldCheckWouldMiss() {
+        // Command.serialize(_:) is the structural backstop described in its doc
+        // comment: even if some future command forgot to call check(_:_:) on an
+        // angle before building its dictionary, this must still turn a non-finite
+        // Double into a thrown Swift error, not an uncaught Objective-C exception.
+        //
+        // If this regresses -- e.g. someone reroutes encoded() to call
+        // JSONSerialization.data(withJSONObject:) directly again -- the failure
+        // mode is NOT a red test. It is this test process crashing outright with
+        // an uncaught NSInvalidArgumentException ("Invalid number value (NaN) in
+        // JSON write"), the same crash this backstop exists to prevent on device.
+        XCTAssertThrowsError(try Command.serialize(["pan": Double.nan])) { error in
+            XCTAssertEqual(error as? Command.EncodingError, .nonFiniteValue(field: "pan"))
+        }
+        XCTAssertThrowsError(try Command.serialize(["tilt": Double.infinity]))
+        XCTAssertThrowsError(try Command.serialize(["panMax": -Double.infinity]))
+
+        // Values that merely look dangerous (an Int, a Bool, a String) must not
+        // trip the sweep.
+        XCTAssertNoThrow(try Command.serialize(["c": "hb", "v": true, "ms": Int(300)]))
+    }
+
     func testEveryMessageFitsOneBLEWrite() throws {
         let commands: [Command] = [
             .heartbeat, .arm(true), .aim(pan: -59.9, tilt: -29.9), .park,
