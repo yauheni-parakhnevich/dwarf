@@ -1924,8 +1924,13 @@ bool statusChanged(const Status& a, const Status& b) {
            a.shots != b.shots;
 }
 
-// Sends one message out. Task 11 adds a BLE notify here.
-void emit(const char* json) { Serial.println(json); }
+// Sends one message out. Task 11 adds a BLE notify here. n is the length the
+// formatter returned; 0 means it refused because the message did not fit, in
+// which case there is nothing valid to send.
+void emit(const char* json, size_t n) {
+    if (n == 0) return;
+    Serial.println(json);
+}
 
 void applyOutputs() {
     g_panServo.writeMicroseconds(angleToMicros(g_controller.pan(), PAN_TRIM_US));
@@ -1940,8 +1945,8 @@ void handleJson(const char* json, Millis now) {
     const Ack ack = g_controller.handle(parseCommand(json), now);
     if (!ack.present) return;
     char buf[128];
-    formatAck(ack.cmd, ack.ok, ack.why, buf, sizeof(buf));
-    emit(buf);
+    const size_t n = formatAck(ack.cmd, ack.ok, ack.why, buf, sizeof(buf));
+    emit(buf, n);
 }
 
 // Reads one JSON object per line from the USB serial monitor.
@@ -1974,8 +1979,8 @@ void publishStatus(Millis now) {
     g_lastStatus = now;
     g_lastSent = s;
     char buf[256];
-    formatStatus(s, buf, sizeof(buf));
-    emit(buf);
+    const size_t n = formatStatus(s, buf, sizeof(buf));
+    emit(buf, n);
 }
 
 }  // namespace
@@ -2140,13 +2145,18 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 Replace the existing `emit` function with:
 
 ```cpp
-void emit(const char* json) {
+void emit(const char* json, size_t n) {
+    if (n == 0) return;  // formatter refused: message did not fit its buffer
     Serial.println(json);
     if (g_statusChar == nullptr) return;
-    g_statusChar->setValue(reinterpret_cast<const uint8_t*>(json), strlen(json));
+    g_statusChar->setValue(reinterpret_cast<const uint8_t*>(json), n);
     g_statusChar->notify();
 }
 ```
+
+Note the length comes from the formatter's return value, never from `strlen`. On an
+exact-fit serialisation ArduinoJson does not write a terminator, so `strlen` would read
+past the buffer.
 
 - [ ] **Step 3: Drain the BLE queue in the loop**
 
