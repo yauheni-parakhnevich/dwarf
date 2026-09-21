@@ -23,7 +23,7 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | Item | Search term | CHF | The trap to check |
 |---|---|---:|---|
 | Pan servo ×1 | `DS3218MG 180 degree servo` | 11–17 | The **180° vs 270°** SKU dropdown — same listing sells both, and the pulse-to-angle mapping differs. Wrong one silently breaks calibration |
-| Tilt servo ×1 | `MG90S servo all metal gear` | 3–8 | Listings saying "metal/plastic gear" or silent on gears are the fake |
+| Tilt servo ×1 | `MG996R servo metal gear` | 3–8 | The mechanical design nods the **whole head**, not just the nozzle, so the tilt servo carries 250–350 g. An MG90S at 2.2 kg·cm is marginal; MG996R-class is ~10 kg·cm for the same money. Same fake-gear check applies |
 | Diaphragm pump | `12V 4L/min 4 bar diaphragm pump automatic pressure switch self-priming` | 10–20 | Must state **bar or PSI**. Flow-only specs (L/h) mean an aquarium pump that cannot build pressure. Real ones draw 3–5A and show the pressure-switch housing in photos |
 | Solenoid valve, 1/4" NC | `12V direct acting solenoid valve 1/4 NC 0-0.8MPa` | 5–9 | Pressure range must **start at 0**. "0.02–0.8MPa" is pilot-operated: tens of ms slower to open and prone to dribble after closing, which wrecks a 300ms burst |
 | Jet nozzle | `brass single jet fountain nozzle` or `nozzle orifice disc set 0.5-3mm` | 3–8 | Reject anything titled mist/fog/atomizing. Searching "brass nozzle 1mm" returns 3D-printer hotends; fountain nozzles are the right category |
@@ -81,9 +81,10 @@ it properly, and accept repainting every couple of seasons.
 |---|---|---|
 | Body sections (5-ish) | PETG, 0.6mm nozzle, 0.3mm layers, 2 perimeters | Split at natural lines — hat brim, belt, beard — so a step reads as design |
 | Face / head front insert | PETG or ASA, 0.4mm nozzle | The one part where detail shows; carries the camera window and mouth nozzle port |
-| Neck / pan turntable | PETG, 4+ perimeters | Bought bearing preferred; a printed BB race works with **glass or stainless** balls, never raw steel, greased |
+| Neck / pan turntable | PETG, 4+ perimeters | Bought thrust bearing carries the head; the servo drives a **hollow** shaft through its centre, and water plus tilt wiring pass up inside it. Printed BB race is the fallback, with **glass or stainless** balls, never raw steel |
 | Servo brackets, horn adapters | PETG | Put a metal screw or pin through the horn joint — printed splines strip under torque |
-| Nozzle holder (tilt axis) | PETG or ASA | Metal pin for the pivot, heat-set inserts for screws. The wetted orifice is the bought brass nozzle, pressed in |
+| Head shell, yoke, tilt axle | PETG (ASA if enclosed) | The head nods as a unit; the axle passes through its centre of gravity so the servo holds almost nothing |
+| Nozzle holder | PETG or ASA | Rigid in the mouth, aimed along the head's axis. The wetted orifice is the bought brass nozzle, pressed in. Heat-set inserts, never printed threads, near the water path |
 | Wet/dry divider | PETG, 4–6 perimeters, **100% infill** | A normal sparse panel is porous. Seal to the shell with a polyurethane bead |
 | Internal decks, phone cradle | PETG | Cradle geometry is easy; the phone's heat problem is solved by venting and shade, not by the cradle |
 | Vent grille frames | PETG | 3–6mm openings with bonded-in insect mesh — a 0.4mm nozzle can't print real mesh. Louvres sloped down, tucked under the hat brim |
@@ -136,6 +137,10 @@ mounts where they're needed, vents where the heat is, a gasketed refill hatch, a
 window positioned for the lens instead of cut into whatever the statue happened to offer.
 
 ## Open risks
+
+See also `docs/superpowers/specs/2026-09-21-mechanical-design.md`, which defines what the
+printed parts have to achieve.
+
 
 - **The iPhone's 0–35°C ambient rating is the tightest thermal constraint in the build**, and
   it sits inside a closed body in the sun. Light colour, cross-ventilation behind the belly
