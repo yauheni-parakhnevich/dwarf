@@ -134,6 +134,82 @@ void test_first_update_at_small_now_behaves_as_before() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 40.0f, c.tilt());
 }
 
+void test_link_loss_disarms_parks_and_restores_charging() {
+    Controller c;
+    Millis now = 0;
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"charge\",\"v\":false}"), now);
+    c.handle(cmd("{\"c\":\"aim\",\"pan\":40.0,\"tilt\":10.0}"), now);
+    advance(c, now, 1000);
+    TEST_ASSERT_TRUE(c.armed());
+    TEST_ASSERT_FALSE(c.chargeOn());
+
+    advance(c, now, 2500);  // 3.5 s total with no command
+    TEST_ASSERT_FALSE(c.armed());
+    TEST_ASSERT_TRUE(c.chargeOn());
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    advance(c, now, 2000);  // head slews back to park
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.pan());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, c.tilt());
+}
+
+void test_heartbeats_keep_the_link_alive() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    for (int i = 0; i < 10; ++i) {
+        advance(c, now, 1000);
+        c.handle(cmd("{\"c\":\"hb\"}"), now);
+    }
+
+    TEST_ASSERT_TRUE(c.armed());
+}
+
+void test_link_loss_disarms_but_does_not_shorten_cooldown() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":400}"), now);
+    advance(c, now, 200);  // settle done, valve open
+    TEST_ASSERT_TRUE(c.valveOpen());
+
+    advance(c, now, 600);  // burst finished on its own, now cooling down
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Cooldown);
+
+    advance(c, now, 2600);  // 3.4 s since the last command: link is dead
+    TEST_ASSERT_FALSE(c.valveOpen());
+    TEST_ASSERT_FALSE(c.armed());
+    // abort() ran, but Shooter::abort() deliberately leaves an in-progress
+    // Cooldown alone (it only closes the valve) rather than forcing Idle: a
+    // flapping link must not be usable to fire two shots inside the 5 s
+    // backstop between shots. The cooldown that started when the burst ended
+    // (at t=560ms, so it is due to expire at t=5560ms) is still running.
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Cooldown);
+
+    // The phone reconnects and re-arms; a shot attempted before the original
+    // cooldown window ends must still be rejected.
+    Ack rearm = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(rearm.ok);
+
+    Ack retry = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":400}"), now);
+    TEST_ASSERT_FALSE(retry.ok);
+    TEST_ASSERT_EQUAL_STRING("cooldown", retry.why);
+
+    // Wait out the remainder of the *original* cooldown window while keeping
+    // the link alive with heartbeats, exactly as Task 9's test does.
+    for (int i = 0; i < 3; ++i) {
+        advance(c, now, 1000);
+        c.handle(cmd("{\"c\":\"hb\"}"), now);
+    }
+
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Idle);
+    Ack again = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":400}"), now);
+    TEST_ASSERT_TRUE(again.ok);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -145,5 +221,8 @@ int main(int, char**) {
     RUN_TEST(test_cfg_with_inverted_range_is_rejected);
     RUN_TEST(test_first_update_after_boot_does_not_charge_setup_time_to_slew);
     RUN_TEST(test_first_update_at_small_now_behaves_as_before);
+    RUN_TEST(test_link_loss_disarms_parks_and_restores_charging);
+    RUN_TEST(test_heartbeats_keep_the_link_alive);
+    RUN_TEST(test_link_loss_disarms_but_does_not_shorten_cooldown);
     return UNITY_END();
 }
