@@ -263,10 +263,24 @@ PlatformIO, Arduino framework, NimBLE-Arduino. One environment per board type.
 | `Pump` | Powered only while armed, tank ok and no fault. The pump's own pressure switch regulates pressure |
 | `Charger` | iPhone USB 5 V switch. Follows `charge` commands. Defaults ON at boot and on link loss |
 | `Fan` | ON if commanded or dry-zone temp > 40 °C, OFF below 35 °C |
-| `Safety` | Heartbeat timeout 3 s → safe state: disarm, valve closed, pump off, park, charger ON. Dry-zone temp > 60 °C → fault `OVERTEMP` + disarm. Task watchdog 5 s |
+| `Safety` | Heartbeat timeout 3 s → safe state: disarm, valve closed, pump off, park, charger ON. Dry-zone temp > 60 °C → fault `OVERTEMP` + disarm. An invalid temperature reading (non-finite, or outside −40..125 °C, which is what a disconnected DS18B20 reports) → fault `TEMP_SENSOR` + disarm, because a dead sensor otherwise reads as a cold day and silently removes thermal protection. Task watchdog 5 s |
+| `ValveTimer` | A one-shot hardware timer closes the valve from an interrupt 600 ms after it opens, whatever the main loop is doing. The shot state machine caps a burst at 500 ms, but only while it keeps being ticked; a blocked loop would otherwise leave the solenoid energised until the watchdog reset the board. On firing it reports `VALVE_TIMEOUT`, which latches until the phone explicitly disarms |
 | `Sensors` | Float switch (debounced 2 s) → `TANK_EMPTY` while low; DS18B20 every 5 s |
 
 The solenoid valve is normally closed, so any power loss leaves it shut.
+
+**Two entry points, deliberately separate.** Commands from the phone go through `handle()`,
+which treats every valid command as proof the link is alive. Anything the firmware decides
+locally — a BLE disconnect callback, the valve timeout — goes through `forceSafe()`, which
+performs the same safe state but does not refresh the heartbeat. Without that split, a
+locally synthesised command would keep the link looking alive forever and the heartbeat
+safety net would never fire.
+
+**While a shot is in flight** (moving, settling or spraying) the head cannot be re-pointed:
+`aim` is ignored and `park` is refused with `busy`. The shot machine also re-checks the
+head's position immediately before opening the valve and abandons the shot if it has
+drifted. Otherwise a new aim mid-shot sweeps the head with the valve open, spraying an arc
+across the yard instead of a burst at one point.
 
 ## 7. Protocol (BLE, JSON)
 
@@ -298,7 +312,11 @@ ESP32 → phone:
 - Status is notified at 1 Hz and on every change.
 - Every command except `hb` and `aim` gets an `ack`.
 - `why` codes: `disarmed`, `cooldown`, `tank`, `fault`, `busy`, `bad`.
-- Fault codes: `TANK_EMPTY`, `OVERTEMP`.
+- Fault codes: `TANK_EMPTY`, `OVERTEMP`, `TEMP_SENSOR`, `VALVE_TIMEOUT`.
+- A message the ESP32 cannot parse is acked with `{"ack":"?","ok":false,"why":"bad"}`. The
+  `"?"` stands for "unknown command", since a message that failed to parse has no name.
+- `ms` must be a JSON integer. `300` is accepted; `300.0` is rejected, because accepting a
+  float here would mean accepting `300.7` as well.
 - `protocol/fixtures/*.json` holds canonical messages; both the Swift and firmware test
   suites parse and round-trip them.
 
