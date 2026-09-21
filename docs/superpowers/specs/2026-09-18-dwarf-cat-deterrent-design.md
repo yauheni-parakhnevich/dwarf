@@ -22,7 +22,7 @@ close range, no firing at very close range, strict shot limits.
 | Shot policy | 200–400 ms bursts, cooldowns and caps (§5.5) |
 | Camera + brain | iPhone 6s, iOS 15, jailbroken (checkm8, semi-tethered) |
 | Actuator controller | Any ESP32 with BLE (ESP32, S3, C3). Not ESP32-S2 (no BLE) |
-| Phone ↔ ESP32 link | BLE |
+| Phone-to-ESP32 link | BLE |
 | Water | 3 L opaque tank inside the gnome base, 12 V diaphragm pump (~4 bar) |
 | Power | Mains outlet nearby (must be RCD/GFCI protected). Only 12 V enters the gnome |
 | Enclosure | Hollow garden gnome ≥ 50 cm tall, body fixed, head pans, nozzle tilts |
