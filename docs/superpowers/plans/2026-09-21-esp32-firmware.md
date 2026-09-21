@@ -1741,7 +1741,7 @@ void test_heartbeats_keep_the_link_alive() {
     TEST_ASSERT_TRUE(c.armed());
 }
 
-void test_link_loss_aborts_the_shot_cycle() {
+void test_link_loss_disarms_but_does_not_shorten_cooldown() {
     Controller c;
     Millis now = 0;
     c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
@@ -1755,7 +1755,24 @@ void test_link_loss_aborts_the_shot_cycle() {
     advance(c, now, 2600);  // 3.4 s since the last command: link is dead
     TEST_ASSERT_FALSE(c.valveOpen());
     TEST_ASSERT_FALSE(c.armed());
-    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Idle);  // abort() ran
+    // abort() during Cooldown deliberately preserves it (Task 5 addendum), so a
+    // flapping link cannot be used to fire twice inside the 5 s backstop.
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Cooldown);
+
+    // Re-arm and confirm the original cooldown still governs: rejected now,
+    // accepted only once the original window has elapsed.
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_FALSE(a.ok);
+    TEST_ASSERT_EQUAL_STRING("cooldown", a.why);
+
+    for (int i = 0; i < 3; ++i) {  // wait it out, keeping the link alive
+        advance(c, now, 1000);
+        c.handle(cmd("{\"c\":\"hb\"}"), now);
+    }
+    TEST_ASSERT_TRUE(c.shooterState() == ShooterState::Idle);
+    a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
+    TEST_ASSERT_TRUE(a.ok);
 }
 ```
 
@@ -1764,15 +1781,15 @@ Add to `main`:
 ```cpp
     RUN_TEST(test_link_loss_disarms_parks_and_restores_charging);
     RUN_TEST(test_heartbeats_keep_the_link_alive);
-    RUN_TEST(test_link_loss_aborts_the_shot_cycle);
+    RUN_TEST(test_link_loss_disarms_but_does_not_shorten_cooldown);
 ```
 
 - [ ] **Step 2: Run the tests**
 
 Run: `cd firmware && pio test -e native -f test_controller`
-Expected: `10 Tests 0 Failures 0 Ignored`.
+Expected: `12 Tests 0 Failures 0 Ignored`.
 
-If `test_link_loss_aborts_the_shot_cycle` fails, check that `enterSafeState()` calls `shooter_.abort()` before the shooter's own `update()` runs in the same tick.
+If this test fails, check `Shooter::abort`'s `Cooldown` case: it must leave the state and stamp alone.
 
 - [ ] **Step 3: Commit**
 
@@ -1986,6 +2003,28 @@ Expected: all four suites pass — `test_protocol`, `test_servo`, `test_shooter`
 git add firmware/test/test_controller/test_controller.cpp
 git commit -m "test(firmware): cover the full arm-aim-shoot-cooldown sequence"
 ```
+
+**Post-review addendum (Tasks 7-9, commits `28651d1`, `a0fd333`, `c943796`, `46fe764`,
+`35386c0`):**
+
+1. **Task 7's test contradicted Task 5's review** and has been corrected above. It expected
+   the shot machine to return to `Idle` after a heartbeat-loss `abort()`, but Task 5
+   deliberately made `abort()` preserve a running cooldown so that a flapping link cannot
+   fire two shots inside the 5 s backstop. The production code was right; the test was
+   written against the older unconditional `abort()` and nobody revisited it. It now
+   asserts `Cooldown`, then re-arms and proves a shot is refused until the *original*
+   window expires. Verified load-bearing by reverting `abort()` locally and watching it
+   fail.
+2. **Narrowing limits mid-shot now cancels an excluded shot.** `Cfg` re-clamped the
+   controller's target but not the target already latched inside `Shooter`, so a shot in
+   flight could still land outside a newly narrowed cone. Since narrowing limits is how the
+   operator says "never point there", `Cfg` now aborts an in-flight shot whose target falls
+   outside the new limits, and leaves one that is still inside alone. Both cases are tested.
+3. **`Controller::status()` is now checked end-to-end** against a live controller with
+   distinct non-default values in every field, so a dropped or swapped field mapping fails
+   a test. Previously only the protocol layer's serialisation was covered.
+
+Every test in Tasks 8 and 9 passed on first write. The whole native suite is 70 tests.
 
 ---
 
