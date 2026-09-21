@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <cstring>
+
 #include "protocol.h"
 
 using namespace dwarf;
@@ -119,6 +121,66 @@ void test_parse_park_charge_fan() {
     TEST_ASSERT_TRUE(parseCommand("{\"c\":\"fan\"}").type == CmdType::None);
 }
 
+void test_format_status() {
+    Status s;
+    s.armed = true;
+    s.pan = 12.5f;
+    s.tilt = -3.0f;
+    s.tankOk = true;
+    s.pump = true;
+    s.charge = false;
+    s.fan = false;
+    s.temp = 31.25f;
+    s.fault = Fault::None;
+    s.shots = 12;
+
+    char buf[256];
+    const size_t n = formatStatus(s, buf, sizeof(buf));
+
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"armed\":true,\"pan\":12.5,\"tilt\":-3,\"tank\":\"ok\",\"pump\":true,"
+        "\"charge\":false,\"fan\":false,\"temp\":31.3,\"fault\":null,\"shots\":12}",
+        buf);
+}
+
+void test_format_status_with_fault() {
+    Status s;
+    s.tankOk = false;
+    s.fault = Fault::TankEmpty;
+
+    char buf[256];
+    formatStatus(s, buf, sizeof(buf));
+
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"tank\":\"low\""));
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"fault\":\"TANK_EMPTY\""));
+}
+
+void test_format_ack() {
+    char buf[128];
+
+    formatAck("shoot", false, "cooldown", buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("{\"ack\":\"shoot\",\"ok\":false,\"why\":\"cooldown\"}", buf);
+
+    formatAck("arm", true, nullptr, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("{\"ack\":\"arm\",\"ok\":true}", buf);
+}
+
+void test_status_fits_in_one_ble_message() {
+    Status s;
+    s.armed = true;
+    s.pan = -59.9f;
+    s.tilt = -29.9f;
+    s.temp = -10.5f;
+    s.fault = Fault::Overtemp;
+    s.shots = 4294967295u;
+
+    char buf[256];
+    const size_t n = formatStatus(s, buf, sizeof(buf));
+
+    TEST_ASSERT_TRUE(n <= 180);  // BLE MTU budget from the spec
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_parse_heartbeat);
@@ -132,5 +194,9 @@ int main(int, char**) {
     RUN_TEST(test_fault_name);
     RUN_TEST(test_parse_rejects_wrong_type_present);
     RUN_TEST(test_parse_park_charge_fan);
+    RUN_TEST(test_format_status);
+    RUN_TEST(test_format_status_with_fault);
+    RUN_TEST(test_format_ack);
+    RUN_TEST(test_status_fits_in_one_ble_message);
     return UNITY_END();
 }

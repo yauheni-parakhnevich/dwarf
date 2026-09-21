@@ -79,6 +79,41 @@ Command parseCommand(const char* json) {
     return c;
 }
 
+namespace {
+
+// One decimal place keeps the message inside the BLE MTU budget and matches the
+// precision the servos can actually deliver.
+float round1(float v) { return std::round(v * 10.0f) / 10.0f; }
+
+}  // namespace
+
+size_t formatStatus(const Status& s, char* out, size_t cap) {
+    JsonDocument doc;
+    doc["armed"] = s.armed;
+    doc["pan"] = round1(s.pan);
+    doc["tilt"] = round1(s.tilt);
+    doc["tank"] = s.tankOk ? "ok" : "low";
+    doc["pump"] = s.pump;
+    doc["charge"] = s.charge;
+    doc["fan"] = s.fan;
+    doc["temp"] = round1(s.temp);
+    if (s.fault == Fault::None) {
+        doc["fault"] = nullptr;
+    } else {
+        doc["fault"] = faultName(s.fault);
+    }
+    doc["shots"] = s.shots;
+    return serializeJson(doc, out, cap);
+}
+
+size_t formatAck(const char* cmd, bool ok, const char* why, char* out, size_t cap) {
+    JsonDocument doc;
+    doc["ack"] = cmd;
+    doc["ok"] = ok;
+    if (!ok && why != nullptr) doc["why"] = why;
+    return serializeJson(doc, out, cap);
+}
+
 const char* faultName(Fault f) {
     switch (f) {
         case Fault::TankEmpty:
