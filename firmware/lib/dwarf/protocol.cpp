@@ -85,6 +85,22 @@ namespace {
 // precision the servos can actually deliver.
 float round1(float v) { return std::round(v * 10.0f) / 10.0f; }
 
+// Serialises `doc` into `out` (capacity `cap`), turning ArduinoJson's snprintf-style
+// "clamp and tell you how much you'd have needed" contract into an all-or-nothing
+// one: either the whole message plus its NUL terminator fit, or `out` is left as an
+// empty, NUL-terminated string and 0 is returned. A truncated fragment is never
+// handed back, and a caller may safely strlen() the result.
+size_t writeJson(const JsonDocument& doc, char* out, size_t cap) {
+    if (out == nullptr || cap == 0) return 0;
+    const size_t n = serializeJson(doc, out, cap);
+    if (n == 0 || n >= cap) {
+        out[0] = '\0';
+        return 0;
+    }
+    out[n] = '\0';
+    return n;
+}
+
 }  // namespace
 
 size_t formatStatus(const Status& s, char* out, size_t cap) {
@@ -103,7 +119,7 @@ size_t formatStatus(const Status& s, char* out, size_t cap) {
         doc["fault"] = faultName(s.fault);
     }
     doc["shots"] = s.shots;
-    return serializeJson(doc, out, cap);
+    return writeJson(doc, out, cap);
 }
 
 size_t formatAck(const char* cmd, bool ok, const char* why, char* out, size_t cap) {
@@ -111,7 +127,7 @@ size_t formatAck(const char* cmd, bool ok, const char* why, char* out, size_t ca
     doc["ack"] = cmd;
     doc["ok"] = ok;
     if (!ok && why != nullptr) doc["why"] = why;
-    return serializeJson(doc, out, cap);
+    return writeJson(doc, out, cap);
 }
 
 const char* faultName(Fault f) {

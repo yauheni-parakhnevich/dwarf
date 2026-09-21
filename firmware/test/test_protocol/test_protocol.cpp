@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cstring>
+#include <limits>
 
 #include "protocol.h"
 
@@ -167,18 +168,143 @@ void test_format_ack() {
 }
 
 void test_status_fits_in_one_ble_message() {
+    // Every field pushed to its longest simultaneous serialisation: "false" (not
+    // "true"), "low" tank, all outputs off, the longer fault name (TANK_EMPTY is
+    // longer than OVERTEMP), shots at UINT32_MAX, and pan/tilt/temp at their widest
+    // rendered values given one-decimal rounding and the servo/sensor limits.
     Status s;
-    s.armed = true;
+    s.armed = false;
     s.pan = -59.9f;
     s.tilt = -29.9f;
-    s.temp = -10.5f;
-    s.fault = Fault::Overtemp;
+    s.tankOk = false;
+    s.pump = false;
+    s.charge = false;
+    s.fan = false;
+    s.temp = -127.5f;
+    s.fault = Fault::TankEmpty;
     s.shots = 4294967295u;
 
     char buf[256];
     const size_t n = formatStatus(s, buf, sizeof(buf));
 
+    TEST_ASSERT_TRUE(n > 0);  // must not have been silently truncated to empty
+    TEST_ASSERT_EQUAL_UINT(n, std::strlen(buf));
     TEST_ASSERT_TRUE(n <= 180);  // BLE MTU budget from the spec
+}
+
+void test_ack_fits_in_one_ble_message() {
+    // Longest command name ("charge") and longest why code ("disarmed"/"cooldown",
+    // both 8 characters; see the plan's section 7 list of why codes).
+    char buf[128];
+    const size_t n = formatAck("charge", false, "disarmed", buf, sizeof(buf));
+
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_EQUAL_UINT(n, std::strlen(buf));
+    TEST_ASSERT_TRUE(n <= 180);  // BLE MTU budget from the spec
+}
+
+void test_format_status_truncation_returns_empty() {
+    Status s;
+    s.armed = true;
+    s.pan = 12.5f;
+    s.tilt = -3.0f;
+    s.fault = Fault::None;
+    s.shots = 12;
+
+    char buf[32];  // far too small for a full status object
+    std::memset(buf, 'X', sizeof(buf));
+    const size_t n = formatStatus(s, buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    TEST_ASSERT_EQUAL_STRING("", buf);
+}
+
+void test_format_ack_truncation_returns_empty() {
+    char buf[8];  // far too small for a full ack object
+    std::memset(buf, 'X', sizeof(buf));
+    const size_t n = formatAck("shoot", false, "cooldown", buf, sizeof(buf));
+
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    TEST_ASSERT_EQUAL_STRING("", buf);
+}
+
+void test_format_status_exact_fit_boundary() {
+    Status s;
+    s.armed = true;
+    s.pan = 12.5f;
+    s.tilt = -3.0f;
+    s.tankOk = true;
+    s.pump = true;
+    s.charge = false;
+    s.fan = false;
+    s.temp = 31.25f;
+    s.fault = Fault::None;
+    s.shots = 12;
+
+    char full[256];
+    const size_t n = formatStatus(s, full, sizeof(full));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_EQUAL_UINT(n, std::strlen(full));  // property the Arduino layer relies on
+
+    // Exactly enough room (content + NUL): must succeed and match byte-for-byte.
+    char exact[256];
+    const size_t nExact = formatStatus(s, exact, n + 1);
+    TEST_ASSERT_EQUAL_UINT(n, nExact);
+    TEST_ASSERT_EQUAL_STRING(full, exact);
+
+    // One byte short of that: no room for the NUL, must be reported as failure.
+    char short_[256];
+    std::memset(short_, 'X', sizeof(short_));
+    const size_t nShort = formatStatus(s, short_, n);
+    TEST_ASSERT_EQUAL_UINT(0, nShort);
+    TEST_ASSERT_EQUAL_STRING("", short_);
+}
+
+void test_format_ack_exact_fit_boundary() {
+    char full[128];
+    const size_t n = formatAck("shoot", false, "cooldown", full, sizeof(full));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_EQUAL_UINT(n, std::strlen(full));
+
+    char exact[128];
+    const size_t nExact = formatAck("shoot", false, "cooldown", exact, n + 1);
+    TEST_ASSERT_EQUAL_UINT(n, nExact);
+    TEST_ASSERT_EQUAL_STRING(full, exact);
+
+    char short_[128];
+    std::memset(short_, 'X', sizeof(short_));
+    const size_t nShort = formatAck("shoot", false, "cooldown", short_, n);
+    TEST_ASSERT_EQUAL_UINT(0, nShort);
+    TEST_ASSERT_EQUAL_STRING("", short_);
+}
+
+void test_format_status_nonfinite_and_sentinel_temp() {
+    Status s;
+    char buf[256];
+
+    // NaN and +/-infinity are not valid JSON tokens; this project's ArduinoJson
+    // configuration is expected to serialise them as null.
+    s.temp = std::numeric_limits<float>::quiet_NaN();
+    size_t n = formatStatus(s, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"temp\":null"));
+
+    s.temp = std::numeric_limits<float>::infinity();
+    n = formatStatus(s, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"temp\":null"));
+
+    s.temp = -std::numeric_limits<float>::infinity();
+    n = formatStatus(s, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"temp\":null"));
+
+    // -127 is the DS18B20 "no sensor" sentinel: an ordinary (finite) number, so it
+    // must pass through unchanged, not be mistaken for a non-finite value.
+    s.temp = -127.0f;
+    n = formatStatus(s, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_NOT_NULL(std::strstr(buf, "\"temp\":-127"));
 }
 
 int main(int, char**) {
@@ -198,5 +324,11 @@ int main(int, char**) {
     RUN_TEST(test_format_status_with_fault);
     RUN_TEST(test_format_ack);
     RUN_TEST(test_status_fits_in_one_ble_message);
+    RUN_TEST(test_ack_fits_in_one_ble_message);
+    RUN_TEST(test_format_status_truncation_returns_empty);
+    RUN_TEST(test_format_ack_truncation_returns_empty);
+    RUN_TEST(test_format_status_exact_fit_boundary);
+    RUN_TEST(test_format_ack_exact_fit_boundary);
+    RUN_TEST(test_format_status_nonfinite_and_sentinel_temp);
     return UNITY_END();
 }
