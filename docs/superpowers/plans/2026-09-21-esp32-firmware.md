@@ -922,6 +922,29 @@ git add firmware/lib/dwarf/servo.h firmware/lib/dwarf/servo.cpp firmware/test/te
 git commit -m "feat(firmware): add servo angle and slew math"
 ```
 
+**Post-review addendum (applied in commit `bf94eea`):** the implementer's hostile-input
+analysis found two real holes, now guarded and tested:
+
+1. **NaN defeated the clamp.** Every comparison with NaN is false, so `clampf` returned it
+   unchanged and `std::lround(NaN)` — undefined behaviour — silently produced a pulse of 0;
+   the pre-guard test run aborted with SIGABRT. `angleToMicros` now treats a non-finite
+   angle or trim as 0, so the head centres instead of receiving a garbage pulse width. Note
+   the consequence: ±infinity now centres rather than saturating to 500/2500 µs.
+2. **A negative `degPerSec` drove the head away from the target forever.** `slewToward` now
+   uses the magnitude of the rate, so a sign error in configuration cannot invert the
+   motion.
+3. **Non-finite angles in `slewToward`** are handled explicitly: a non-finite target is
+   ignored (return `current`), a non-finite `current` heals toward a finite target, and
+   both non-finite returns 0, the park angle. Previously a NaN `current` poisoned every
+   later call.
+
+Declined: guarding an infinite `degPerSec` (with the magnitude applied it degrades to
+"snap to target", same as a large `dtMs`, which is the correct response to catching up
+after a stall) and validating angles against the pan/tilt limits here (the controller's
+job; this module stays independent).
+
+The servo suite is 12 tests; the whole native suite is 36.
+
 ---
 
 ### Task 5: Shot state machine
