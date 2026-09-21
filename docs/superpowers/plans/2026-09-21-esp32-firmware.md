@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-18-dwarf-cat-deterrent-design.md`, sections 4, 6, 7 and milestone M1 in section 12.
 
+> **Reading this plan after the fact:** the code blocks below are what each task *started*
+> from. Every task was reviewed after implementation, and the accepted changes are recorded
+> in a **post-review addendum** under that task, plus a **final review outcomes** section at
+> the end. Where a code block and an addendum disagree, the addendum won and the committed
+> code is the truth. Tasks 0-9 are complete: 92 native tests pass. Tasks 10-12 need hardware.
+
 ---
 
 ## File Structure
@@ -1837,13 +1843,20 @@ void test_tank_low_is_debounced_then_faults_and_blocks_shots() {
     advance(c, now, 1500, /*tankClosed=*/false);  // now past 2 s
     TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
     TEST_ASSERT_FALSE(c.pumpOn());
+    TEST_ASSERT_FALSE(c.armed());  // a tank fault disarms, as an overtemp does
 
     Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
     TEST_ASSERT_FALSE(a.ok);
-    TEST_ASSERT_EQUAL_STRING("tank", a.why);
+    TEST_ASSERT_EQUAL_STRING("disarmed", a.why);
 
-    advance(c, now, 100, /*tankClosed=*/true);  // refilled
+    advance(c, now, 100, /*tankClosed=*/true);  // a brief closed reading
+    TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);  // debounced in both directions
+
+    advance(c, now, 2000, /*tankClosed=*/true);  // a real refill
     TEST_ASSERT_TRUE(c.fault() == Fault::None);
+    TEST_ASSERT_FALSE(c.pumpOn());  // a fault clearing is not permission to spray
+
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
     TEST_ASSERT_TRUE(c.pumpOn());
 }
 
@@ -2536,3 +2549,64 @@ git commit -m "docs(hardware): record M1 bench checklist results"
 - Pump current sensing, which the spec dropped because the float switch covers running dry.
 - OTA updates. The gnome's head comes off, and the USB port is right there.
 - Persisting `cfg` limits across reboots. The phone sends `cfg` on connect, which is one message on a link that has to work anyway.
+
+
+---
+
+## Final review outcomes (after Task 9)
+
+A holistic review of the whole library — the first to see all five modules together — found
+problems that nine per-task reviews had each missed, because they live *between* modules or
+at the boundary with the Arduino layer. Fixed in commits `0069eb1`, `3905a96`, `aae21ed`
+and `b737911`. The suite went from 70 tests to 92.
+
+**Critical: `aim` and `park` re-pointed a shot already in flight.** The `Controller` and the
+`Shooter` each held a copy of the target, and the shot machine opened the valve on a timer
+without re-checking position. Measured: a shot aimed at (0,0), then an `aim` to (60,40)
+mid-flight, opened the valve at pan 18° and sprayed an arc from 18° to 60°; a `park` during
+a burst swept 49° with the valve open. Now `aim` is ignored and `park` is refused with
+`busy` while a shot is in `Move`, `Settle` or `Open`, and the `Settle → Open` transition
+re-verifies the head is still on target, abandoning the shot if it drifted.
+
+**Critical: any command refreshed the heartbeat, including one the firmware sent itself.**
+The Arduino recovery path in Task 10 originally synthesised a disarm command, which would
+have kept the link looking alive forever — measured at 10 s of silence with the safe state
+never running and the charger left off, so the phone could never recover. `Controller` now
+has `forceSafe(now)`, which performs the safe state without touching the heartbeat, and the
+BLE disconnect callback uses it too, so a known disconnect is handled at once rather than
+after a 3 s timeout with the pump running.
+
+**Critical: the hardware valve timer could not have been made safe.** With the ISR closing
+the GPIO behind the library's back, the controller would still believe the valve was open
+and `applyOutputs()` would re-energise the pin on the next iteration.
+`notifyValveForceClosed(now)` now exists for that path: it aborts and counts the shot,
+starts the cooldown, disarms, and latches `VALVE_TIMEOUT` until the phone explicitly
+disarms.
+
+**A dead temperature sensor silently removed thermal protection.** `NaN >= 60.0f` is false,
+and a disconnected DS18B20 reports -127, which reads as a cold day. An invalid reading
+(non-finite, or outside -40..125 °C) now raises `TEMP_SENSOR` and disarms.
+
+**A chattering float switch could run the pump dry.** The debounce only applied to the
+falling edge, so one spurious "closed" sample cleared the fault and re-enabled the pump for
+another 2 s — about 2 s of dry running in every 2.01. Both edges are now debounced, and a
+tank fault disarms like an overtemp, so a refill cannot silently restart the pump without a
+human re-arming.
+
+**Limits could be escaped two ways**: `park` set 0 without clamping, into a range that need
+not contain 0, and `cfg` accepted any `min < max`, so ±1000° drove the servo into a stalled
+mechanical stop. Park now clamps, and `cfg` limits must lie within ±90°, which also rejects
+NaN limits for free.
+
+Smaller: the heartbeat compared with `>` where the spec says 3 s; a phone-commanded fan
+stayed latched on through the safe state.
+
+**Declined, with reasons:** persisting the cooldown in RTC memory across a brownout (supply
+design's job, recorded as a risk); rejecting trailing garbage or duplicate JSON keys (both
+still yield a well-formed command); `Status::operator==` (the Arduino layer does its own
+change detection); and adding shooter state or remaining cooldown to `Status` (grows every
+message for something the phone infers from a rejected shot).
+
+**Still open for hardware bring-up:** `firmware/src/` does not exist yet, so nothing has run
+against real GPIO, BLE or servo timing; the valve-timeout interrupt itself is Task 10; and
+the bench checklist's row 13 exists to prove that interrupt actually fires.
