@@ -74,7 +74,7 @@ hard safety limits, and fails safe when the phone goes silent.
 | iPhone charge port | USB-A socket with Apple D+/D− divider (1 A signature) or USB smart-charge module | Otherwise iPhone limits to 500 mA |
 | PSU | 12 V 5 A in outdoor-rated box at the outlet | No mains voltage inside gnome |
 | Buck converters | 12→6 V 5 A (servos, + 1000 µF cap), 12→5 V 3 A (ESP32, fan, iPhone) | Separate servo rail avoids ESP32 brownouts |
-| Gnome | Hollow, ≥ 50 cm, light-colored, base ~20–25 cm wide | Placed in shade |
+| Gnome | **3D-printed shell**, ~55 cm, light-coloured PETG (head and nozzle in ASA if an enclosure is available), base ~20–25 cm wide | Printed in ~5 sections on a 256 mm bed. Printing it, rather than buying a statue, is what lets the camera window, vents, mounts and refill hatch sit where the design needs them |
 
 ### 4.2 Gnome layout
 
@@ -82,8 +82,19 @@ hard safety limits, and fails safe when the phone goes silent.
   weight at the bottom stabilises the gnome.
 - **Dry zone (torso):** iPhone, ESP32, bucks, MOSFET board, DS18B20, fan. Separated from
   the wet zone by a sealed divider; tubes and cables pass through with drip loops.
-- **Camera window:** clear glass/acrylic in the belly or lantern, wide lens pressed close to
-  it (< 2 mm) with a small hood to avoid reflections and glare.
+- **Camera window:** clear acrylic in the belly or lantern, wide lens pressed close to it
+  (< 2 mm) with a small hood to avoid reflections and glare.
+- **Printed shell:** sections split at natural lines (hat brim, belt, beard), joined with
+  dowel connectors and two-part epoxy — acetone welding works on ASA but not on PETG.
+  Horizontal seams are shingled so the upper section overlaps outside the lower one; a flat
+  outward ledge collects water and freeze-thaws it through winter. The wet zone is its own
+  sealed sub-assembly around a **bought** tank, never relying on the shell's cosmetic seams,
+  and the divider prints at 100% infill because a sparse panel is porous.
+- **Thermal ceiling:** Apple rates the iPhone for 0–35 °C ambient, above which it throttles,
+  stops charging and eventually refuses to run. That, not the electronics, is the tightest
+  constraint on the enclosure: hence the light colour, the cross-ventilation behind the belly
+  window, the fan, and shade placement. Dark pigment would protect the plastic from UV better
+  but cook the phone, so the plastic loses that argument.
 - **Head:** pan servo in the neck carries the head; tilt servo and nozzle inside the head.
 - **Heat:** light colour, shade placement, vents high and low, fan controlled by ESP32.
 
