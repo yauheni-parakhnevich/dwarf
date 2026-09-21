@@ -81,4 +81,94 @@ final class SchedulerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(crop.width, 0.5)
         XCTAssertGreaterThanOrEqual(crop.height, 0.5)
     }
+
+    // MARK: - Blob rotation
+
+    // All centred on y = 0.5 and kept well clear of the frame edges (the default crop is
+    // ~0.33 wide and ~0.59 tall, so a blob nearer an edge than half of that would have its
+    // crop clamped and its centre shifted, which would break identifying blobs by centre.x).
+    private let rotationLarge = Blob(boundingBox: Rect(x: 0.7, y: 0.5, width: 0.05, height: 0.05), area: 300)
+    private let rotationMedium = Blob(boundingBox: Rect(x: 0.5, y: 0.5, width: 0.05, height: 0.05), area: 200)
+    private let rotationSmall = Blob(boundingBox: Rect(x: 0.3, y: 0.5, width: 0.05, height: 0.05), area: 100)
+
+    private func motionCentres(_ requests: [CropRequest]) -> [Double] {
+        requests.filter { $0.kind == .motion }.map { $0.rect.center.x }
+    }
+
+    func testRotationAlwaysServesTheLargestBlob() {
+        var config = SchedulerConfig()
+        config.maxMotionCrops = 2
+        let scheduler = Scheduler(config: config)
+        let blobs = [rotationSmall, rotationMedium, rotationLarge]
+
+        for cycle in 0..<4 {
+            let centres = motionCentres(scheduler.next(blobs: blobs))
+            XCTAssertTrue(centres.contains { abs($0 - rotationLarge.boundingBox.center.x) < 0.05 },
+                          "the largest blob must be served every cycle (cycle \(cycle))")
+        }
+    }
+
+    func testRotationServesTheOtherBlobsWithinTheRestCount() {
+        var config = SchedulerConfig()
+        config.maxMotionCrops = 2
+        let scheduler = Scheduler(config: config)
+        let blobs = [rotationSmall, rotationMedium, rotationLarge]
+
+        // Two non-largest blobs share one rotating slot, so two cycles are guaranteed to
+        // visit both: this is the exact bound the rotation offers here, not a margin.
+        var sawMedium = false
+        var sawSmall = false
+        for _ in 0..<2 {
+            let centres = motionCentres(scheduler.next(blobs: blobs))
+            if centres.contains(where: { abs($0 - rotationMedium.boundingBox.center.x) < 0.05 }) {
+                sawMedium = true
+            }
+            if centres.contains(where: { abs($0 - rotationSmall.boundingBox.center.x) < 0.05 }) {
+                sawSmall = true
+            }
+        }
+        XCTAssertTrue(sawMedium, "the medium blob must be served within the rotation window")
+        XCTAssertTrue(sawSmall, "the small blob must be served within the rotation window")
+    }
+
+    func testRotationServesEveryNonLargestBlobWithinFourCycles() {
+        var config = SchedulerConfig()
+        config.maxMotionCrops = 2
+        let scheduler = Scheduler(config: config)
+
+        let blobs = [
+            Blob(boundingBox: Rect(x: 0.2, y: 0.5, width: 0.03, height: 0.03), area: 10),
+            Blob(boundingBox: Rect(x: 0.35, y: 0.5, width: 0.03, height: 0.03), area: 20),
+            Blob(boundingBox: Rect(x: 0.5, y: 0.5, width: 0.03, height: 0.03), area: 30),
+            Blob(boundingBox: Rect(x: 0.65, y: 0.5, width: 0.03, height: 0.03), area: 40),
+            Blob(boundingBox: Rect(x: 0.8, y: 0.5, width: 0.03, height: 0.03), area: 100),
+        ]
+        let largest = blobs[4]
+        let others = Array(blobs.prefix(4))
+
+        var servedOthers = Set<Int>()
+        for cycle in 0..<4 {
+            let centres = motionCentres(scheduler.next(blobs: blobs))
+            XCTAssertTrue(centres.contains { abs($0 - largest.boundingBox.center.x) < 0.05 },
+                          "the largest blob must be served every cycle (cycle \(cycle))")
+            for (index, other) in others.enumerated() {
+                if centres.contains(where: { abs($0 - other.boundingBox.center.x) < 0.05 }) {
+                    servedOthers.insert(index)
+                }
+            }
+        }
+        XCTAssertEqual(servedOthers.count, others.count,
+                       "every non-largest blob must be served at least once within four cycles")
+    }
+
+    func testASingleBlobIsServedEveryCycle() {
+        let scheduler = Scheduler()   // default maxMotionCrops = 2, but only one blob exists
+        let only = Blob(boundingBox: Rect(x: 0.5, y: 0.5, width: 0.05, height: 0.05), area: 50)
+
+        for _ in 0..<3 {
+            let crops = scheduler.next(blobs: [only]).filter { $0.kind == .motion }
+            XCTAssertEqual(crops.count, 1)
+            XCTAssertEqual(crops[0].rect.center.x, only.boundingBox.center.x, accuracy: 1e-6)
+        }
+    }
 }
