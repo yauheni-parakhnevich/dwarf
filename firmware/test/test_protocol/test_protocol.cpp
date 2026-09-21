@@ -368,10 +368,15 @@ void test_command_fixtures_parse_expected_values() {
             TEST_ASSERT_TRUE_MESSAGE(c.flag, f.name);
         } else if (std::strcmp(f.name, "cfg") == 0) {
             TEST_ASSERT_TRUE_MESSAGE(c.type == CmdType::Cfg, f.name);
-            TEST_ASSERT_FLOAT_WITHIN(0.001f, -60.0f, c.panMin);
-            TEST_ASSERT_FLOAT_WITHIN(0.001f, 60.0f, c.panMax);
-            TEST_ASSERT_FLOAT_WITHIN(0.001f, -30.0f, c.tiltMin);
-            TEST_ASSERT_FLOAT_WITHIN(0.001f, 40.0f, c.tiltMax);
+            // Against this build's own travel limits rather than literals repeated
+            // here, so the shared fixture pins the numbers and not only the message
+            // shape. The Swift suite asserts the same fixture against its AimLimits
+            // defaults, so if either side's limits drift, that side's test fails.
+            const Limits defaults;
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, defaults.panMin, c.panMin);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, defaults.panMax, c.panMax);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, defaults.tiltMin, c.tiltMin);
+            TEST_ASSERT_FLOAT_WITHIN(0.001f, defaults.tiltMax, c.tiltMax);
         } else {
             // A new command fixture appeared with no value assertions above.
             TEST_FAIL_MESSAGE(f.name);

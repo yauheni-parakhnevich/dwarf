@@ -95,6 +95,13 @@ final class FixtureTests: XCTestCase {
         try assertMatches(.shoot(pan: 14.0, tilt: -2.5, ms: 300), "shoot")
         try assertMatches(.charge(false), "charge_off")
         try assertMatches(.fan(true), "fan_on")
-        try assertMatches(.config(panMin: -60, panMax: 60, tiltMin: -30, tiltMax: 40), "cfg")
+        // Built from AimLimits' own defaults rather than from literals typed in here, so
+        // that the shared fixture is pinned to the travel limits this package actually
+        // operates with. The firmware's test does the same against its `Limits` defaults,
+        // which is what makes the fixture a real cross-check of the numbers and not only
+        // of the message shape: if either side's limits drift, that side's test fails.
+        let limits = AimLimits()
+        try assertMatches(.config(panMin: limits.panMin, panMax: limits.panMax,
+                                  tiltMin: limits.tiltMin, tiltMax: limits.tiltMax), "cfg")
     }
 }
