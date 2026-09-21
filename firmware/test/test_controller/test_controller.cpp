@@ -238,15 +238,61 @@ void test_tank_low_is_debounced_then_faults_and_blocks_shots() {
 
     advance(c, now, 1500, /*tankClosed=*/false);  // now past 2 s
     TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
+    // The tank path deliberately mirrors the overtemp path: TankEmpty
+    // disarms the instant it raises, so a refill can never silently restart
+    // the pump behind the operator's back.
+    TEST_ASSERT_FALSE(c.armed());
     TEST_ASSERT_FALSE(c.pumpOn());
 
+    // The device is already disarmed by the fault itself (armed_ and
+    // tankOk_/fault_ always move together, in the same update() tick), so a
+    // shoot attempt now reports "disarmed" rather than "tank".
     Ack a = c.handle(cmd("{\"c\":\"shoot\",\"pan\":0.0,\"tilt\":0.0,\"ms\":300}"), now);
     TEST_ASSERT_FALSE(a.ok);
-    TEST_ASSERT_EQUAL_STRING("tank", a.why);
+    TEST_ASSERT_EQUAL_STRING("disarmed", a.why);
 
-    advance(c, now, 100, /*tankClosed=*/true);  // refilled
+    // Both edges are debounced by the same tankDebounceMs: a single short
+    // "closed" reading -- the chattering-switch bug this fixes -- must not
+    // clear the fault.
+    advance(c, now, 100, /*tankClosed=*/true);
+    TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    // A full, stable debounce window of "closed" clears the fault on its own...
+    advance(c, now, 2000, /*tankClosed=*/true);
     TEST_ASSERT_TRUE(c.fault() == Fault::None);
+    // ...but a fault that cleared itself is not permission to start spraying
+    // again, exactly like overtemp: the device stays disarmed until the
+    // phone explicitly re-arms.
+    TEST_ASSERT_FALSE(c.armed());
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    Ack rearm = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(rearm.ok);
     TEST_ASSERT_TRUE(c.pumpOn());
+}
+
+void test_chattering_tank_switch_keeps_the_fault_latched() {
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    advance(c, now, 2500, /*tankClosed=*/false);  // drive the fault the ordinary way
+    TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
+    TEST_ASSERT_FALSE(c.pumpOn());
+
+    // A chattering float switch in an empty, vibrating tank: alternate the
+    // raw reading every 20 ms, far faster than the 2 s debounce, for 6 s
+    // straight. Every flip restarts the debounce timer from zero, so the
+    // fault must never clear and the pump must never re-enable, no matter
+    // how long the chatter continues.
+    bool closed = true;
+    for (int i = 0; i < 300; ++i) {
+        advance(c, now, 20, closed);
+        closed = !closed;
+        TEST_ASSERT_TRUE(c.fault() == Fault::TankEmpty);
+        TEST_ASSERT_FALSE(c.pumpOn());
+    }
 }
 
 void test_overtemp_disarms_and_clears_with_hysteresis() {
@@ -809,6 +855,7 @@ int main(int, char**) {
     RUN_TEST(test_link_loss_disarms_but_does_not_shorten_cooldown);
     RUN_TEST(test_pump_runs_only_while_armed_and_healthy);
     RUN_TEST(test_tank_low_is_debounced_then_faults_and_blocks_shots);
+    RUN_TEST(test_chattering_tank_switch_keeps_the_fault_latched);
     RUN_TEST(test_overtemp_disarms_and_clears_with_hysteresis);
     RUN_TEST(test_fan_runs_on_command_or_heat);
     RUN_TEST(test_shoot_is_rejected_when_disarmed);

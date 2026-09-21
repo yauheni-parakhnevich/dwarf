@@ -189,16 +189,16 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
     lastUpdate_ = now;
     temp_ = tempC;
 
-    if (!tankSwitchClosed) {
-        if (!tankLowPending_) {
-            tankLowPending_ = true;
-            tankLowSince_ = now;
-        } else if (now - tankLowSince_ >= cfg_.tankDebounceMs) {
-            tankOk_ = false;
-        }
-    } else {
-        tankLowPending_ = false;
-        tankOk_ = true;
+    // Debounce BOTH edges with the same tankDebounceMs: tankOk_ only follows
+    // the raw reading once it has held steady for the full window, so a
+    // single spurious sample -- in either direction -- changes nothing. A
+    // chattering float switch in an empty, vibrating tank must not be able
+    // to look "refilled" for just long enough to re-enable the pump.
+    if (tankSwitchClosed != tankPendingClosed_) {
+        tankPendingClosed_ = tankSwitchClosed;
+        tankPendingSince_ = now;
+    } else if (now - tankPendingSince_ >= cfg_.tankDebounceMs) {
+        tankOk_ = tankPendingClosed_;
     }
 
     // Fault precedence, highest first: ValveTimeout, Overtemp, TempSensor,
@@ -219,9 +219,7 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
         // here, so it falls through to the TempSensor check below instead of
         // ever being misread as "not hot".
         if (tempValid && temp_ >= cfg_.overtempC) {
-            fault_ = Fault::Overtemp;
-            armed_ = false;
-            shooter_.abort(now);
+            latchDisarmingFault(Fault::Overtemp, now);
         } else if (fault_ == Fault::Overtemp && tempValid && temp_ <= cfg_.overtempClearC) {
             fault_ = Fault::None;
         }
@@ -229,7 +227,10 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
         if (fault_ != Fault::Overtemp) {
             if (!tempValid) {
                 // A dead or disconnected sensor must not silently disable
-                // thermal protection: disarm, same as overtemp itself.
+                // thermal protection: disarm, same as overtemp itself. (It
+                // does not abort an in-flight shot -- an invalid *reading*
+                // is not itself evidence that spraying is unsafe the way an
+                // empty tank or an overheating dry zone is.)
                 fault_ = Fault::TempSensor;
                 armed_ = false;
             } else if (fault_ == Fault::TempSensor) {
@@ -237,8 +238,16 @@ void Controller::update(Millis now, bool tankSwitchClosed, float tempC) {
             }
         }
 
+        // TankEmpty matches Overtemp exactly: it latches armed_ = false the
+        // instant it raises, so a refill can never silently restart the pump
+        // -- recovery is a debounced refill clearing the fault, and then the
+        // phone explicitly re-arming.
         if (fault_ != Fault::Overtemp && fault_ != Fault::TempSensor) {
-            fault_ = tankOk_ ? Fault::None : Fault::TankEmpty;
+            if (tankOk_) {
+                fault_ = Fault::None;
+            } else {
+                latchDisarmingFault(Fault::TankEmpty, now);
+            }
         }
     }
 
@@ -273,6 +282,12 @@ void Controller::notifyValveForceClosed(Millis now) {
     armed_ = false;
     valveTimeoutLatched_ = true;
     fault_ = Fault::ValveTimeout;
+}
+
+void Controller::latchDisarmingFault(Fault f, Millis now) {
+    fault_ = f;
+    armed_ = false;
+    shooter_.abort(now);
 }
 
 void Controller::enterSafeState(Millis now) {

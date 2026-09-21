@@ -70,6 +70,11 @@ class Controller {
   private:
     void enterSafeState(Millis now);
 
+    // Overtemp and TankEmpty share the same "raise" action: latch the fault,
+    // disarm, and abort whatever the shooter is doing -- spraying, or trying
+    // to, is never safe once either of these is true.
+    void latchDisarmingFault(Fault f, Millis now);
+
     ControllerConfig cfg_;
     Shooter shooter_;
     bool armed_ = false;
@@ -78,7 +83,11 @@ class Controller {
     bool fanCmd_ = false;
     bool fanAuto_ = false;
     bool tankOk_ = true;
-    bool tankLowPending_ = false;
+    // The raw float-switch reading currently being debounced, and how long it
+    // has read that way contiguously. Both edges use the same tankDebounceMs:
+    // a single spurious sample, in either direction, must change nothing.
+    bool tankPendingClosed_ = true;
+    Millis tankPendingSince_ = 0;
     bool linkUp_ = false;
     Fault fault_ = Fault::None;
     bool valveTimeoutLatched_ = false;
@@ -89,7 +98,6 @@ class Controller {
     float temp_ = 0.0f;
     Millis lastCmd_ = 0;
     Millis lastUpdate_ = 0;
-    Millis tankLowSince_ = 0;
     bool started_ = false;  // guards the first update() call's slew dt
 };
 
