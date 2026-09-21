@@ -3451,6 +3451,68 @@ The suite is 154 tests after this task.
 - Every welfare rule in the table at the head of Task 10 has a test that fails when the rule
   is removed.
 
+## System-level review
+
+Run after all twelve tasks closed, against the assembled package and the firmware together,
+looking only for what shows up where components meet. The same pass on the firmware found
+that project's two worst bugs. Findings and rulings:
+
+**Accepted and fixed** (commits `12e2d43`, `e14a5a1`):
+
+1. **A second cat was starved indefinitely.** The policy ranked candidates by confidence and
+   acted only on the top one. A cat that had spent its three shots was *rate-limited*, not
+   *structurally* unfireable, so the backoff never triggered and it kept the head pointed at
+   itself for as long as it stayed in frame. Demonstrated: two cats sitting still a metre
+   apart for thirty seconds, three shots at the first, none at the second. In a yard with a
+   resident cat and a visitor, the visitor is never deterred. A candidate that can be fired
+   at now is preferred; ranking still decides between two that both can; ties break by id so
+   the outcome does not depend on sort stability. No test in the package had ever passed two
+   tracks in one `PolicyInput`.
+2. **Nothing modelled the single nozzle.** `minShotInterval` is per track by design, so the
+   fix above would have asked for two shots a tenth of a second apart. The firmware holds a
+   5 s cooldown and refuses anything sooner - the shot would be bounced while still spending
+   the animal's budget here. `FireLimits.minDeviceInterval` (6 s) covers the cooldown, the
+   move, the settle, the burst and the link.
+3. **The spec's 200-400 ms welfare range was enforced nowhere.** The only ceilings were 500
+   ms, on both sides, and both are about what the hardware will do rather than what the
+   animal should receive. `FirePolicy` clamps `burstMs` and `minRangeM` into the welfare
+   envelope whenever limits are set, non-finite failing safe; `Command.encoded()` enforces
+   the 400 ms ceiling independently, so it holds on paths that never consult the policy.
+4. **The shared fixture checked message shape, not the numbers.** Both suites asserted
+   `-60/60/-30/40` as literals typed into the tests, so `AimLimits` and the firmware's
+   `Limits` agreed by discipline alone. Both now assert against their own defaults. Verified
+   by moving Swift's `panMin` to -55 and watching the fixture test fail.
+
+**Declined, with reasons:**
+
+- *Lock down `Command.shoot` so only `FirePolicy` can build one.* Calibration is impossible
+  without firing outside the policy - the owner records test shots to build the fit in the
+  first place - so a policy-only nozzle would make the gnome uncalibratable. The burst
+  ceiling is enforced at the wire boundary instead; range and zones cannot be, because a
+  `shoot` carries angles and not a range. Written into the package README as the first line
+  of the app's contract.
+- *`FirePolicy` marks itself unparked while uncalibrated.* Real, and harmless: no aim command
+  is ever emitted in that state, and the eventual `park` is idempotent.
+
+**Deferred to the DwarfApp plan:**
+
+- *Nothing consumes `DeviceAck`.* A shot the firmware refuses still spends the animal's
+  budget. `minDeviceInterval` removes the common cause, but acks belong with the transport,
+  which is not in this package.
+- *`DeviceStatus` carries no timestamp,* so a stale one keeps authorising shots. The
+  firmware's 3 s heartbeat watchdog means those shots are refused rather than fired, which
+  bounds this to bookkeeping rather than safety.
+
+**Checked and clean:** ESP32 reboot (the device boots disarmed and re-validates its own state
+on every shot, and no firmware clock reaches this package), BLE drop and reconnect, the app
+backgrounding for an hour, daylight saving (wall clock and monotonic clock are cleanly
+separated, and only the active-hours gate uses the wall clock), and mid-session recalibration.
+
+The suite is 162 tests. The contract the app must honour, which nothing in this package can
+enforce, is written up in `ios/DwarfCore/README.md`.
+
+---
+
 ## What this plan deliberately leaves out
 
 - **CoreML and the camera.** They belong to the DwarfApp plan, along with the web UI, the
