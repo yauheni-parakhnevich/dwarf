@@ -1318,6 +1318,29 @@ git add ios/DwarfCore
 git commit -m "feat(core): add mask zones"
 ```
 
+**Post-review addendum (applied in commit `521874b`):** analysis found that every failure
+mode in this module failed *open*. Harmless for an ignore zone — nothing gets filtered — but
+for a no-fire zone it means the safety zone silently protects nothing. Three fixes:
+
+1. **A non-finite point is now inside every no-fire zone.** Every IEEE comparison against
+   NaN is false, so a corrupted coordinate previously meant "fire away". An unknown position
+   is exactly when not firing is right. `isIgnored` keeps the old behaviour, since treating
+   NaN as ignored would silently discard real detections.
+2. **A margin of 0.005 around no-fire zones.** Boundary inclusion fell out of the geometry —
+   top and left inclusive, bottom and right exclusive — so whether a cat on the line was
+   protected depended on which edge it stood on. Now any point within the margin of an edge
+   is inside. A zero-length segment falls back to point-to-point distance rather than
+   dividing by zero.
+3. **`validate()` reports degenerate zones** — too few points, zero area, non-finite
+   coordinates — with the zone's index and kind. It does not throw or filter: the point is
+   that the web UI can tell the owner "that no-fire zone protects nothing" instead of
+   silently obeying a zone collapsed by a click without a drag.
+
+Self-intersection detection was declined: a bow tie produces a defensible two-lobe
+interpretation, and the detection code would be disproportionate.
+
+The suite is 58 tests after this task.
+
 ---
 
 ### Task 6: Calibration types and the quadratic fit
