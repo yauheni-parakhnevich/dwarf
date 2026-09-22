@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <DallasTemperature.h>
 #include <ESP32Servo.h>
+#include <NimBLEDevice.h>
 #include <OneWire.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 #include <cstring>
 
@@ -47,6 +50,94 @@ Status g_lastSent;
 char g_line[192];
 size_t g_lineLen = 0;
 
+// From the spec, section 7. These must match the iOS app exactly.
+constexpr char kServiceUuid[] = "EC61AB6F-D20E-4217-93F9-4A3DF81B75D3";
+constexpr char kCmdUuid[] = "7C7FBA40-4383-4738-AD6B-09986229ED6A";
+constexpr char kStatusUuid[] = "6DF54A5A-41DC-4414-AB6A-1354C959CF0A";
+
+struct CmdMsg {
+    char json[192];
+};
+
+QueueHandle_t g_cmdQueue = nullptr;
+NimBLECharacteristic* g_statusChar = nullptr;
+
+// Which channel a command arrived on. Only used to decide whether the
+// command may refresh the phone-liveness heartbeat -- see the big comment on
+// g_bleConnected below and on Controller::handle() in controller.h. It never
+// changes whether the command itself is executed: both channels stay real
+// command paths.
+enum class CmdSource { Serial, Ble };
+
+// Liveness ownership. Serial and BLE both funnel into the same
+// handle()/heartbeat, and Task 10's post-review addendum flagged that as the
+// same shape as the self-feeding-watchdog bug an earlier review caught: two
+// independent channels each capable of refreshing one 3 s liveness clock
+// means a channel nobody is actually watching (a serial monitor left open on
+// the bench) can keep "proving" the phone is alive after BLE -- the channel
+// that actually matters -- has gone quiet. That would silently disable
+// forceSafe()'s watchdog, which is the firmware's last line of defence.
+//
+// The fix: liveness belongs to at most one channel at a time.
+//   - While a BLE central is connected, BLE alone owns the heartbeat. Serial
+//     commands still execute (arm, aim, shoot, ... all still work -- the
+//     console remains a real command path for debugging a misbehaving BLE
+//     link), they just do not count as proof the phone is present.
+//   - While no BLE central is connected, serial owns the heartbeat, exactly
+//     as it did before BLE existed (Task 10's bench workflow -- arm/park/
+//     shoot from the USB console with no phone anywhere nearby -- keeps
+//     working unchanged).
+// Ownership is tracked by CURRENT connection state, not by "has a central
+// ever connected since boot". A permanent, one-way handover to BLE would
+// mean that after any disconnect -- planned, or the phone crashing -- nobody
+// could use the serial console (the tool this firmware provides for exactly
+// that situation, per Task 10: "the debugging path when BLE misbehaves")
+// without a full power cycle. That is not needed for safety: the instant a
+// disconnect is detected, onDisconnect below drives the controller to
+// forceSafe() directly, so by the time ownership reverts to serial the gnome
+// is already parked, disarmed and charging -- there is no stale liveness
+// left for a bench session to mask.
+volatile bool g_bleConnected = false;
+
+// Set from the NimBLE host task's onDisconnect callback, consumed once from
+// loop(). Controller is single-task-owned (see the comment on CmdCallbacks
+// below): forceSafe() touches several of its fields without any locking, so
+// it may only ever be called from the same task that calls update() and the
+// rest of the controller API, i.e. loop(). This mirrors g_valveHardStop's
+// ISR-to-loop() handoff exactly, for the same reason -- the BLE host task is
+// just as much "somewhere else" as an interrupt is.
+volatile bool g_bleJustDisconnected = false;
+
+// BLE writes arrive on the NimBLE task. Queue them and handle them in loop(),
+// so all controller state stays on one task.
+class CmdCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* ch) override {
+        if (g_cmdQueue == nullptr) return;
+        CmdMsg msg{};
+        const std::string value = ch->getValue();
+        size_t n = value.size();
+        if (n > sizeof(msg.json) - 1) n = sizeof(msg.json) - 1;
+        memcpy(msg.json, value.data(), n);
+        msg.json[n] = '\0';
+        xQueueSend(g_cmdQueue, &msg, 0);
+    }
+};
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* server) override {
+        (void)server;
+        g_bleConnected = true;
+    }
+
+    void onDisconnect(NimBLEServer* server) override {
+        (void)server;
+        g_bleConnected = false;
+        g_bleJustDisconnected = true;
+        // Keep the gnome reachable after the phone walks away.
+        NimBLEDevice::startAdvertising();
+    }
+};
+
 bool tankOk() { return digitalRead(PIN_FLOAT) == FLOAT_WATER_PRESENT_LEVEL; }
 
 bool statusChanged(const Status& a, const Status& b) {
@@ -55,12 +146,17 @@ bool statusChanged(const Status& a, const Status& b) {
            a.shots != b.shots;
 }
 
-// Sends one message out. Task 11 adds a BLE notify here. n is the length the
-// formatter returned; 0 means it refused because the message did not fit, in
-// which case there is nothing valid to send.
+// Sends one message out over both channels. n is the length the formatter
+// returned; 0 means it refused because the message did not fit, in which
+// case there is nothing valid to send. The length comes from the formatter's
+// return value, never from strlen: on an exact-fit serialisation ArduinoJson
+// does not write a terminator, so strlen would read past the buffer.
 void emit(const char* json, size_t n) {
     if (n == 0) return;
     Serial.println(json);
+    if (g_statusChar == nullptr) return;
+    g_statusChar->setValue(reinterpret_cast<const uint8_t*>(json), n);
+    g_statusChar->notify();
 }
 
 void applyOutputs() {
@@ -82,8 +178,13 @@ void applyOutputs() {
     digitalWrite(PIN_CHARGER, g_controller.chargeOn() ? HIGH : LOW);
 }
 
-void handleJson(const char* json, Millis now) {
-    const Ack ack = g_controller.handle(parseCommand(json), now);
+void handleJson(const char* json, Millis now, CmdSource source) {
+    // See the comment on g_bleConnected: BLE always counts as proof of life;
+    // serial only counts while no BLE central currently owns that role. This
+    // never gates whether the command is executed -- ack/appearance is
+    // identical either way -- only whether it feeds the 3 s heartbeat.
+    const bool refreshHeartbeat = (source == CmdSource::Ble) || !g_bleConnected;
+    const Ack ack = g_controller.handle(parseCommand(json), now, refreshHeartbeat);
     if (!ack.present) return;
     char buf[128];
     const size_t n = formatAck(ack.cmd, ack.ok, ack.why, buf, sizeof(buf));
@@ -97,12 +198,22 @@ void pollSerial(Millis now) {
         if (ch == '\n' || ch == '\r') {
             if (g_lineLen > 0) {
                 g_line[g_lineLen] = '\0';
-                handleJson(g_line, now);
+                handleJson(g_line, now, CmdSource::Serial);
                 g_lineLen = 0;
             }
         } else if (g_lineLen < sizeof(g_line) - 1) {
             g_line[g_lineLen++] = ch;
         }
+    }
+}
+
+// Drains commands queued by CmdCallbacks::onWrite (running on the NimBLE
+// task) and handles them here on loop()'s task, same as pollSerial.
+void pollBle(Millis now) {
+    if (g_cmdQueue == nullptr) return;
+    CmdMsg msg;
+    while (xQueueReceive(g_cmdQueue, &msg, 0) == pdTRUE) {
+        handleJson(msg.json, now, CmdSource::Ble);
     }
 }
 
@@ -170,6 +281,25 @@ void setup() {
     g_valveTimer = timerBegin(0, 80, true);
     timerAttachInterrupt(g_valveTimer, &onValveTimeout, true);
 
+    g_cmdQueue = xQueueCreate(8, sizeof(CmdMsg));
+
+    NimBLEDevice::init("dwarf");
+    NimBLEDevice::setMTU(185);
+    NimBLEServer* server = NimBLEDevice::createServer();
+    server->setCallbacks(new ServerCallbacks());
+
+    NimBLEService* service = server->createService(kServiceUuid);
+    NimBLECharacteristic* cmdChar =
+        service->createCharacteristic(kCmdUuid, NIMBLE_PROPERTY::WRITE);
+    cmdChar->setCallbacks(new CmdCallbacks());
+    g_statusChar = service->createCharacteristic(
+        kStatusUuid, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+    service->start();
+
+    NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+    advertising->addServiceUUID(kServiceUuid);
+    advertising->start();
+
     esp_task_wdt_init(5, true);
     esp_task_wdt_add(nullptr);
 
@@ -181,6 +311,7 @@ void loop() {
     const Millis now = millis();
 
     pollSerial(now);
+    pollBle(now);
 
     if (g_valveHardStop) {
         g_valveHardStop = false;
@@ -191,6 +322,17 @@ void loop() {
         // command here: handle() treats any command as proof the phone is
         // alive, so a synthesised disarm would starve the heartbeat safety net.
         g_controller.notifyValveForceClosed(now);
+    }
+
+    if (g_bleJustDisconnected) {
+        g_bleJustDisconnected = false;
+        // A known disconnect is handled at once rather than waiting out the
+        // full 3 s heartbeat timeout -- see forceSafe()'s own doc comment,
+        // which was written for exactly this call site. Deliberately
+        // forceSafe(), never a synthesised {"c":"arm","v":false} through
+        // handle(): that would touch lastCmd_/linkUp_ and could starve the
+        // very heartbeat this is meant to react to.
+        g_controller.forceSafe(now);
     }
 
     readSensors(now);
