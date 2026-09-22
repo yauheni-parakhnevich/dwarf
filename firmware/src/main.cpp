@@ -5,6 +5,7 @@
 #include <OneWire.h>
 #include <Preferences.h>
 #include <esp_random.h>
+#include <cmath>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -44,7 +45,14 @@ void IRAM_ATTR onValveTimeout() {
     g_valveHardStop = true;
 }
 
-float g_tempC = 22.0f;
+// Not a plausible room temperature: nothing has been measured yet, and saying
+// 22 would be inventing a reading. isValidTempReading() rejects NaN, so the
+// controller raises TEMP_SENSOR and refuses to arm until a real conversion
+// lands -- about ten seconds after boot, since the first pass only starts the
+// conversion and the next one collects it. Booting with a comfortable default
+// meant a ten-second window on every power-up where the gnome would arm with
+// no thermal protection at all, reporting a number it had never taken.
+float g_tempC = NAN;
 bool g_tempRequested = false;
 Millis g_lastSensorRead = 0;
 Millis g_lastStatus = 0;
