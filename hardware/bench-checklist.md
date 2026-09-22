@@ -8,8 +8,9 @@ solenoid valve, 1–1.5 mm brass nozzle on the tilt servo, and the wiring in
 [`wiring.md`](wiring.md) — including the four gate pull-downs and the two flyback diodes,
 which are not optional and are not in the original bill of materials.
 
-**Commands** go over the USB serial console (one JSON object per line) or over BLE from
-nRF Connect. The gnome advertises as `dwarf` on service
+**Commands** go over the USB serial console (one JSON object per line) or over BLE from any
+client that can write a characteristic. nRF Connect needs iOS 17; BLE Scanner works on
+iOS 15, which is what this phone runs. The gnome advertises as `dwarf` on service
 `EC61AB6F-D20E-4217-93F9-4A3DF81B75D3`; this board's BLE address is `54:43:B2:44:2F:9E`.
 
 ## Before any water
@@ -23,6 +24,7 @@ that misbehaves dry will misbehave wet at four bar.
 | 0b | Dead probe refuses to arm | Unplug the DS18B20, then `{"c":"arm","v":true}` | `"temp":-127`, `"fault":"TEMP_SENSOR"`, arming refused | |
 | 0c | Probe restored | Plug it back in | Fault clears within ~5 s, arming works | |
 | 0d | Serial cannot mask a silent phone | Connect over BLE, send any command, then let BLE go quiet while flooding `{"c":"hb"}` over serial | The gnome goes safe about 3 s after BLE's last command. Serial must not keep it alive | |
+| 0f | The phone is bonded | Pair once from the phone, entering the passkey the gnome prints over serial, then disconnect and reconnect | The second connection asks for nothing and the board logs `"encrypted":true,"authenticated":true,"bonded":true` | **PASSED 2026-09-22** |
 | 0e | Disconnect is immediate | Arm, turn the fan on over BLE, then disconnect the central | Fan off in well under a second, not after 3 s | |
 
 ## With water
