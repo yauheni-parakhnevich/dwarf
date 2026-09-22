@@ -265,3 +265,17 @@ renders are inspected after every change to the shell scripts.
   face opening had to pass the servo on its cradle). The filler is 14 mm because the canister's 30 mm
   neck must also pass the float switch and the dip tube. Measure the canister first: it is the part
   the base is drawn around.
+- **2026-09-22, Tasks 4–6 review.** The phone could never leave its sled: the tray was open at the
+  top under a deck 22 mm above it, and the chassis carrying it could not pass the belt opening
+  either. The fix is a **belly hatch**: the coat's front between the belt (244) and the shoulders
+  (398), 66° wide, is a screwed-on panel that carries the window and the hood, cut from the
+  torso's raw mesh by the assembler, resting on a lip and four bosses that are interface parts on
+  the torso. The sled slides out forward through it and every dry-zone screw is driven through
+  the opening; §8's "four screws at the belt, lift the upper assembly, slide the sled" becomes
+  "four screws on the belly, slide the sled". Also from the review: belt screws are M3 × 20, not
+  25; the divider stands 0.3 mm proud so the screws load the bead; the skirt has 0.5 mm of
+  shell-to-shell clearance; the electronics deck's boards are laid out by name in `params.py` and
+  tested as footprints; the nozzle holder's barb faces the axis and the tube's bend radius is
+  15 mm, which a 6 × 4 PU tube tolerates statically (§3's 25 mm was for a longer run); the
+  filler stub rises from the tank head's shoulder; the mouth is the nozzle's outboard bearing;
+  the pump is tied down and the valve strapped; the beard's back hangs to 340 over the exhaust.
