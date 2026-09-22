@@ -4,3 +4,5 @@
 .DS_Store
 .superpowers/
 .build/
+ios/DwarfApp/DwarfApp.xcodeproj/
+.venv-model/

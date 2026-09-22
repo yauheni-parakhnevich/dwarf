@@ -1,0 +1,5 @@
+# The model is a build input, reproducible from tools/export_model.py. A 6 MB binary in
+# git history that changes whenever the export is re-run is not worth the convenience.
+*.mlpackage
+*.mlmodel
+*.mlmodelc

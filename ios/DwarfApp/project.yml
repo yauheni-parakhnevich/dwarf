@@ -1,0 +1,46 @@
+name: DwarfApp
+options:
+  bundleIdPrefix: garden.dwarf
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  DwarfAdapters:
+    path: DwarfAdapters
+
+targets:
+  DwarfApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: DwarfAdapters
+        product: DwarfAdapters
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: garden.dwarf.app
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0"
+        # TrollStore installs an unsigned .tipa, so the build never needs a team.
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Dwarf
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        # The phone lies on its side in the gnome's belly; see the plan's note on
+        # orientation. Locking this stops iOS rotating the UI when the gnome is carried.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: The gnome watches the garden for cats.
+        NSBluetoothAlwaysUsageDescription: The gnome talks to its actuator over Bluetooth.
+        UIBackgroundModes:
+          - bluetooth-central
