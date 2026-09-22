@@ -3,7 +3,7 @@ import math
 from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, Location, extrude, Axis
 import params as P
 from mech import part
-from mech.common import cyl_z, cyl_y, box, insert_holes
+from mech.common import cyl_z, cyl_y, box, insert_holes, servo_body
 
 
 def _polar(r, deg, z):
@@ -22,9 +22,6 @@ def _bearing_holes(part, z0, z1):
         x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
         part = part - cyl_z(P.BEARING_HOLE / 2, z0, z1, x, y)
     return part
-
-
-PIN_BOSS_D = 8.0        # no parameter for it: inside the link eye's 9.2 face, outside its 3.2 bore
 
 
 def _stop_pin_deg():
@@ -132,7 +129,7 @@ def plate():
     p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
     px, py = _crank_pin()
     # the pin's boss: the screw clamps this half-millimetre, so the link is free to turn on it
-    p = p + cyl_z(PIN_BOSS_D / 2, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H, P.Z_CRANK_BOTTOM, px, py)
+    p = p + cyl_z(P.PIN_BOSS_D / 2, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H, P.Z_CRANK_BOTTOM, px, py)
     p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H)],
                      depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm bar
     p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES], depth=P.PLATE_T - 1)
@@ -163,7 +160,7 @@ def servo_crank():
         hx, hy, _ = _polar(P.HORN_SCREW_R, a, 0)
         arm = arm - cyl_z(P.M2_5_CLEAR / 2, z0 - 1, z1 + 1, sx + hx, sy + hy)
     arm = arm - cyl_z(2.5, z0 - 1, z1 + 1, sx, sy)                                     # horn's centre screw
-    arm = arm + cyl_z(PIN_BOSS_D / 2, z0 - P.PIN_BOSS_H, z0, px, py)                 # the link turns on this
+    arm = arm + cyl_z(P.PIN_BOSS_D / 2, z0 - P.PIN_BOSS_H, z0, px, py)                 # the link turns on this
     return insert_holes(arm, [(px, py, z0 - P.PIN_BOSS_H)],
                         depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm crank
 
@@ -261,10 +258,16 @@ def coupler():
     return c
 
 
+def _tilt_servo():
+    """The tilt servo where it sits in the head. Everything the cradle needs is read off it."""
+    return servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
+
+
 def _tab_holes():
-    """The tilt servo's four tab holes, as (x, z), and the body's centre along its length."""
+    """The tilt servo's four tab holes as (x, z), straddling the body's centre along its length."""
     along, across = P.MG996R["holes"]
-    zc = P.Z_HEAD + P.MG996R["shaft_off"] - P.MG996R["body"][0] / 2
+    bb = _tilt_servo().bounding_box()
+    zc = (bb.min.Z + bb.max.Z) / 2
     return [(dx, zc + dz) for dx in (-across / 2, across / 2) for dz in (-along / 2, along / 2)]
 
 
@@ -273,40 +276,42 @@ def _cradle_channel():
     return P.BULKHEAD_Y - P.BULKHEAD_T - P.CLEAR, P.BULKHEAD_Y + P.CLEAR
 
 
-def _lower_boss_sweep():
-    """Where the cradle's two lower bosses travel, hanging below its bottom edge.
+def _boss_sweep():
+    """The band the cradle's -Y insert bosses travel through, all the way in and out.
 
-    The lower tab holes sit below CRADLE_Z[0], so their bosses overhang the plate; they sweep
-    this band every millimetre of the way in, and the lower rail is relieved along it.
+    They stand proud of the plate's back face and reach into the z the rails grip, so the
+    rails' -Y lips are relieved along their path; the +Y lips and the floor are untouched.
     """
     _, across = P.MG996R["holes"]
-    hz = min(z for _, z in _tab_holes())
     r = P.BULKHEAD_BOSS_D / 2
-    return box(-across / 2 - r - P.CLEAR, P.HEAD_R + 40.0,
-               P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0 - P.CLEAR, P.BULKHEAD_Y - P.BULKHEAD_T + 0.05,
-               hz - r - P.CLEAR, hz + r + P.CLEAR)
+    sweep = None
+    for hz in sorted({z for _, z in _tab_holes()}):
+        band = box(-across / 2 - r - P.CLEAR, P.HEAD_R + 40.0,
+                   P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0 - P.CLEAR, P.BULKHEAD_Y - P.BULKHEAD_T + 0.05,
+                   hz - r - P.CLEAR, hz + r + P.CLEAR)
+        sweep = band if sweep is None else sweep + band
+    return sweep
 
 
 @part("tilt_cradle")
 def tilt_cradle():
     """The tilt servo's plate, assembled with it on the bench and slid into the head's rails.
 
-    The MG996R's flange is 28 mm up its 42.9 mm body, so 28 mm of body hangs through a window
-    and only the tabs land on the +Y face. The inserts are in bosses on the -Y side, where the
+    The MG996R's flange is 28 mm along its 42.9 mm body, so most of the body passes through a
+    window and only the tabs land on the +Y face. The inserts are in bosses on the -Y side, where the
     servo is not: they open at the +Y face, six millimetres deep, and stop a millimetre short.
     A plain rectangle - it is a loose part, not part of the shell.
     """
     y1 = P.BULKHEAD_Y
     y0 = y1 - P.BULKHEAD_T
-    L, W, H = P.MG996R["body"]
+    bb = _tilt_servo().bounding_box()
     plate = box(P.CRADLE_X[0], P.CRADLE_X[1], y0, y1, P.CRADLE_Z[0], P.CRADLE_Z[1])
     y_boss = y1 - P.INSERT_DEPTH - 1.0                                   # the insert's blind end
     for hx, hz in _tab_holes():
         plate = plate + cyl_y(P.BULKHEAD_BOSS_D / 2, y_boss, y0 + 0.01, hx, hz)
-    # the body drops through this window; it also trims the bosses, which reach past its ends
-    plate = plate - box(-W / 2 - P.CLEAR, W / 2 + P.CLEAR, y_boss - 1, y1 + 1,
-                        P.Z_HEAD - (L - P.MG996R["shaft_off"]) - P.CLEAR,
-                        P.Z_HEAD + P.MG996R["shaft_off"] + P.CLEAR)
+    # the body passes through this window; it also trims the bosses, which reach past its ends
+    plate = plate - box(bb.min.X - P.CLEAR, bb.max.X + P.CLEAR, y_boss - 1, y1 + 1,
+                        bb.min.Z - P.CLEAR, bb.max.Z + P.CLEAR)
     for hx, hz in _tab_holes():
         plate = plate - cyl_y(P.INSERT_D / 2, y1 - P.INSERT_DEPTH, y1 + 1, hx, hz)
     return plate
@@ -332,7 +337,7 @@ def cradle_rails():
     r = r + box(x_back, x_front, c1, hi, zt - 3.0, zt + P.RAIL_H)        # upper +Y lip
     r = r + box(x_back, x_front, lo, hi, zt + 2.0, zt + P.RAIL_H)        # ceiling, 2 mm of swing room
     r = r + box(x_back, P.CRADLE_X[0], lo, hi, zb - P.RAIL_H, zt + P.RAIL_H)        # back wall
-    r = r - _lower_boss_sweep()
+    r = r - _boss_sweep()
     return r & _in_wall()
 
 

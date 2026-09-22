@@ -150,11 +150,13 @@ def test_the_cradle_takes_the_servo_without_touching_its_body(parts):
     body = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
     assert (parts["tilt_cradle"] & body).volume < 1e-6        # the body hangs through the window
     along, across = P.MG996R["holes"]
-    zc = P.Z_HEAD + P.MG996R["shaft_off"] - P.MG996R["body"][0] / 2
+    bb = body.bounding_box()
+    zc = (bb.min.Z + bb.max.Z) / 2
     y_tip = P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0
     for dz in (-along / 2, along / 2):                        # the bosses stay inside the head's wall
         r = math.sqrt((across / 2 + P.BULKHEAD_BOSS_D / 2) ** 2 + y_tip ** 2 + (zc + dz - P.Z_HEAD) ** 2)
         assert r < P.HEAD_R - P.WALL, (dz, r)
+        assert P.CRADLE_Z[0] < zc + dz < P.CRADLE_Z[1], (dz, zc + dz)     # both bosses are on the plate
 
 
 def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
