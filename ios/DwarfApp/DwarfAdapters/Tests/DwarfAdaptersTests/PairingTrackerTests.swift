@@ -69,7 +69,7 @@ final class PairingTrackerTests: XCTestCase {
         // already have closed it), so leaving needsPairing as it was is the honest answer.
         let tracker = PairingTracker()
         tracker.connected(atUptime: 0)
-        tracker.disconnected(atUptime: 30)
+        tracker.disconnected(atUptime: 120)
         XCTAssertFalse(tracker.needsPairing)
     }
 

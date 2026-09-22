@@ -636,9 +636,17 @@ void setup() {
 // few idle connections lock the phone out of the gnome entirely: no commands,
 // no heartbeat, and the firmware's own watchdog then disarms it. Denial of
 // service rather than danger, but trivially achievable from the pavement and
-// invisible from indoors. Ten seconds is far longer than a passkey exchange
-// needs and far shorter than an attacker would like.
-constexpr Millis kAuthGraceMs = 10000;
+// invisible from indoors.
+//
+// A minute, not the ten seconds this started at. Ten is ample for two machines
+// to exchange a passkey and hopeless for a person, who has to notice the
+// dialog, find the number and type it. The first attempt to pair a real phone
+// was evicted twice mid-flow by this very guard, which is a poor way for a
+// security measure to earn its keep: the board logged two connections fourteen
+// seconds apart, both ending unencrypted. Sixty seconds barely helps an
+// attacker, since squatting is only useful held indefinitely and they can
+// reconnect either way. What matters is that the slot is always reclaimed.
+constexpr Millis kAuthGraceMs = 60000;
 
 // Disconnects a link that has been up past the grace period without becoming
 // authenticated. Bonded reconnections re-encrypt in well under a second, so

@@ -23,10 +23,17 @@ public final class PairingTracker {
     /// console on every boot.
     public private(set) var needsPairing = false
 
-    /// The firmware's own `kAuthGraceMs` is 10 s. A second of margin absorbs BLE's own
-    /// connection-setup time and callback-delivery jitter, so a legitimate pairing that
-    /// completes just inside the firmware's window is never misread as a fast bounce.
-    public static let quickDisconnectThreshold: TimeInterval = 11
+    /// The firmware's own `kAuthGraceMs`, plus a margin for BLE's connection-setup time and
+    /// callback jitter, so a pairing that completes just inside the firmware's window is
+    /// never misread as a fast bounce.
+    ///
+    /// That grace period was ten seconds until the first attempt to pair a real phone, which
+    /// this guard evicted twice mid-dialog: ten seconds is ample for two machines and
+    /// hopeless for a person reading a six-digit number and typing it. It is a minute now,
+    /// and this constant follows it — a disconnect the firmware caused for want of
+    /// authentication is exactly what tells the app to say "pair with me" rather than
+    /// "no gnome here", and it can only say that if it recognises the bounce.
+    public static let quickDisconnectThreshold: TimeInterval = 65
 
     private var connectedAtUptime: TimeInterval?
     /// Reset on every fresh connection, not held forever once true. A bond that was good
