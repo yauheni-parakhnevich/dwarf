@@ -1,5 +1,6 @@
 from pathlib import Path
-from build123d import Box, Cylinder, Pos, Rot, Part, export_step, export_stl
+from build123d import (Box, Compound, Cylinder, Location, Plane, Pos, Rot, Part, export_step,
+                       export_stl, mirror)
 import params as P
 
 OUT = Path(__file__).resolve().parents[1] / "out"
@@ -89,3 +90,28 @@ def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction
         else:
             raise ValueError(direction)
     return part
+
+
+def _placed(name, p):
+    """Every copy of a part in the assembly, as (label, solid).
+
+    All but two are modelled where they sit. The hard-stop pin is printed once and fitted
+    twice, and the filler cap's neck belongs to the base's shell, which this compound does
+    not contain, so the cap is carried out to where that neck comes through the back.
+    """
+    if name == "stop_pin":
+        return [(name, Location() * p), (name + "_mirrored", mirror(p, about=Plane.XZ))]
+    if name == "filler_cap":
+        skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
+        return [(name, Pos(-(skin + p.bounding_box().max.X), 0.0, P.Z_FILLER) * p)]
+    return [(name, Location() * p)]
+
+
+def assembly(parts: dict) -> Compound:
+    """Every part at its assembled position, each child carrying its name."""
+    children = []
+    for name, p in parts.items():
+        for label, child in _placed(name, p):
+            child.label = label
+            children.append(child)
+    return Compound(children=children)

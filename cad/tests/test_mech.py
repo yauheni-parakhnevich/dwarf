@@ -445,3 +445,38 @@ def test_the_pump_mount_bridges_the_canister(parts):
     assert (mount & parts["tank_cradle"]).volume < 1e-6
     feet = mount & box(-200, 200, -200, 200, P.Z_FLOOR - 1, P.Z_FLOOR + 1)
     assert len(feet.solids()) == 4                                     # four legs, nothing else, on the floor
+
+
+def test_assembly_step_exists_after_build(tmp_path):
+    from build123d import export_step
+    from mech.common import assembly
+    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
+    from mech import ALL
+    comp = assembly({n: f() for n, f in ALL})
+    assert len(comp.solids()) >= 27
+    labels = [c.label for c in comp.children]
+    assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
+    assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
+    step = tmp_path / "mechanism_assembly.step"                  # the build writes exactly this
+    assert export_step(comp, str(step))
+    assert step.stat().st_size > 0
+
+
+def test_no_two_fixed_parts_overlap(parts):
+    """Everything that does not turn with the plate or nod with the head, against everything else.
+
+    Interface parts of one shell section are let off each other: they are unioned into the same
+    revolve, so an overlap between two of them would close up rather than clash. None of them
+    overlaps today - the exemption is there for the shell, not to excuse a mistake.
+    """
+    from mech import INTERFACES
+    section = {n: s for s, names in INTERFACES.items() for n in names}
+    moving = {"plate", "shaft", "yoke", "coupler", "ear_boss", "tilt_cradle", "cradle_rails",
+              "face_stop", "head_lip", "nozzle_holder", "nozzle_bosses", "servo_crank", "pan_link"}
+    fixed = [n for n in parts if n not in moving]
+    for i, a in enumerate(fixed):
+        for b in fixed[i + 1:]:
+            v = (parts[a] & parts[b]).volume
+            if a in section and b in section and section[a] == section[b]:
+                continue
+            assert v < 1e-3, (a, b, v)

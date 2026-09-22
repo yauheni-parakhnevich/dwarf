@@ -13,11 +13,17 @@ BLENDER = os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Bl
 def mech():
     import mech  # noqa: F401  (registers builders)
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
-    from mech.common import export
+    from build123d import export_step
+    from mech.common import assembly, export, STEP
     from mech import ALL
+    built = {}
     for name, builder in ALL:
         print(f"mech  {name}")
-        export(builder(), name)
+        built[name] = builder()
+        export(built[name], name)
+    print("mech  mechanism_assembly")
+    if not export_step(assembly(built), str(STEP / "mechanism_assembly.step")):
+        raise RuntimeError("STEP export failed: mechanism_assembly")
 
 
 def blender(script):
