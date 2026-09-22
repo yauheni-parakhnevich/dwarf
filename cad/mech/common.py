@@ -78,4 +78,6 @@ def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction
             part = part - cyl_z(r, z - depth, z + 0.01, x, y)
         elif direction == "up":
             part = part - cyl_z(r, z - 0.01, z + depth, x, y)
+        else:
+            raise ValueError(direction)
     return part

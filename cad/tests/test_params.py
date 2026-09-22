@@ -68,6 +68,7 @@ def _segment_distance_from_origin(p, q):
 
 def test_pan_linkage_lives_below_the_deck_and_above_the_electronics():
     assert P.Z_CRANK_TOP < P.Z_DECK - P.DECK_T - P.RING_T
+    assert P.SHAFT_BOTTOM < P.Z_LINK_BOTTOM                   # the tube leaves the shaft below the link
     assert P.Z_LINK_BOTTOM - P.SCREW_HEAD_H > P.Z_CHASSIS + P.CHASSIS_T + P.EDECK_STANDOFF + P.EDECK_T + 20
 
 
@@ -137,15 +138,29 @@ def test_window_and_intake_stay_above_the_belt_joint():
     assert P.Z_VENT_IN - P.VENT_IN_H / 2 > P.Z_BASE_TOP + P.RING_T
 
 
-def test_hat_brim_clears_the_collar_at_full_tilt():
-    # the brim's rear underside corner swings on a circle about the tilt axis
-    dx, dz = -P.HAT_BRIM_R, P.Z_HAT - P.Z_HEAD
+def tilt(point, deg):
+    """Rotate (x, z) about the tilt axis; positive is nose up, the machine's convention."""
+    dx, dz = point[0], point[1] - P.Z_HEAD
+    a = math.radians(deg)
+    return dx * math.cos(a) - dz * math.sin(a), P.Z_HEAD + dx * math.sin(a) + dz * math.cos(a)
+
+
+def test_tilt_helper_lifts_the_nose_for_positive_angles():
+    x, z = tilt((P.HEAD_R, P.Z_HEAD), P.TILT_STOP[1])
+    assert z > P.Z_HEAD and x < P.HEAD_R
+
+
+def test_hat_brim_clears_the_collar_at_both_stops():
+    # every point of the brim's rim swings on a circle about the tilt axis; the lowest it gets at
+    # either stop must stay above the collar's top, or inboard of the collar's inner wall
+    checked = 0
     for deg in P.TILT_STOP:
-        a = math.radians(deg)
-        x = dx * math.cos(a) - dz * math.sin(a)
-        z = P.Z_HEAD + dx * math.sin(a) + dz * math.cos(a)
-        if z < P.BEARD_TOP_Z + 1.0:
-            assert abs(x) < P.BEARD_R_IN_TOP - 3.0, (deg, x, z)     # inboard of the collar, with its texture
+        for corner in ((-P.HAT_BRIM_R, P.Z_HAT), (P.HAT_BRIM_R, P.Z_HAT), (-P.HAT_BRIM_R, P.Z_HAT + P.HAT_BRIM_T), (P.HAT_BRIM_R, P.Z_HAT + P.HAT_BRIM_T)):
+            x, z = tilt(corner, deg)
+            if z < P.BEARD_TOP_Z + 3.0:
+                assert abs(x) < P.BEARD_R_IN_TOP - 3.0, (deg, corner, x, z)
+                checked += 1
+    assert checked > 0, "no brim corner came near the collar; the check is not exercising anything"
 
 
 def test_hard_stops_sit_outside_the_fixture_limits():

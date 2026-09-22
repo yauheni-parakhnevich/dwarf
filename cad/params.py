@@ -159,25 +159,31 @@ Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 391
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
 PAN_SERVO_XY = (5.0, -60.0)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -70 .. -50)
-PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # link length, 48.33
+PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.21
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
 Z_PAN_SHAFT_FACE = 333.0       # the servo's output face, looking down; body top 373.5, under the deck
 Z_PAN_HORN_BOTTOM = Z_PAN_SHAFT_FACE - 2.5
 CRANK_T = 5.0
 LINK_T = 3.0
-Z_CRANK_TOP = Z_PAN_HORN_BOTTOM              # 330.5; the crank pockets the horn from below
-Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 325.5
-Z_LINK_TOP = Z_CRANK_BOTTOM                  # 325.5
-Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 322.5
-LINK_EYE_R = M3_CLEAR / 2 + 3.0
+PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
+PIN_BOSS_H = 0.5
+Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 333; the crank's top is the shaft face, the horn sits in its pocket
+Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 328
+Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 327.5; a boss on crank and foot takes the screw's clamp, not the link
+Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 324.5
+SHAFT_BOTTOM = Z_LINK_BOTTOM - 5.0           # the tube leaves the shaft below the link's plane
+LINK_EYE_R = PIN_BORE / 2 + 3.0
 PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
 PAN_FOOT_R_IN = CRANK_L - 4.0                # the column's foot reaches inward to the pin at CRANK_L
 DECK_SLOT = (PAN_COLUMN[0] - CLEAR, (PAN_COLUMN[1] ** 2 + (PAN_COLUMN[2] / 2) ** 2) ** 0.5 + CLEAR, 76.0)   # r0, r1 (the box's corners), half-angle
 PAN_HANGER = 10.0                            # square columns under the deck the servo tabs screw to
+PAN_SERVO_FIT = 0.5                          # the body slides up between the hangers; CLEAR is too tight over 40 mm
 PAN_STOP_DEG = 65.0
 STOP_POST_R = 60.0
 STOP_POST_D = 6.0
+STOP_PIN_TOP = Z_PLATE_TOP - 1.5          # separate pins glued into the deck: 3.5 mm of the tab's 5, 1.5 under the yoke
+STOP_PIN_DEPTH = 6.0
 STOP_TAB_W = 6.0
 TILT_STOP = (-35.0, 45.0)
 
@@ -204,7 +210,7 @@ PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y 
                 (max(x for x, _ in pan_hangers()) + PAN_HANGER / 2 + 2.0, max(y for _, y in pan_hangers()) + PAN_HANGER / 2 + 2.0))
 
 # --- head, ears, tilt ---------------------------------------------------------------------
-EAR_R = 9.0
+EAR_R = 12.0                   # both ears are the coupler's diameter
 EAR_OUT_Y = HEAD_R + 6.0       # outer face of the ear boss / coupler
 YOKE_GAP = 1.0
 YOKE_ARM_T = 8.0
@@ -213,12 +219,26 @@ YOKE_RING_R_IN = 44.0          # the yoke stands on a ring on the plate's rim
 YOKE_RING_T = 3.0
 YOKE_SCREW_R = 46.7
 YOKE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
-COUPLER_D = 20.0
+COUPLER_D = 24.0               # no boss: the coupler passes the wall bore from outside
+HEAD_BORE_D = COUPLER_D + 2 * CLEAR
+HORN_ACCESS_D = 4.6            # counterbores down the coupler for the horn screws' driver
+HORN_SCREWS_USED = (0.0, 180.0)   # two of the horn's four holes
+INSERT_M4_D = 5.6
+INSERT_M4_DEPTH = 8.0
 COUPLER_HEX_AF = 17.0
 TILT_SERVO_SHAFT_Y = 25.0      # servo shaft face inside the head, +Y side
-BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 10.1
+BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 10.1; the cradle plate's +Y face, the tabs sit on it
 BULKHEAD_T = 2.5
-BULKHEAD_BOSS_D = 9.0          # bosses round the four insert holes, INSERT_DEPTH + 1 tall
+BULKHEAD_BOSS_D = 9.0          # bosses round the four insert holes, INSERT_DEPTH + 1 tall, on the -Y side
+# the cradle is assembled with the servo on the bench and slides in through the face opening
+# along -X, into two rails on the back of the head; a lip on the lower rail and a stop block on
+# the face cap box it in. No screw is driven inside the head.
+CRADLE_X = (-20.0, 14.0)
+CRADLE_Z = (424.0, 492.0)
+RAIL_T = 3.0                   # the rails' lips either side of the plate
+RAIL_H = 6.0                   # how far a rail reaches above/below the plate's edge
+RAIL_LIP_L = 2.5               # the lower rail's front lip, which the plate drops in behind
+FACE_STOP_Z = (478.0, 490.0)   # the face cap's stop block bears on the plate's top front edge
 HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
 FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
