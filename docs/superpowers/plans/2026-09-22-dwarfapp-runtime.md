@@ -2353,6 +2353,29 @@ This gnome's BLE address is `54:43:B2:44:2F:9E`. CoreBluetooth does not expose a
 it gives each peripheral an opaque per-app `identifier` — so the app discovers by service UUID,
 then remembers the identifier of whatever it connected to. Advertised name is `dwarf`.
 
+### What the firmware now requires, which this task's original text predates
+
+**Both characteristics demand an authenticated, encrypted link.** The firmware requires
+bonding with LE Secure Connections and a passkey, so:
+
+- The **first** write to `cmd`, or the first subscription to `status`, triggers iOS's own
+  pairing dialog. The owner types the six-digit passkey the gnome prints over its serial
+  console on every boot. There is no API to answer that dialog and none is wanted.
+- Until that has happened, writes fail with `CBATTError.insufficientAuthentication` or
+  `.insufficientEncryption`. That is a **distinct state from "not connected"**, and the app
+  must be able to say so — "the gnome is there and will not talk to you until you pair with
+  it" is a completely different instruction to the owner than "no gnome found". Expose it.
+- After bonding, iOS reconnects and re-encrypts silently. The owner does this once.
+- A gnome whose bonds were erased over serial will refuse the phone until it pairs again.
+
+**The gnome disconnects a central that has not authenticated within ten seconds**, to stop
+strangers squatting on its connection slots. A connection that keeps dropping about ten
+seconds after it forms means pairing is not completing, not that the link is flaky.
+
+**`isConnected` is read from the main actor and written from CoreBluetooth's queue.** The
+review of Task 13 flagged this as latent because `FakeTransport` is never driven; with a real
+radio it becomes live. Guard it.
+
 - [ ] **Step 1: Write the transport**
 
 Create `ios/DwarfApp/App/BluetoothTransport.swift`:
@@ -2376,11 +2399,26 @@ public final class BluetoothTransport: NSObject, Transport {
     /// One JSON object per write; the spec caps a message at 180 bytes.
     public let framing: Framing = .perWrite
 
-    public private(set) var isConnected = false {
-        didSet {
-            guard isConnected != oldValue else { return }
-            onConnectionChange?(isConnected)
-        }
+    /// Written from CoreBluetooth's queue, read from whatever queue asks. The link's own
+    /// state is not a place to be casual about which thread is looking.
+    private let lock = NSLock()
+    private var connected = false
+    public var isConnected: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return connected
+    }
+
+    /// True when the gnome is in range but has refused us for want of a bond. A different
+    /// thing entirely from being disconnected, and the owner needs a different instruction:
+    /// pair with it, using the passkey it prints over serial.
+    public private(set) var needsPairing = false
+
+    private func setConnected(_ value: Bool) {
+        lock.lock()
+        let changed = connected != value
+        connected = value
+        lock.unlock()
+        if changed { onConnectionChange?(value) }
     }
     public var onReceive: ((Data) -> Void)?
     public var onConnectionChange: ((Bool) -> Void)?
