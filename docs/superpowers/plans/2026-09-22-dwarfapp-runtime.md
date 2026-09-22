@@ -368,7 +368,7 @@ The weights are AGPL-3.0 (Ultralytics), which is fine for this private project.
 Run this through a 3.11 virtual environment, not the system Python:
 
     uv venv --python /opt/homebrew/bin/python3.11 .venv-model
-    .venv-model/bin/pip install -r tools/requirements-model.txt
+    uv pip install --python .venv-model/bin/python -r tools/requirements-model.txt
     .venv-model/bin/python tools/export_model.py
 """
 
@@ -432,7 +432,8 @@ Create `ios/DwarfApp/App/Models/.gitignore`:
 ```bash
 cd /Users/Yauheni_Parakhnevich/Workspace/dwarf
 uv venv --python /opt/homebrew/bin/python3.11 .venv-model
-.venv-model/bin/pip install -r tools/requirements-model.txt
+# uv venv does not install pip into the environment, so install through uv itself.
+uv pip install --python .venv-model/bin/python -r tools/requirements-model.txt
 .venv-model/bin/python tools/export_model.py
 ```
 
@@ -452,7 +453,21 @@ print(m.get_spec().description)
 
 Write the input name, the two output names and their shapes into the commit message. Task 5 decodes exactly these, and guessing is how a whole afternoon disappears.
 
-The expected shape, which Task 5's code assumes: one image input at `imgsz × imgsz`, and two outputs — `confidence` of shape `(N, 80)` and `coordinates` of shape `(N, 4)`, the coordinates being `[x_center, y_center, width, height]` normalised to the input square. **If the real spec differs, stop and report it** rather than adapting Task 5 quietly.
+**Measured on 2026-09-22 with ultralytics 8.3.40 and coremltools 8.1**, so this step is a
+check that a re-export still matches rather than a discovery:
+
+```
+INPUT  image                640 x 640 image
+INPUT  iouThreshold         double
+INPUT  confidenceThreshold  double
+OUTPUT confidence           (N, 80)
+OUTPUT coordinates          (N, 4)
+```
+
+Three inputs, not one, and none of them is marked optional. `coordinates` rows are
+`[x_center, y_center, width, height]` normalised to the input square. Task 5 supplies all
+three and selects the image input by type rather than by name order. **If a re-export
+differs from this, stop and report it** rather than adapting Task 5 quietly.
 
 - [ ] **Step 6: Commit**
 
@@ -1483,14 +1498,15 @@ import CoreVideo
 /// Mac; what is left here can only be exercised on the phone, and Task 6 does that.
 public final class CoreMLDetector: Detector {
     private let model: MLModel
-    private let inputName: String
+    private let imageInputName: String
     private let minConfidence: Double
+    private let iouThreshold: Double
 
     /// - Parameter computeUnits: the A9 has no Neural Engine, so `.all` means GPU with a
     ///   CPU fallback. Left configurable because M0 may find the CPU steadier under
     ///   thermal pressure than a GPU competing with the camera.
     public init(modelName: String = "yolo11n", bundle: Bundle = .main,
-                minConfidence: Double = 0.25,
+                minConfidence: Double = 0.25, iouThreshold: Double = 0.45,
                 computeUnits: MLComputeUnits = .all) throws {
         guard let url = bundle.url(forResource: modelName, withExtension: "mlmodelc") else {
             throw DetectorError.modelMissing(name: modelName)
@@ -1499,16 +1515,29 @@ public final class CoreMLDetector: Detector {
         configuration.computeUnits = computeUnits
         self.model = try MLModel(contentsOf: url, configuration: configuration)
         self.minConfidence = minConfidence
+        self.iouThreshold = iouThreshold
 
-        guard let input = model.modelDescription.inputDescriptionsByName.keys.first else {
+        // The export has three inputs, not one: `image`, `iouThreshold` and
+        // `confidenceThreshold`. Picking `keys.first` would hand a pixel buffer to
+        // whichever of them a Dictionary happened to enumerate first — a bug that works
+        // on the bench and fails in the garden, or the other way round. Select by type.
+        let inputs = model.modelDescription.inputDescriptionsByName
+        guard let image = inputs.first(where: { $0.value.type == .image })?.key else {
             throw DetectorError.unexpectedOutputs
         }
-        self.inputName = input
+        self.imageInputName = image
     }
 
     public func detect(input: CVPixelBuffer) throws -> [RawBox] {
-        let features = try MLDictionaryFeatureProvider(
-            dictionary: [inputName: MLFeatureValue(pixelBuffer: input)])
+        // None of the three inputs is optional in the spec, so all three are supplied.
+        // Thresholding inside the model is also cheaper: suppressed boxes never become
+        // rows for BoxDecoder to walk. It still checks the confidence itself, because a
+        // re-export with different defaults should not quietly widen what gets fired at.
+        let features = try MLDictionaryFeatureProvider(dictionary: [
+            imageInputName: MLFeatureValue(pixelBuffer: input),
+            "iouThreshold": MLFeatureValue(double: iouThreshold),
+            "confidenceThreshold": MLFeatureValue(double: minConfidence)
+        ])
         let output = try model.prediction(from: features)
 
         guard let confidence = output.featureValue(for: "confidence")?.multiArrayValue,

@@ -6,7 +6,7 @@ The weights are AGPL-3.0 (Ultralytics), which is fine for this private project.
 Run this through a 3.11 virtual environment, not the system Python:
 
     uv venv --python /opt/homebrew/bin/python3.11 .venv-model
-    .venv-model/bin/pip install -r tools/requirements-model.txt
+    uv pip install --python .venv-model/bin/python -r tools/requirements-model.txt
     .venv-model/bin/python tools/export_model.py
 """
 
