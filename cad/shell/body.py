@@ -9,10 +9,10 @@ cut into the profile; what is left standing on it is the hem, the belly and the 
 fold. Only the boots, the buckle, the buttons, the sleeves and the window's hood stand proud,
 none of them by more than a hand's worth, and none where an interface part meets the wall.
 
-Almost all of that is one function per section, passed to `revolve` as its swell, so the coat
-is a single smooth surface rather than a barrel with lumps welded to it - a voxel remesh keeps
-every crease a union leaves, and a sleeve made of overlapping balls reads as overlapping balls.
-Only the buckle and the hood are joined solids, because both want the hard edge a union gives.
+Almost all of that is one function per section, passed to `revolve` as its swell and written
+out of the relief helpers in `common`, so the coat is a single smooth surface rather than a
+barrel with lumps welded to it. Only the buckle and the hood are joined solids, because both
+want the hard edge a union gives.
 
 Where the skin may not move, and why:
   base 214..238    belt_flange_lower follows the wall height by height over its 16 mm
@@ -32,8 +32,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (P, add_floor, cut_z, ellipsoid, export_raw, finish, fresh_scene,  # noqa: E402
-                    join_remesh, revolve, sampled, skin_point)
+from common import (P, add_floor, arc, cut_z, dome, ellipsoid, export_raw, finish,  # noqa: E402
+                    fresh_scene, join_remesh, lerp, revolve, ridge, sampled, skin_point, smax, wrap)
 
 SEG = 192            # rings of the revolve: 1.9 degrees, three millimetres of arc at the belly
 STEP = 1.5           # rows up it, so a swell can carve between the profile's own points
@@ -43,19 +43,8 @@ NOISE_SCALE = 14.0
 FOLDS = 10
 
 
-def _lerp(x, table):
-    """Piecewise-linear lookup over ascending (x, value) pairs, flat beyond either end."""
-    if x <= table[0][0]:
-        return table[0][1]
-    for (x0, v0), (x1, v1) in zip(table, table[1:]):
-        if x <= x1:
-            return v0 + (v1 - v0) * (x - x0) / (x1 - x0)
-    return table[-1][1]
 
 
-def _wrap(th):
-    """The revolve walks theta from 0 to 2 pi; the coat is described about its front."""
-    return (th + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def _folds(th, amp, twist=0.0):
@@ -79,47 +68,10 @@ def _back(th, keep, fade):
     The back carries the filler neck on the base and the fan's frame on the torso, and both are
     let into the wall at a radius taken from shell_r, so both want their patch left alone.
     """
-    a = 180.0 - abs(math.degrees(_wrap(th)))
+    a = 180.0 - abs(math.degrees(wrap(th)))
     return max(0.0, min(1.0, (a - keep) / (fade - keep)))
 
 
-def _arc(th, deg, r_nom):
-    """Millimetres of arc from theta round to the meridian at `deg`, the short way."""
-    return _wrap(th - math.radians(deg)) * r_nom
-
-
-def _smax(a, b, k=1.5):
-    """max(a, b) rounded over k millimetres, so a clamp never leaves a hard terrace.
-
-    It rounds outward - half a k at the crossover, nothing away from it - which is the side to
-    err on: the clamp is there to hold the skin off something inside it.
-    """
-    return 0.5 * (a + b + math.sqrt((a - b) ** 2 + k * k))
-
-
-def _dome(u, v, ru, rv, h):
-    """A relief dome `h` proud at its middle, ru by rv wide, and level with the skin at its edge."""
-    t = (u / ru) ** 2 + (v / rv) ** 2
-    return h * (1.0 - t) if t < 1.0 else 0.0
-
-
-def _ridge(u, v, path, sharp=1.0):
-    """A rounded relief ridge through `path`, a list of (u, v, half width, height).
-
-    Width and height run along each leg, so one call draws a sleeve that tapers from a shoulder
-    to a wrist and swells again into a mitten. Legs are taken at their tallest, not summed, so
-    the ridge never grows a bump where two of them overlap.
-    """
-    best = 0.0
-    for (u0, v0, w0, h0), (u1, v1, w1, h1) in zip(path, path[1:]):
-        du, dv = u1 - u0, v1 - v0
-        t = ((u - u0) * du + (v - v0) * dv) / (du * du + dv * dv)
-        t = max(0.0, min(1.0, t))
-        d = math.hypot(u - u0 - t * du, v - v0 - t * dv)
-        w = w0 + (w1 - w0) * t
-        if d < w:
-            best = max(best, (h0 + (h1 - h0) * t) * (1.0 - (d / w) ** (2.0 * sharp)))
-    return best
 
 
 def _lump(name, profile, z0, z1, swell=None):
@@ -187,7 +139,7 @@ _BOOT_CREASE = [(0.0, 14.0, 3.5), (48.0, 12.0, 4.0), (-48.0, 12.0, 4.0)]
 
 def _boot_mask(th):
     """1 down the middle of either boot, 0 off the sides of both and in the notch between them."""
-    u = min(abs(_arc(th, BOOT_DEG, R_BASE)), abs(_arc(th, -BOOT_DEG, R_BASE)))
+    u = min(abs(arc(th, BOOT_DEG, R_BASE)), abs(arc(th, -BOOT_DEG, R_BASE)))
     return (1.0 - (u / BOOT_HALF) ** 2) ** 1.2 if u < BOOT_HALF else 0.0
 
 
@@ -202,16 +154,16 @@ def _base_dr(th, z):
     over a toe cap would undo the one place the eye is asked to read a foot.
     """
     prof = P.shell_r(P.BASE_PROFILE, z)
-    a = abs(math.degrees(_wrap(th)))
+    a = abs(math.degrees(wrap(th)))
     lift = max(0.0, min(1.0, (HEM_LIFT[1] - a) / (HEM_LIFT[1] - HEM_LIFT[0])))
-    well = _lerp(z + HEM_SCALLOP * math.cos(FOLDS * th), _WELL) * lift
+    well = lerp(z + HEM_SCALLOP * math.cos(FOLDS * th), _WELL) * lift
     g = _boot_mask(th)
-    boot = max(0.0, _lerp(z, _BOOT) - well) * g
-    amp = _lerp(z, _SKIRT_FOLDS) * _back(th, 10.0, 26.0) * (1.0 - g * min(1.0, boot / 6.0))
-    d = well + _lerp(z, _BELT) + _folds(th, amp, math.radians(6.0 * (z - HEM_Z) / 110.0))
+    boot = max(0.0, lerp(z, _BOOT) - well) * g
+    amp = lerp(z, _SKIRT_FOLDS) * _back(th, 10.0, 26.0) * (1.0 - g * min(1.0, boot / 6.0))
+    d = well + lerp(z, _BELT) + _folds(th, amp, math.radians(6.0 * (z - HEM_Z) / 110.0))
     for deg, ru, depth in _BOOT_CREASE:
-        d -= _dome(_arc(th, deg, R_BASE), z - 62.0, ru, 28.0, depth)
-    d = _smax(d, _lerp(z, _FLOOR_KEEP) - prof)           # clear of the raised floor and its skirt
+        d -= dome(arc(th, deg, R_BASE), z - 62.0, ru, 28.0, depth)
+    d = smax(d, lerp(z, _FLOOR_KEEP) - prof)           # clear of the raised floor and its skirt
     return d + boot
 
 
@@ -274,14 +226,14 @@ def _torso_feat(th, z):
 
     Kept apart from the cloth so the window's rule can be checked against it on its own.
     """
-    th = _wrap(th)
-    d = _ridge(_arc(th, DEG_PLACKET, R_TORSO), z,
+    th = wrap(th)
+    d = ridge(arc(th, DEG_PLACKET, R_TORSO), z,
                [(0.0, 252.0, 13.0, 0.0), (0.0, 262.0, 13.0, 3.0),
                 (0.0, 314.0, 13.0, 3.0), (0.0, 324.0, 13.0, 0.0)], sharp=2.0)
     for zb in _BUTTONS:
-        d = max(d, _dome(_arc(th, DEG_PLACKET, R_TORSO), z - zb, 9.0, 9.0, 6.0))
+        d = max(d, dome(arc(th, DEG_PLACKET, R_TORSO), z - zb, 9.0, 9.0, 6.0))
     for s in (1, -1):
-        d = max(d, _ridge(_arc(th, 0.0, R_TORSO), z,
+        d = max(d, ridge(arc(th, 0.0, R_TORSO), z,
                           [(s * math.radians(deg) * R_TORSO, zv, w, h) for deg, zv, w, h in _ARM]))
     return d
 
@@ -294,11 +246,11 @@ def _torso_dr(th, z):
     left where it is, all the way up to the window's margin. Above that margin the chest does
     swell, and the sides carry the coat's folds, which stop short of the fan's patch.
     """
-    th = _wrap(th)
+    th = wrap(th)
     s4 = math.sin(th) ** 4                        # 0 on the centre line, 0 at the back
-    d = -TUCK_D * s4 * _lerp(z, _TUCK)
-    d += _folds(th, FOLD_D * _flank(th) * _lerp(z, _BACK_FOLDS))
-    d += CHEST_D * _front(th) * _lerp(z, _CHEST)
+    d = -TUCK_D * s4 * lerp(z, _TUCK)
+    d += _folds(th, FOLD_D * _flank(th) * lerp(z, _BACK_FOLDS))
+    d += CHEST_D * _front(th) * lerp(z, _CHEST)
     return d + _torso_feat(th, z)
 
 

@@ -34,6 +34,72 @@ def fresh_scene():
     return sc
 
 
+# --- relief ---------------------------------------------------------------------------------
+# What a swell is written out of. Every one of these answers in millimetres of radius, so they
+# add and subtract and take each other's maximum, and a section's whole surface stays one smooth
+# sheet. That is the point: a voxel remesh keeps every crease a union of solids leaves, and a
+# sleeve built of overlapping balls comes out reading as overlapping balls.
+
+
+def lerp(x, table):
+    """Piecewise-linear lookup over ascending (x, value) pairs, flat beyond either end."""
+    if x <= table[0][0]:
+        return table[0][1]
+    for (x0, v0), (x1, v1) in zip(table, table[1:]):
+        if x <= x1:
+            return v0 + (v1 - v0) * (x - x0) / (x1 - x0)
+    return table[-1][1]
+
+
+def wrap(th):
+    """A revolve walks theta from 0 to 2 pi; a face or a coat is described about its front."""
+    return (th + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def arc(th, deg, r_nom):
+    """Millimetres of arc from theta round to the meridian at `deg`, the short way."""
+    return wrap(th - math.radians(deg)) * r_nom
+
+
+def smax(a, b, k=1.5):
+    """max(a, b) rounded over k millimetres, so a clamp never leaves a hard terrace.
+
+    It rounds outward - half a k at the crossover, nothing away from it - which is the side to
+    err on: a clamp is there to hold the skin off something inside it.
+    """
+    return 0.5 * (a + b + math.sqrt((a - b) ** 2 + k * k))
+
+
+def dome(u, v, ru, rv, h, soft=1.0):
+    """A relief dome `h` proud at its middle, ru by rv wide, level with the skin at its edge.
+
+    `soft` above 1 flattens the edge into the skin as well. Worth paying for wherever the dome
+    is tall next to its width: solidify walls the inside of a crease, and a crease sharper than
+    the wall folds that inside surface back through itself.
+    """
+    t = (u / ru) ** 2 + (v / rv) ** 2
+    return h * (1.0 - t) ** soft if t < 1.0 else 0.0
+
+
+def ridge(u, v, path, sharp=1.0, soft=1.0):
+    """A rounded relief ridge through `path`, a list of (u, v, half width, height).
+
+    Width and height run along each leg, so one call draws a sleeve that tapers from a shoulder
+    to a wrist and swells again into a mitten, or a moustache that thins as it sweeps out. Legs
+    are taken at their tallest, not summed, so the ridge never grows a bump where two overlap.
+    """
+    best = 0.0
+    for (u0, v0, w0, h0), (u1, v1, w1, h1) in zip(path, path[1:]):
+        du, dv = u1 - u0, v1 - v0
+        t = ((u - u0) * du + (v - v0) * dv) / (du * du + dv * dv)
+        t = max(0.0, min(1.0, t))
+        d = math.hypot(u - u0 - t * du, v - v0 - t * dv)
+        w = w0 + (w1 - w0) * t
+        if d < w:
+            best = max(best, (h0 + (h1 - h0) * t) * (1.0 - (d / w) ** (2.0 * sharp)) ** soft)
+    return best
+
+
 def _link(name, bm):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     me = bpy.data.meshes.new(name)
@@ -84,6 +150,30 @@ def revolve(name, profile, segments=96, lean=None, swell=None):
     bm = bmesh.new()
     rows = [_ring(bm, r, z, segments, lean(z) if lean else 0.0, swell) for r, z in profile]
     _bridge(bm, rows, segments)
+    return _link(name, bm)
+
+
+def loft(name, rows_at, segments=96, closed=True):
+    """A surface swept from a profile that is allowed to change with the angle.
+
+    `rows_at(theta)` returns that angle's profile as (r, z) points: always the same number of
+    them, always in the same order. Where `revolve` sweeps one profile and a swell moves its
+    points in radius, this sweeps a family of them, which is what a hem that hangs lower at the
+    front than at the side needs - that is a change in z, and no radius offset can say it.
+
+    `closed` joins the profile's last point back to its first, which makes a solid ring out of
+    a profile that runs up one face and down the other: watertight, and walled by its own two
+    surfaces rather than by solidify. The profile must not repeat its first point to say so -
+    that would leave two vertices in the same place and a seam of open edges between them.
+    """
+    bm = bmesh.new()
+    cols = [[bm.verts.new((r * math.cos(th), r * math.sin(th), z))
+             for r, z in rows_at(th)]
+            for th in (2 * math.pi * i / segments for i in range(segments))]
+    for a, b in zip(cols, cols[1:] + cols[:1]):
+        for j in range(len(a) if closed else len(a) - 1):
+            k = (j + 1) % len(a)
+            bm.faces.new((a[j], a[k], b[k], b[j]))
     return _link(name, bm)
 
 
