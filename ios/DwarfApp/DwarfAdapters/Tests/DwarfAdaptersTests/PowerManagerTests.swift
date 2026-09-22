@@ -104,5 +104,34 @@ final class PowerManagerTests: XCTestCase {
 
         XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: .nan, uptime: 61).pauseDetection)
     }
+
+    func testTheGnomesOwnThermometerIsBelievedBeforeThePhonesIs() {
+        // M0 ran ten minutes at full inference load and iOS never left nominal, while the
+        // phone was warm to the touch. In open air that is fine; sealed in a gnome in the
+        // sun it is not, and the phone is rated to 35 C ambient.
+        let (power, _) = manager()
+
+        let warm = power.evaluate(thermal: .nominal, meanLuma: 120, ambientC: 33, uptime: 0)
+        XCTAssertEqual(warm.cycleDivisor, 2, "back off before iOS notices")
+        XCTAssertTrue(warm.fan)
+        XCTAssertFalse(warm.pauseDetection)
+
+        let hot = power.evaluate(thermal: .nominal, meanLuma: 120, ambientC: 37, uptime: 1)
+        XCTAssertTrue(hot.pauseDetection)
+        XCTAssertTrue(hot.disarm)
+        XCTAssertFalse(hot.charger, "charging a phone that is already too hot is the wrong way round")
+    }
+
+    func testNoAmbientReadingFallsBackToThePhone() {
+        let (power, _) = manager()
+        let decision = power.evaluate(thermal: .nominal, meanLuma: 120, ambientC: nil, uptime: 0)
+        XCTAssertEqual(decision.cycleDivisor, 1)
+        XCTAssertFalse(decision.pauseDetection)
+
+        // A failed probe reports a sentinel the firmware turns into a fault; if a
+        // non-finite value ever reached here it must not read as cold.
+        let broken = power.evaluate(thermal: .nominal, meanLuma: 120, ambientC: .nan, uptime: 1)
+        XCTAssertEqual(broken.cycleDivisor, 1)
+    }
 }
 

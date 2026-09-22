@@ -106,7 +106,9 @@ public final class Runtime {
         guard let gray = converter.gray(from: pixelBuffer) else { return }
 
         let thermal = thermalOverride ?? ProcessInfo.processInfo.thermalState
-        let decision = power.evaluate(thermal: thermal, meanLuma: gray.meanLuma, uptime: uptime)
+        let status = link.status(asOf: uptime)
+        let decision = power.evaluate(thermal: thermal, meanLuma: gray.meanLuma,
+                                      ambientC: status?.temp, uptime: uptime)
         apply(decision, at: uptime)
 
         if decision.pauseDetection { return }
@@ -119,7 +121,7 @@ public final class Runtime {
 
         let output = cycle.process(frame: gray,
                                    detector: report,
-                                   status: link.status(asOf: uptime),
+                                   status: status,
                                    now: clock.now,
                                    uptime: uptime)
         mutate { $0.decision = output.decision; $0.tracks = output.tracks
