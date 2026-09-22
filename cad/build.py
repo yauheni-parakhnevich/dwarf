@@ -17,10 +17,10 @@ def mech():
     from mech.common import assembly, export, STEP
     from mech import ALL
     built = {}
-    for name, builder in ALL:
-        print(f"mech  {name}")
-        built[name] = builder()
-        export(built[name], name)
+    for spec in ALL:                       # export() writes the print frame, not the assembly
+        print(f"mech  {spec.name}")
+        built[spec.name] = spec.build()
+        export(built[spec.name], spec.name)
     print("mech  mechanism_assembly")
     if not export_step(assembly(built), str(STEP / "mechanism_assembly.step")):
         raise RuntimeError("STEP export failed: mechanism_assembly")

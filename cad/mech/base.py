@@ -52,6 +52,9 @@ CAP_END_T = 4.0                                     # the closed end, which the 
 CAP_L = 14.0
 CAP_THREAD_X = CAP_END_T + 0.5
 CAP_THREAD_LEN = 9.0
+# Its neck belongs to the base's shell, which the mechanism does not contain: the cap goes on
+# from outside, mouth (its +X end) against the skin at Z_FILLER, closed end furthest out.
+FILLER_CAP_AT = Pos(-(P.shell_r(P.BASE_PROFILE, P.Z_FILLER) + CAP_L), 0.0, P.Z_FILLER)
 GROOVE_R = (P.FILLER_D / 2 + 0.4, P.FILLER_CAP_THREAD_MAJOR / 2 - 1.4)
 
 # --- the bridge over the canister -------------------------------------------------------------
@@ -101,8 +104,17 @@ def filler_neck():
     return neck - cyl_x(P.FILLER_D / 2, CAP_END_T - 1, CAP_THREAD_X + CAP_THREAD_LEN + 11)
 
 
-def _tank_head():
-    """The tank head in its own frame, mouth at x = 0, stub rising +Z off its shoulder."""
+@part("tank_head", placement=TANK_HEAD_AT)
+def tank_head():
+    """Screws onto the canister's neck. Carries the dip tube, the float switch, a vent and the filler.
+
+    Drawn in the frame it prints in, mouth down at the origin with the stub rising off its
+    shoulder; TANK_HEAD_AT turns it to face the neck, which points -X.
+
+    The thread is retention only - the canister's own gasket seals - so it is cut 0.4 mm over
+    size into a bore that is the thread's own major diameter, and it fades at both ends. The
+    stub takes the hose that climbs to the filler cap at the back of the base.
+    """
     cap = cyl_x(TANK_HEAD_R, 0, TANK_HEAD_L)
     cap = cap + cyl_z(STUB_R, TANK_HEAD_R - 6.0, STUB_TOP, STUB_X, 0.0)    # the filler stub
     cap = cap - cyl_x(BORE_R, -1, CONE_X0)                                 # thread bore
@@ -112,17 +124,6 @@ def _tank_head():
     for y, z, r in PORTS.values():                                         # out through the nose
         cap = cap - cyl_x(r, P.CAN_THREAD_LEN - 1, TANK_HEAD_L + 1, y, z)
     return cap
-
-
-@part("tank_head")
-def tank_head():
-    """Screws onto the canister's neck. Carries the dip tube, the float switch, a vent and the filler.
-
-    The thread is retention only - the canister's own gasket seals - so it is cut 0.4 mm over
-    size into a bore that is the thread's own major diameter, and it fades at both ends. The
-    stub takes the hose that climbs to the filler cap at the back of the base.
-    """
-    return TANK_HEAD_AT * _tank_head()
 
 
 def tower_inserts():
@@ -162,7 +163,7 @@ def tank_cradle():
     return insert_holes(cradle, [(x, y, PLATE_Z0) for x, y in tower_inserts()])
 
 
-@part("filler_cap")
+@part("filler_cap", placement=FILLER_CAP_AT)
 def filler_cap():
     """Retention thread only; an O-ring in the groove seals."""
     cap = cyl_x(CAP_R, 0, CAP_L) + cyl_x(CAP_R + 4, 0, 4)                  # body plus a grip flange

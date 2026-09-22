@@ -3,6 +3,7 @@ from pathlib import Path
 from build123d import (Axis, Box, Compound, Cylinder, Location, Plane, Polygon, Pos, Rot, Part,
                        export_step, export_stl, mirror, revolve)
 import params as P
+from mech import ALL
 
 OUT = Path(__file__).resolve().parents[1] / "out"
 STEP = OUT / "step"
@@ -110,26 +111,20 @@ def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction
     return part
 
 
-def _placed(name, p):
-    """Every copy of a part in the assembly, as (label, solid).
-
-    All but two are modelled where they sit. The hard-stop pin is printed once and fitted
-    twice, and the filler cap's neck belongs to the base's shell, which this compound does
-    not contain, so the cap is carried out to where that neck comes through the back.
-    """
-    if name == "stop_pin":
-        return [(name, Location() * p), (name + "_mirrored", mirror(p, about=Plane.XZ))]
-    if name == "filler_cap":
-        skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
-        return [(name, Pos(-(skin + p.bounding_box().max.X), 0.0, P.Z_FILLER) * p)]
-    return [(name, Location() * p)]
-
-
 def assembly(parts: dict) -> Compound:
-    """Every part at its assembled position, each child carrying its name."""
+    """Every part carried from its print frame to where it sits, each child carrying its name.
+
+    The stop pin is the one thing this still knows by name: it is printed once and fitted
+    twice, and a mirror is not a Location, so it cannot be declared as a placement.
+    """
+    at = {spec.name: spec.placement for spec in ALL}
     children = []
     for name, p in parts.items():
-        for label, child in _placed(name, p):
-            child.label = label
-            children.append(child)
+        child = at.get(name, Location()) * p
+        child.label = name
+        children.append(child)
+        if name == "stop_pin":
+            twin = mirror(child, about=Plane.XZ)
+            twin.label = name + "_mirrored"
+            children.append(twin)
     return Compound(children=children)

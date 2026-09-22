@@ -10,7 +10,15 @@ from mech.common import box, cyl_x, cyl_z, cyl_y, polar, servo_body, skin_solid
 def parts():
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
     from mech import ALL
-    return {name: fn() for name, fn in ALL}
+    return {spec.name: spec.build() for spec in ALL}
+
+
+@pytest.fixture(scope="session")
+def placed(parts):
+    """The same parts carried to where they sit in the machine."""
+    from mech import ALL
+    at = {spec.name: spec.placement for spec in ALL}
+    return {name: at[name] * p for name, p in parts.items()}
 
 
 def _bb(p):
@@ -342,12 +350,26 @@ def test_assembly_step_exists_after_build(tmp_path):
     from mech.common import assembly
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
     from mech import ALL
-    comp = assembly({n: f() for n, f in ALL})
+    comp = assembly({spec.name: spec.build() for spec in ALL})
     # 30 parts; the hatch bosses are four solids and the nozzle bosses two
     assert len(comp.solids()) == 35
     labels = [c.label for c in comp.children]
     assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
     assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
+    # the two parts that declare a placement are drawn at the origin and land where it says
+    from mech.base import CAP_L, STUB_TOP, TANK_HEAD_L
+    at = {c.label: c.bounding_box() for c in comp.children}
+    raw = {spec.name: spec.build().bounding_box() for spec in ALL if spec.placement != Location()}
+    neck_x = P.CANISTER_XY[0] - P.CANISTER[0] / 2
+    assert math.isclose(raw["tank_head"].min.X, 0.0, abs_tol=1e-6)            # drawn mouth at the origin
+    assert math.isclose(at["tank_head"].max.X, neck_x, abs_tol=1e-6)          # fitted on the neck
+    assert math.isclose(at["tank_head"].min.X, neck_x - TANK_HEAD_L, abs_tol=1e-6)
+    assert math.isclose(at["tank_head"].max.Z, P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_TOP, abs_tol=1e-6)
+    skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
+    assert math.isclose(raw["filler_cap"].min.X, 0.0, abs_tol=1e-6)
+    assert math.isclose(at["filler_cap"].max.X, -skin, abs_tol=1e-6)          # mouth on the skin
+    assert math.isclose(at["filler_cap"].min.X, -skin - CAP_L, abs_tol=1e-6)  # ... closed end outboard
+    assert math.isclose((at["filler_cap"].min.Z + at["filler_cap"].max.Z) / 2, P.Z_FILLER, abs_tol=1e-6)
     step = tmp_path / "mechanism_assembly.step"                  # the build writes exactly this
     assert export_step(comp, str(step))
     assert step.stat().st_size > 0
@@ -356,7 +378,7 @@ def test_assembly_step_exists_after_build(tmp_path):
     assert {c.label for c in back.children} == set(labels)
 
 
-def test_no_two_parts_in_a_group_overlap(parts):
+def test_no_two_parts_in_a_group_overlap(placed):
     """Three groups - what is fixed, what turns with the plate, what nods with the head - each
     checked against itself. The linkage is left out: it sweeps, and its own test covers it.
 
@@ -373,12 +395,12 @@ def test_no_two_parts_in_a_group_overlap(parts):
     head = {"coupler", "ear_boss", "tilt_cradle", "cradle_rails", "face_stop", "head_lip",
             "nozzle_holder", "nozzle_bosses"}
     linkage = {"servo_crank", "pan_link", "stop_pin"}
-    groups = [[n for n in parts if n not in pan | head | linkage], sorted(pan), sorted(head)]
+    groups = [[n for n in placed if n not in pan | head | linkage], sorted(pan), sorted(head)]
     for group in groups:
         for a, b in itertools.combinations(group, 2):
             if a in section and b in section and section[a] == section[b]:
                 continue
-            crush = (parts[a] & parts[b])
+            crush = (placed[a] & placed[b])
             if {a, b} == {"divider", "belt_flange_upper"}:
                 bb = crush.bounding_box()
                 assert math.isclose(bb.min.Z, P.Z_BASE_TOP, abs_tol=1e-6)
