@@ -58,6 +58,8 @@ it the rail sags far enough to reset the ESP32 at the exact moment it is trying 
 | 14 | out | Charger high-side switch enable | **10 kΩ gate to GND**. Also a strapping-adjacent pin: it must not be held high at boot by anything external |
 | 34 | **in only** | Float switch | **10 kΩ pull-up to 3V3.** GPIO 34 has no internal pull-up and cannot drive anything. The switch closes to GND while water is present |
 | 4 | bidirectional | DS18B20 data | **4.7 kΩ pull-up to 3V3**, one for the whole bus |
+| 33 | in | Pairing button, to GND | **10 kΩ pull-up to 3V3.** The internal pull-up measured insufficient on this board: the pin read LOW with nothing attached, which the firmware saw as a button held down |
+| 2 | out | Onboard LED, blinks while pairing is open | Strapping pin, but driving it as an output after boot is ordinary |
 
 Pins deliberately avoided: 0, 2, 5, 12 and 15 are strapping pins and decide how the chip
 boots; 6–11 are wired to the flash chip. Nothing in this design touches any of them.
@@ -71,6 +73,8 @@ prevent a specific, repeatable failure.
 |---|---|---|---|
 | 10 kΩ resistor | 4 | Gate to GND on GPIO 25, 26, 27, 14 | Between power-on and `setup()`, the GPIOs float. A floating logic-level gate half-opens its MOSFET. **The valve opens every time the gnome reboots** |
 | 10 kΩ resistor | 1 | GPIO 34 to 3V3 | The float switch reads as noise, and the tank looks empty or full at random |
+| 10 kΩ resistor | 1 | GPIO 33 to 3V3 | The pairing button's pin floats low, which reads as a button held down. Firmware refuses to act on a press it never saw released, so the failure is a button that does nothing rather than a gnome that forgets its phone — but the resistor is what makes the button work at all |
+| Momentary switch | 1 | GPIO 33 to GND, on the electronics deck | No button, no laptop-free recovery of a broken pairing |
 | 4.7 kΩ resistor | 1 | GPIO 4 to 3V3 | The 1-Wire bus never idles high; the DS18B20 is simply never found |
 | 1N5819 or 1N4007 | 2 | Across the solenoid and across the pump, **cathode to +12 V** | Both are inductive. Switching them off without a path for the collapsing field puts hundreds of volts across the MOSFET, which fails **on** — a valve stuck open with no way to close it |
 | 1000 µF ≥ 25 V electrolytic | 1 | Across the 12 V rail at the pump MOSFET | Pump inrush resets the ESP32 mid-burst |

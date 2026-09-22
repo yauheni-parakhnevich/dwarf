@@ -199,6 +199,17 @@ constexpr Millis kPairingHoldMs = 3000;
 Millis g_pairingWindowEnds = 0;
 Millis g_pairButtonSince = 0;
 bool g_pairButtonHandled = false;
+// A press only counts once the pin has been observed released. Without this, a
+// pin that reads LOW with nothing attached -- which is exactly what GPIO 33 did
+// on this board, internal pull-up notwithstanding -- looks like a button held
+// down from the moment the firmware starts, and three seconds into every boot
+// the gnome forgets the phone it was paired with and draws a new passkey. It
+// did precisely that, repeatedly, until this line existed.
+//
+// The guard is worth having even on a pin that behaves: a button that fails
+// shorted, or a wire that chafes through against ground, should make the gnome
+// unpairable rather than make it forget its phone on every power cut.
+bool g_pairButtonSeenUp = false;
 
 bool pairingWindowOpen(Millis now) {
     return g_pairingWindowEnds != 0 && now < g_pairingWindowEnds;
@@ -473,10 +484,13 @@ void pollPairingButton(Millis now) {
     const bool down = digitalRead(PIN_PAIR_BUTTON) == LOW;
 
     if (!down) {
+        g_pairButtonSeenUp = true;
         g_pairButtonSince = 0;
         g_pairButtonHandled = false;
         return;
     }
+    // Held since before we were watching: not a press, whatever the pin says.
+    if (!g_pairButtonSeenUp) return;
     if (g_pairButtonSince == 0) {
         g_pairButtonSince = now;
         return;
