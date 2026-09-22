@@ -227,4 +227,17 @@ final class RuntimeTests: XCTestCase {
         XCTAssertGreaterThan(rig.runtime.snapshot.detectorFailures, 0)
         XCTAssertEqual(rig.runtime.snapshot.lastReportWasPending, true, "a failed inference is not evidence of absence")
     }
+
+    func testTheTrackerIsSizedAgainstWhatThisPhoneCanActuallyDetect() throws {
+        // M0 measured 0.30 s an inference. One answer can carry three of them, and with a
+        // two-tile sweep an animal the sweep alone finds is looked at roughly every 1.8 s.
+        // DwarfCore's 1 s stillWindow would let every sample age out between hits, so a cat
+        // sitting in plain view would be tracked perfectly and never fired at.
+        let rig = try makeRig()
+        XCTAssertGreaterThan(rig.runtime.trackerConfig.stillWindow, 1.8,
+                             "a still cat must have two samples alive at once")
+        XCTAssertEqual(rig.runtime.trackerConfig.confirmWindow, 4,
+                       "three oscillates against the sweep's alternating hit and miss")
+    }
 }
+

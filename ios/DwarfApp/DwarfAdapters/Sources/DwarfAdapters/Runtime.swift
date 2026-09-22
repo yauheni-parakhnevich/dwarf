@@ -30,8 +30,9 @@ public final class Runtime {
 
     private var cycleCounter = 0
 
-    /// Immutable after init, so it needs no guarding.
+    /// Immutable after init, so they need no guarding.
     public let schedulerConfig: SchedulerConfig
+    public let trackerConfig: TrackerConfig
 
     private var state = RuntimeSnapshot()
     private var pendingMode: Mode?
@@ -71,7 +72,26 @@ public final class Runtime {
         geometry.apply(to: &config)
         self.schedulerConfig = config
 
-        self.cycle = Cycle(calibration: store.calibration, schedulerConfig: config)
+        // The tracker counts its windows in detector answers, not in frames, so they have
+        // to be sized against what this phone's model actually does. M0 measured 0.30 s an
+        // inference. A cycle can ask for two motion crops and a sweep tile, so one answer
+        // can take three of those -- 0.9 s -- and with the sweep split in two tiles, an
+        // animal the sweep alone finds is looked at every other answer, about 1.8 s apart.
+        //
+        // DwarfCore's default stillWindow is 1.0 s and samples are only recorded on a hit,
+        // so each would age out before the next arrived and isStill could never become
+        // true: a cat sitting in plain view while anything else in frame moved would be
+        // tracked perfectly and never fired at. The default confirmWindow of 3 also
+        // oscillates against the sweep's alternating hit and miss.
+        var tracker = TrackerConfig()
+        let answerInterval = store.settings.detectorLatency * Double(config.maxMotionCrops + 1)
+        let sweepRevisit = answerInterval * Double(config.sweepColumns * config.sweepRows)
+        tracker.stillWindow = max(tracker.stillWindow, sweepRevisit * 1.4)
+        tracker.confirmWindow = 4
+        self.trackerConfig = tracker
+
+        self.cycle = Cycle(calibration: store.calibration, schedulerConfig: config,
+                           trackerConfig: tracker)
         self.cycle.masks = store.masks
         self.cycle.mode = store.settings.mode
     }

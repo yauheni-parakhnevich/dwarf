@@ -1704,6 +1704,40 @@ Record: inferences per second, worst thermal state (0 nominal, 1 fair, 2 serious
 
 Append the result to this task as a note, commit it, and carry the number into Task 12's `SchedulerConfig`.
 
+**M0 result, measured 2026-09-22 on the gnome's own iPhone 6s (iOS 15.8.8), ten minutes,
+unplugged, screen on, lying flat:**
+
+```
+DONE 600 s · 1998 inferences · 3.33 /s · worst thermal 0 · 260 MB
+```
+
+**Passed, with room.** The exit criterion allowed `fair`; the phone never left `nominal` in
+ten unbroken minutes. `imgsz` stays at 640 — no FP16 fallback, no drop to 416 or 320, so the
+gnome keeps its full reach of roughly 75 px of cat at 6 m. Resident memory settled at 260 MB
+rather than climbing.
+
+Two defects had to be fixed before this number existed, and both were in the benchmark
+rather than in the model:
+
+- The loop ran **on the main thread**. `SwiftUI.View` is `@MainActor`-isolated, so an `async`
+  method declared on a view inherits that isolation and `Task.detached` hops straight back to
+  the main actor to call it. Ten minutes of blocked main thread is a watchdog kill. The crash
+  report's heaviest stack showed CoreFoundation's run loop calling into Espresso. The
+  accompanying `cpu_resource` report was only an advisory — `Action taken: none`,
+  `ThermalPressure 0` — so it was never thermal.
+- Nothing drained the autorelease pool between inferences, and CoreML autoreleases a good
+  deal per call, so the footprint climbed until iOS killed the app.
+
+**What the number means downstream.** 0.30 s an inference. One answer can carry three of them
+(two motion crops and a sweep tile), so 0.9 s; with a two-tile sweep, an animal the sweep
+alone finds is looked at about every 1.8 s. `TrackerConfig.stillWindow` defaults to 1.0 s and
+samples are only recorded on a hit, so each would age out before the next arrived and a cat
+sitting in plain view — while anything else in frame moved — would be tracked perfectly and
+never fired at. `Runtime` now sizes `stillWindow` and `confirmWindow` from
+`Settings.detectorLatency` rather than taking DwarfCore's defaults. Re-measure in Task 14
+against the real camera, where motion detection and conversion compete for the same core and
+0.30 s is an optimistic floor.
+
 - [ ] **Step 7: Commit**
 
 ```bash

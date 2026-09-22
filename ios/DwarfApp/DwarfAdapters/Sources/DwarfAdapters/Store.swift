@@ -8,9 +8,16 @@ public struct Settings: Codable, Equatable, Sendable {
     public var mode: Mode = .dryRun
     /// Quarter turns clockwise to stand the camera buffer upright; see `FrameGeometry`.
     public var quarterTurns = 0
-    /// The model's input side. M0 decides this.
+    /// The model's input side. M0 decides this: measured on the gnome's own iPhone 6s on
+    /// 2026-09-22, YOLO11n at 640 sustained 3.33 inferences a second for ten minutes
+    /// without the phone leaving nominal thermal state, so 640 stays and the fallbacks to
+    /// 416 and 320 are not needed.
     public var modelSide = 640
     public var minConfidence = 0.25
+    /// Seconds one inference takes on this phone, from M0. The tracker counts its windows
+    /// in detector answers rather than in frames, so this is what they have to be sized
+    /// against; see `Runtime`.
+    public var detectorLatency = 0.30
 
     public init() {}
 }
