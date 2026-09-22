@@ -256,3 +256,12 @@ renders are inspected after every change to the shell scripts.
   posts are separate pins so the deck prints flat, their tops 1.5 mm under the yoke; the shaft
   reaches below the link's plane; link eyes ride on 3.2 mm bores with half-millimetre bosses.
   The fan frame follows the barrel instead of standing proud of the shoulder at 348 mm.
+- **2026-09-22, Task 5.** The base could not hold what the parameter table promised: a 220 × 140
+  canister has a 130 mm half-diagonal and the base's circle offers 122, and the pump beside it stood
+  25 mm outside the wall. As built: canister **160 × 120 × 105 mm, lying, centred, 2.0 L gross**
+  (about 90 shots), the pump bridged above it on four legs beside its ends, the valve beside the
+  pump on the same plate. That stack needs 20 mm, so the belt is at 230 and the gnome is **589 mm**
+  tall; every mechanism part followed through the parameters. The head is **48 mm** in radius (the
+  face opening had to pass the servo on its cradle). The filler is 14 mm because the canister's 30 mm
+  neck must also pass the float switch and the dip tube. Measure the canister first: it is the part
+  the base is drawn around.
