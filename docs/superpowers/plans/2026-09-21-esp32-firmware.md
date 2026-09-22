@@ -2333,6 +2333,59 @@ git commit -m "feat(firmware): add hardware layer with serial command console"
 
 ---
 
+**Post-review addendum (applied in commit `8b33c9b`):** this is the first task to compile
+`lib/dwarf` for the board rather than for the native tests, and it found two defects that
+ten green tasks could not.
+
+1. **Every `esp32dev` build had silently been C++11.** `platformio.ini` sets
+   `-std=gnu++17` at `[env]` scope, but `framework-arduinoespressif32`'s build script
+   appends its own `-std=gnu++11` afterwards, and GCC honours the last `-std` it is given.
+   The board build failed instantly on `Limits{c.panMin, ...}`, because default member
+   initializers only became aggregate-initialisable in C++14. Latent since Task 0 and
+   invisible throughout, because Tasks 0-9 only ever ran `pio test -e native`, where
+   nothing competes for the flag, and Task 0's own verification (`pio project config`)
+   echoes the configured flags rather than what the toolchain resolves to. Fixed with
+   `build_unflags = -std=gnu++11`.
+2. **The hardware layer discarded the temperature sensor's failure signal.**
+   `readSensors()` kept the last plausible reading whenever the probe returned its `-127`
+   "not on the bus" sentinel. `Controller::update` turns exactly that value into
+   `Fault::TempSensor` and a disarm -- the hole the Task 9 review opened
+   `isValidTempReading()` to close -- so a dead probe would have left the controller
+   reading 22 C forever with thermal protection silently gone. None of the 92 native tests
+   could catch it: they call `Controller::update` directly and never pass through this
+   Arduino-side filter. The reading now goes through untouched, and the first serial
+   session on real hardware showed the fix working: `"temp":-127,"fault":"TEMP_SENSOR"`
+   and `{"ack":"arm","ok":false,"why":"fault"}` with no probe wired.
+3. **The DS18B20 conversion was being waited on.** `requestTemperatures()` blocks for up
+   to 750 ms at 12-bit resolution, every five seconds. A stall that lands inside an open
+   burst pushes the software-timed valve close past the 600 ms hardware backstop, so the
+   ISR force-closes and an ordinary shot is reported as `VALVE_TIMEOUT` and disarms the
+   gnome. `setWaitForConversion(false)`; the request is started on one pass and collected
+   on the next.
+
+**Not a firmware defect, and it needs a part.** Nothing in the wiring table calls for gate
+pull-down resistors on the valve, pump and fan MOSFETs. Between power-on and the first line
+of `setup()` -- a few hundred milliseconds of ROM bootloader and Arduino init -- those GPIOs
+float, and a floating logic-level gate can partially turn a MOSFET on. The pin choices
+themselves were checked and are sound: none of 25, 26, 27, 14, 18, 19 or 4 is a strapping
+pin (0, 2, 5, 12, 15) or a flash pin (6-11), and the float switch is correctly on input-only
+GPIO 34. Add roughly 10 kOhm from each of those three gates to ground, or the valve opens
+every time the gnome reboots.
+
+**Carried into Task 11.** Serial and BLE will both satisfy the same 3 s heartbeat
+independently, so a serial monitor left open on the bench would keep the gnome alive after
+the phone has actually disconnected -- the same shape as the self-feeding heartbeat an
+earlier review caught. Resolve it there rather than here; the console is deliberately a
+real command path, so the answer is about which channel owns liveness, not about removing
+one.
+
+Verified on hardware: `pio run -e esp32dev` succeeds at 23.6% of flash (309,137 of
+1,310,720 bytes) and 6.8% of RAM, the image was flashed to the ESP32-D0WD-V3 over
+`/dev/cu.usbserial-54DA0172341`, and the serial console answered `hb`, `arm`, `park` and a
+deliberately malformed line correctly. The 92 native tests still pass.
+
+---
+
 ### Task 11: BLE server
 
 **Files:**
