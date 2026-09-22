@@ -73,6 +73,17 @@ public final class BluetoothTransport: NSObject, Transport {
         get { UserDefaults.standard.string(forKey: "gnome.peripheral").flatMap(UUID.init) }
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "gnome.peripheral") }
     }
+    /// `CBCentralManager.connect(_:)` has no built-in timeout: by design, so a connect issued
+    /// against a temporarily-out-of-range or powered-off gnome just completes whenever it
+    /// reappears, which is exactly right for the ordinary case. It is exactly wrong for one
+    /// case: if `knownIdentifier` names a peripheral that is never coming back — the ESP32
+    /// was replaced, which gives it a new identifier from CoreBluetooth's perspective, even
+    /// though it is "the same gnome" to the owner — the pending connect would sit forever,
+    /// scanning already stopped, silently ignoring the real gnome advertising a few
+    /// centimetres away (see `didDiscover`'s already-targeting guard). Only ever touched on
+    /// `cbQueue`, same as everything else below it needs no lock.
+    private static let knownIdentifierConnectTimeout: TimeInterval = 30
+    private var pendingKnownConnect: CBPeripheral?
 
     public override init() {
         super.init()
@@ -111,21 +122,39 @@ public final class BluetoothTransport: NSObject, Transport {
         guard central.state == .poweredOn else { return }
         if let identifier = knownIdentifier,
            let known = central.retrievePeripherals(withIdentifiers: [identifier]).first {
-            connect(known)
+            connect(known, isKnownIdentifierAttempt: true)
             return
         }
-        // No timeout, no backoff: the gnome is unattended, and a phone that needs restarting
-        // to find it again is a failure. `CBCentralManagerScanOptionAllowDuplicatesKey`
-        // defaults to false, so the radio itself coalesces repeat adverts rather than waking
-        // this process for each one.
+        // No timeout, no backoff on an active scan itself: the gnome is unattended, and a
+        // phone that needs restarting to find it again is a failure.
+        // `CBCentralManagerScanOptionAllowDuplicatesKey` defaults to false, so the radio
+        // itself coalesces repeat adverts rather than waking this process for each one.
         central.scanForPeripherals(withServices: [BluetoothTransport.service])
     }
 
-    private func connect(_ peripheral: CBPeripheral) {
+    private func connect(_ peripheral: CBPeripheral, isKnownIdentifierAttempt: Bool = false) {
         withLock { self.peripheral = peripheral }
         peripheral.delegate = self
         central.stopScan()
         central.connect(peripheral)
+
+        guard isKnownIdentifierAttempt else { return }
+        pendingKnownConnect = peripheral
+        cbQueue.asyncAfter(deadline: .now() + Self.knownIdentifierConnectTimeout) { [weak self] in
+            self?.abandonIfStillPending(peripheral)
+        }
+    }
+
+    /// Runs on `cbQueue` after the timeout above. If `didConnect`, `didFailToConnect` or a
+    /// disconnect already resolved this attempt, `pendingKnownConnect` was cleared there and
+    /// this is a no-op; otherwise the remembered identifier is treated as dead and a real
+    /// scan replaces the wait.
+    private func abandonIfStillPending(_ peripheral: CBPeripheral) {
+        guard pendingKnownConnect === peripheral else { return }
+        pendingKnownConnect = nil
+        central.cancelPeripheralConnection(peripheral)
+        withLock { self.peripheral = nil }
+        central.scanForPeripherals(withServices: [BluetoothTransport.service])
     }
 }
 
@@ -166,12 +195,14 @@ extension BluetoothTransport: CBCentralManagerDelegate {
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        pendingKnownConnect = nil
         withLock { pairing.connected(atUptime: uptime()) }
         peripheral.discoverServices([BluetoothTransport.service])
     }
 
     public func centralManager(_ central: CBCentralManager,
                                didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        pendingKnownConnect = nil
         let wasConnected = withLock { () -> Bool in
             pairing.disconnected(atUptime: uptime())
             self.peripheral = nil
@@ -191,6 +222,7 @@ extension BluetoothTransport: CBCentralManagerDelegate {
                                didFailToConnect peripheral: CBPeripheral, error: Error?) {
         // No `pairing.disconnected` here: `didConnect` never fired for this attempt, so
         // `PairingTracker` never recorded it as connected in the first place.
+        pendingKnownConnect = nil
         withLock {
             self.peripheral = nil
             writeCharacteristic = nil
