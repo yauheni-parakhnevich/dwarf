@@ -2027,14 +2027,18 @@ final class ActuatorLinkTests: XCTestCase {
         XCTAssertTrue(transport.sentStrings.isEmpty)
     }
 
-    func testEveryCommandEndsWithANewline() throws {
-        // The firmware's serial console reads one JSON object per line, and Task 11's BLE
-        // path feeds the same handler. A command without a terminator is a command that
-        // waits for the next one.
+    func testFramingIsTheTransportsBusiness() throws {
+        // The serial console reads one JSON object per line; BLE carries one object per
+        // write and needs no terminator at all, with 180 bytes to spend. The link must not
+        // decide this for both of them.
         let (link, transport) = makeLink()
         transport.isConnected = true
         try link.send(.park)
-        XCTAssertTrue(transport.sentStrings[0].hasSuffix("\n"), transport.sentStrings[0])
+        XCTAssertEqual(transport.sentStrings[0], "{\"c\":\"park\"}")
+
+        transport.framing = .newlineTerminated
+        try link.send(.park)
+        XCTAssertEqual(transport.sentStrings[1], "{\"c\":\"park\"}\n")
     }
 }
 ```
@@ -2053,8 +2057,24 @@ import Foundation
 
 /// A pipe that carries bytes to the gnome and back. CoreBluetooth implements this on the
 /// phone; the fake below implements it everywhere else.
+/// How one message is marked off from the next on a particular pipe.
+public enum Framing: Equatable, Sendable {
+    /// One message per write, which is what a BLE characteristic gives for free.
+    case perWrite
+    /// One JSON object per line, which is what the firmware's serial console reads.
+    case newlineTerminated
+
+    public func frame(_ data: Data) -> Data {
+        switch self {
+        case .perWrite: return data
+        case .newlineTerminated: return data + Data("\n".utf8)
+        }
+    }
+}
+
 public protocol Transport: AnyObject {
     var isConnected: Bool { get }
+    var framing: Framing { get }
     /// Called with whatever arrived, in whatever sized pieces it arrived in.
     var onReceive: ((Data) -> Void)? { get set }
     /// Called when the link comes up or goes down.
@@ -2068,6 +2088,7 @@ public enum TransportError: Error, Equatable {
 
 public final class FakeTransport: Transport {
     public var isConnected = false
+    public var framing: Framing = .perWrite
     public var onReceive: ((Data) -> Void)?
     public var onConnectionChange: ((Bool) -> Void)?
 
@@ -2183,8 +2204,9 @@ public final class ActuatorLink {
     public func send(_ command: Command) throws {
         // Encoding first, so a command that cannot be represented never reaches the radio
         // and the caller hears about it rather than the gnome silently doing nothing.
-        let data = try command.encoded()
-        try transport.send(data + Data("\n".utf8))
+        // Framing is the transport's: BLE carries one object per write, serial needs a
+        // newline, and the link has no business knowing which it is talking to.
+        try transport.send(transport.framing.frame(try command.encoded()))
     }
 
     private func absorb(_ data: Data) {
@@ -2244,3 +2266,1551 @@ git commit -m "feat(app): add the actuator link, and refuse to offer a stale sta
 ```
 
 ---
+
+## Task 9: The radio (HARDWARE: the ESP32, after firmware Task 11)
+
+**Files:**
+- Create: `ios/DwarfApp/App/BluetoothTransport.swift`
+
+CoreBluetooth behind the `Transport` protocol. Thin on purpose: everything worth testing is
+already in `ActuatorLink`, and what is left here can only be exercised against a real radio.
+
+**Blocked until firmware Task 11 lands** — there is no BLE server to connect to before that.
+The serial console is the fallback for everything up to this point.
+
+From the spec's section 7, and matching `firmware/src/main.cpp` exactly:
+
+| | UUID |
+|---|---|
+| Service | `EC61AB6F-D20E-4217-93F9-4A3DF81B75D3` |
+| `cmd`, write with response | `7C7FBA40-4383-4738-AD6B-09986229ED6A` |
+| `status`, notify | `6DF54A5A-41DC-4414-AB6A-1354C959CF0A` |
+
+This gnome's BLE address is `54:43:B2:44:2F:9E`. CoreBluetooth does not expose addresses —
+it gives each peripheral an opaque per-app `identifier` — so the app discovers by service UUID,
+then remembers the identifier of whatever it connected to. Advertised name is `dwarf`.
+
+- [ ] **Step 1: Write the transport**
+
+Create `ios/DwarfApp/App/BluetoothTransport.swift`:
+
+```swift
+import Foundation
+import CoreBluetooth
+import DwarfAdapters
+
+/// The phone's side of the link.
+///
+/// Scans for the gnome's service, connects, subscribes to status notifications and writes
+/// commands. Reconnection is automatic and quiet: a gnome that drops out for a moment
+/// should not need anyone's attention, and `ActuatorLink` already refuses to offer a stale
+/// status while it is away.
+public final class BluetoothTransport: NSObject, Transport {
+    public static let service = CBUUID(string: "EC61AB6F-D20E-4217-93F9-4A3DF81B75D3")
+    public static let commandCharacteristic = CBUUID(string: "7C7FBA40-4383-4738-AD6B-09986229ED6A")
+    public static let statusCharacteristic = CBUUID(string: "6DF54A5A-41DC-4414-AB6A-1354C959CF0A")
+
+    /// One JSON object per write; the spec caps a message at 180 bytes.
+    public let framing: Framing = .perWrite
+
+    public private(set) var isConnected = false {
+        didSet {
+            guard isConnected != oldValue else { return }
+            onConnectionChange?(isConnected)
+        }
+    }
+    public var onReceive: ((Data) -> Void)?
+    public var onConnectionChange: ((Bool) -> Void)?
+
+    private var central: CBCentralManager!
+    private var peripheral: CBPeripheral?
+    private var commandCharacteristic: CBCharacteristic?
+    /// Remembered across launches so a reconnect does not need a fresh scan.
+    private var knownIdentifier: UUID? {
+        get { UserDefaults.standard.string(forKey: "gnome.peripheral").flatMap(UUID.init) }
+        set { UserDefaults.standard.set(newValue?.uuidString, forKey: "gnome.peripheral") }
+    }
+
+    public override init() {
+        super.init()
+        central = CBCentralManager(delegate: self, queue: .global(qos: .userInitiated))
+    }
+
+    public func send(_ data: Data) throws {
+        guard isConnected, let peripheral, let characteristic = commandCharacteristic else {
+            throw TransportError.notConnected
+        }
+        // With response, deliberately. Write-without-response is faster and silently drops
+        // under congestion, and a dropped `park` leaves the head where it was.
+        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+    }
+
+    private func beginScanning() {
+        guard central.state == .poweredOn else { return }
+        if let identifier = knownIdentifier,
+           let known = central.retrievePeripherals(withIdentifiers: [identifier]).first {
+            connect(known)
+            return
+        }
+        central.scanForPeripherals(withServices: [BluetoothTransport.service])
+    }
+
+    private func connect(_ peripheral: CBPeripheral) {
+        self.peripheral = peripheral
+        peripheral.delegate = self
+        central.stopScan()
+        central.connect(peripheral)
+    }
+}
+
+extension BluetoothTransport: CBCentralManagerDelegate {
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        if central.state == .poweredOn {
+            beginScanning()
+        } else {
+            isConnected = false
+        }
+    }
+
+    public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                               advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        knownIdentifier = peripheral.identifier
+        connect(peripheral)
+    }
+
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        peripheral.discoverServices([BluetoothTransport.service])
+    }
+
+    public func centralManager(_ central: CBCentralManager,
+                               didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        isConnected = false
+        commandCharacteristic = nil
+        beginScanning()
+    }
+
+    public func centralManager(_ central: CBCentralManager,
+                               didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        isConnected = false
+        beginScanning()
+    }
+}
+
+extension BluetoothTransport: CBPeripheralDelegate {
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard let service = peripheral.services?.first(where: { $0.uuid == BluetoothTransport.service })
+        else { return }
+        peripheral.discoverCharacteristics(
+            [BluetoothTransport.commandCharacteristic, BluetoothTransport.statusCharacteristic],
+            for: service)
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService,
+                           error: Error?) {
+        for characteristic in service.characteristics ?? [] {
+            switch characteristic.uuid {
+            case BluetoothTransport.commandCharacteristic:
+                commandCharacteristic = characteristic
+            case BluetoothTransport.statusCharacteristic:
+                peripheral.setNotifyValue(true, for: characteristic)
+            default:
+                break
+            }
+        }
+        // Connected means "able to command", not "the radio linked". Until the command
+        // characteristic exists, every send would throw anyway.
+        isConnected = commandCharacteristic != nil
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,
+                           error: Error?) {
+        guard let value = characteristic.value else { return }
+        onReceive?(value)
+    }
+}
+```
+
+- [ ] **Step 2: Build it**
+
+```bash
+cd ios/DwarfApp && xcodegen generate
+xcodebuild -project DwarfApp.xcodeproj -scheme DwarfApp -sdk iphoneos -configuration Debug build CODE_SIGNING_ALLOWED=NO
+```
+
+Expected: `** BUILD SUCCEEDED **`.
+
+- [ ] **Step 3: Prove it on hardware**
+
+With the ESP32 powered and running the Task 11 firmware, and the app installed:
+
+1. The app connects within a few seconds of launch and the status line stops saying "no link".
+2. `nRF Connect` on another phone sees `dwarf` advertising the service UUID, and stops seeing
+   a connectable advertisement once this app has connected.
+3. Status notifications arrive at least once a second.
+4. Pull the ESP32's power. The app reports no link within 3 s, and `status(asOf:)` returns
+   nil — confirm the app does not keep showing the last known state as if it were current.
+5. Restore power. The app reconnects on its own, without being restarted.
+6. Walk the phone out of range and back. Same again.
+
+Write down how long a reconnect takes. If it is more than a few seconds, the gnome spends
+that time disarmed and the number matters for the field week.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add ios/DwarfApp
+git commit -m "feat(app): connect to the gnome over Bluetooth"
+```
+
+---
+
+## Task 10: Power, heat and darkness
+
+**Files:**
+- Create: `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/PowerManager.swift`
+- Test: `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/PowerManagerTests.swift`
+
+Spec section 5.7. Three unrelated rules that all end in "do less": keep the phone's battery in
+a band, back off when it gets hot, and stop looking when it gets dark.
+
+`ProcessInfo.thermalState` exists on macOS, so that part tests honestly. Battery does not, so
+it sits behind a protocol.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/PowerManagerTests.swift`:
+
+```swift
+import XCTest
+@testable import DwarfAdapters
+
+final class PowerManagerTests: XCTestCase {
+    private func manager() -> (PowerManager, FakeBattery) {
+        let battery = FakeBattery()
+        return (PowerManager(battery: battery), battery)
+    }
+
+    func testTheChargerTurnsOnLowAndOffHigh() {
+        let (power, battery) = manager()
+
+        battery.level = 0.35
+        XCTAssertEqual(power.evaluate(thermal: .nominal, meanLuma: 120, uptime: 0).charger, true)
+
+        battery.level = 0.60
+        XCTAssertEqual(power.evaluate(thermal: .nominal, meanLuma: 120, uptime: 1).charger, true,
+                       "still charging between the thresholds")
+
+        battery.level = 0.85
+        XCTAssertEqual(power.evaluate(thermal: .nominal, meanLuma: 120, uptime: 2).charger, false)
+
+        battery.level = 0.60
+        XCTAssertEqual(power.evaluate(thermal: .nominal, meanLuma: 120, uptime: 3).charger, false,
+                       "hysteresis: coming down from full, it stays off until 40%")
+    }
+
+    func testAnUnknownBatteryLevelChargesRatherThanGuesses() {
+        // UIDevice reports -1 when monitoring is off or the reading is unavailable. A gnome
+        // that stops charging because it cannot read its own battery is a gnome that dies
+        // overnight.
+        let (power, battery) = manager()
+        battery.level = -1
+        XCTAssertEqual(power.evaluate(thermal: .nominal, meanLuma: 120, uptime: 0).charger, true)
+    }
+
+    func testSeriousHeatHalvesTheRateAndStartsTheFan() {
+        let (power, _) = manager()
+        let decision = power.evaluate(thermal: .serious, meanLuma: 120, uptime: 0)
+
+        XCTAssertEqual(decision.cycleDivisor, 2)
+        XCTAssertTrue(decision.fan)
+        XCTAssertFalse(decision.pauseDetection)
+    }
+
+    func testCriticalHeatStopsEverything() {
+        let (power, _) = manager()
+        let decision = power.evaluate(thermal: .critical, meanLuma: 120, uptime: 0)
+
+        XCTAssertTrue(decision.pauseDetection)
+        XCTAssertTrue(decision.disarm)
+        XCTAssertTrue(decision.fan)
+    }
+
+    func testDarknessPausesOnlyAfterItHasLasted() {
+        // A cloud, or a cat walking over the lens, is not nightfall.
+        let (power, _) = manager()
+
+        XCTAssertFalse(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 0).pauseDetection)
+        XCTAssertFalse(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 30).pauseDetection)
+        XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 61).pauseDetection)
+    }
+
+    func testLightHasToLastToUndoDarkness() {
+        let (power, _) = manager()
+        _ = power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 0)
+        XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 61).pauseDetection)
+
+        // A car's headlights sweeping the garden must not restart detection.
+        XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: 200, uptime: 62).pauseDetection)
+        XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: 200, uptime: 100).pauseDetection)
+        XCTAssertFalse(power.evaluate(thermal: .nominal, meanLuma: 200, uptime: 123).pauseDetection)
+    }
+
+    func testAFlickerDoesNotResetTheDarknessTimer() {
+        let (power, _) = manager()
+        _ = power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 0)
+        _ = power.evaluate(thermal: .nominal, meanLuma: 200, uptime: 30)
+        // The light was brief, so darkness starts counting again from 30, not from 0.
+        XCTAssertFalse(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 61).pauseDetection)
+        XCTAssertTrue(power.evaluate(thermal: .nominal, meanLuma: 10, uptime: 91).pauseDetection)
+    }
+}
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test --filter PowerManagerTests`
+Expected: `error: cannot find 'PowerManager' in scope`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/PowerManager.swift`:
+
+```swift
+import Foundation
+
+/// The phone's battery, behind a protocol because `UIDevice` does not exist on a Mac.
+public protocol BatteryReader: AnyObject {
+    /// 0…1, or a negative number when the level is not available.
+    var level: Float { get }
+}
+
+public final class FakeBattery: BatteryReader {
+    public var level: Float = 0.5
+    public init() {}
+}
+
+public struct PowerDecision: Equatable, Sendable {
+    /// Whether the gnome should be charging the phone.
+    public let charger: Bool
+    public let fan: Bool
+    /// Run one cycle in this many. 1 is full rate.
+    public let cycleDivisor: Int
+    public let pauseDetection: Bool
+    /// Critical heat: stop asking for water at all, not merely stop looking.
+    public let disarm: Bool
+}
+
+public struct PowerLimits: Equatable, Sendable {
+    public var chargeBelow: Float = 0.40
+    public var stopChargingAbove: Float = 0.80
+    public var darkLuma: Double = 40
+    /// How long darkness, or light, has to last before it is believed. A cloud is not
+    /// nightfall and a car's headlights are not dawn.
+    public var lightSettleTime: TimeInterval = 60
+
+    public init() {}
+}
+
+/// Battery, heat and daylight. Three rules that all end in doing less.
+public final class PowerManager {
+    public var limits: PowerLimits
+    private let battery: BatteryReader
+
+    private var charging = true
+    private var isDark = false
+    /// When the luma last crossed the threshold in the direction it is currently heading.
+    private var crossedAt: TimeInterval?
+
+    public init(battery: BatteryReader, limits: PowerLimits = PowerLimits()) {
+        self.battery = battery
+        self.limits = limits
+    }
+
+    public func evaluate(thermal: ProcessInfo.ThermalState, meanLuma: Double,
+                         uptime: TimeInterval) -> PowerDecision {
+        PowerDecision(charger: shouldCharge(),
+                      fan: thermal.rawValue >= ProcessInfo.ThermalState.serious.rawValue,
+                      cycleDivisor: thermal == .serious ? 2 : 1,
+                      pauseDetection: thermal == .critical || darkness(meanLuma, uptime),
+                      disarm: thermal == .critical)
+    }
+
+    private func shouldCharge() -> Bool {
+        let level = battery.level
+        // A negative reading means the level is unavailable, not that it is empty. Charging
+        // a full phone wastes a little heat; refusing to charge a flat one ends the night.
+        guard level >= 0 else { return true }
+
+        if charging, level >= limits.stopChargingAbove {
+            charging = false
+        } else if !charging, level <= limits.chargeBelow {
+            charging = true
+        }
+        return charging
+    }
+
+    private func darkness(_ meanLuma: Double, _ uptime: TimeInterval) -> Bool {
+        let looksDark = meanLuma.isFinite ? meanLuma < limits.darkLuma : true
+
+        guard looksDark != isDark else {
+            // Back on the side it was already on: whatever crossing was being timed is over.
+            crossedAt = nil
+            return isDark
+        }
+
+        guard let since = crossedAt else {
+            crossedAt = uptime
+            return isDark
+        }
+
+        if uptime - since >= limits.lightSettleTime {
+            isDark = looksDark
+            crossedAt = nil
+        }
+        return isDark
+    }
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test`
+Expected: `Executed 49 tests, with 0 failures`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ios/DwarfApp/DwarfAdapters
+git commit -m "feat(app): manage the battery, the heat and the light"
+```
+
+---
+
+## Task 11: What survives a restart
+
+**Files:**
+- Create: `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/Store.swift`
+- Test: `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/StoreTests.swift`
+
+Mode, calibration and masks on disk. `Calibration`, `MaskSet` and `Mode` are all already
+`Codable` in `DwarfCore`, so this is mostly about failing well: a gnome that will not start
+because one file got truncated during a power cut is worse than a gnome that starts
+uncalibrated and says so.
+
+The spec requires mode to persist across restarts. Note what that means: a gnome left in
+`live` comes back in `live`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/StoreTests.swift`:
+
+```swift
+import XCTest
+import DwarfCore
+@testable import DwarfAdapters
+
+final class StoreTests: XCTestCase {
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testAFreshStoreIsUsableAndSaysItIsUncalibrated() {
+        let store = Store(directory: directory)
+        XCTAssertEqual(store.settings.mode, .dryRun, "a gnome that has never been told otherwise does not fire")
+        XCTAssertTrue(store.calibration.points.isEmpty)
+        XCTAssertFalse(store.isCalibrated)
+    }
+
+    func testSettingsSurviveARestart() throws {
+        let store = Store(directory: directory)
+        store.settings.mode = .live
+        store.settings.quarterTurns = 1
+        try store.save()
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.settings.mode, .live)
+        XCTAssertEqual(reopened.settings.quarterTurns, 1)
+    }
+
+    func testACalibrationSurvivesARestart() throws {
+        let store = Store(directory: directory)
+        store.calibration = Calibration(
+            points: (0..<6).map {
+                CalibrationPoint(image: Point(x: 0.1 * Double($0), y: 0.6),
+                                 pan: Double($0), tilt: 1, rangeM: 4)
+            },
+            heightOffsets: [HeightOffsetSample(rangeM: 3, deltaTiltDeg: 4)])
+        try store.save()
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.calibration.points.count, 6)
+        XCTAssertTrue(reopened.isCalibrated)
+    }
+
+    func testATruncatedFileFallsBackRatherThanRefusingToStart() throws {
+        // A power cut during a write is the normal way this happens, and a gnome that will
+        // not boot in the garden is worse than one that boots uncalibrated and says so.
+        let store = Store(directory: directory)
+        store.settings.mode = .live
+        try store.save()
+
+        try Data("{ \"mode\": ".utf8).write(to: directory.appendingPathComponent("settings.json"))
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.settings.mode, .dryRun)
+        XCTAssertEqual(reopened.loadFailures, ["settings.json"])
+    }
+
+    func testAWriteIsAtomic() throws {
+        // Written to a neighbouring file and moved into place, so the file at the real path
+        // is always either the old one or the new one and never half of either.
+        let store = Store(directory: directory)
+        store.settings.mode = .live
+        try store.save()
+        try store.save()
+
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasSuffix(".tmp") }
+        XCTAssertTrue(leftovers.isEmpty, "temporary files left behind: \(leftovers)")
+    }
+
+    func testMasksRoundTrip() throws {
+        let store = Store(directory: directory)
+        store.masks = MaskSet(
+            ignoreZones: [Polygon(points: [Point(x: 0, y: 0), Point(x: 0.2, y: 0), Point(x: 0.2, y: 0.2)])],
+            noFireZones: [Polygon(points: [Point(x: 0.8, y: 0.8), Point(x: 1, y: 0.8), Point(x: 1, y: 1)])])
+        try store.save()
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.masks.ignoreZones.count, 1)
+        XCTAssertEqual(reopened.masks.noFireZones.count, 1)
+        XCTAssertEqual(reopened.masks.noFireMargin, 0.005, accuracy: 1e-12,
+                       "the safety margin must survive a round trip too")
+    }
+
+    func testAFormatFromTheFutureIsNotGuessedAt() throws {
+        // A phone running an old build against files written by a new one should say so
+        // rather than misread them.
+        let store = Store(directory: directory)
+        try store.save()
+        let path = directory.appendingPathComponent("settings.json")
+        var object = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as! [String: Any]
+        object["formatVersion"] = DwarfAdapters.formatVersion + 1
+        try JSONSerialization.data(withJSONObject: object).write(to: path)
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.settings.mode, .dryRun)
+        XCTAssertEqual(reopened.loadFailures, ["settings.json"])
+    }
+}
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test --filter StoreTests`
+Expected: `error: cannot find 'Store' in scope`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/Store.swift`:
+
+```swift
+import Foundation
+import DwarfCore
+
+/// Everything the owner can change that is not a calibration or a mask.
+public struct Settings: Codable, Equatable, Sendable {
+    public var formatVersion = DwarfAdapters.formatVersion
+    /// Persisted across restarts, as the spec requires. A gnome left in `live` comes back
+    /// in `live`.
+    public var mode: Mode = .dryRun
+    /// Quarter turns clockwise to stand the camera buffer upright; see `FrameGeometry`.
+    public var quarterTurns = 0
+    /// The model's input side. M0 decides this.
+    public var modelSide = 640
+    public var minConfidence = 0.25
+
+    public init() {}
+}
+
+/// Mode, calibration and masks on disk.
+///
+/// Reading is forgiving and writing is atomic. A file that will not parse is reported and
+/// replaced with a default, because a gnome that refuses to start in the garden is worse
+/// than one that starts uncalibrated and says so on its screen — and an uncalibrated gnome
+/// cannot fire at all, so failing this way is safe as well as convenient.
+public final class Store {
+    public var settings: Settings
+    public var calibration: Calibration
+    public var masks: MaskSet
+
+    /// Files that could not be read this launch, for the status screen.
+    public private(set) var loadFailures: [String] = []
+
+    /// True when there is enough calibration for `Aimer` to fit at all. Below this the
+    /// gnome tracks and shows a live view but has no route to a shot.
+    public var isCalibrated: Bool { calibration.points.count >= 6 }
+
+    private let directory: URL
+
+    public init(directory: URL) {
+        self.directory = directory
+
+        var failures: [String] = []
+        func load<T: Decodable>(_ name: String, _ fallback: T) -> T {
+            let url = directory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { return fallback }
+            do {
+                return try JSONDecoder().decode(T.self, from: Data(contentsOf: url))
+            } catch {
+                failures.append(name)
+                return fallback
+            }
+        }
+
+        var loaded: Settings = load("settings.json", Settings())
+        if loaded.formatVersion > DwarfAdapters.formatVersion {
+            // Written by a newer build. Guessing at fields this one does not understand is
+            // how a setting silently reverts.
+            failures.append("settings.json")
+            loaded = Settings()
+        }
+        self.settings = loaded
+        self.calibration = load("calibration.json", .empty)
+        self.masks = load("masks.json", .empty)
+        self.loadFailures = failures
+    }
+
+    public func save() throws {
+        settings.formatVersion = DwarfAdapters.formatVersion
+        try write(settings, to: "settings.json")
+        try write(calibration, to: "calibration.json")
+        try write(masks, to: "masks.json")
+    }
+
+    /// Written beside the real file and moved into place, so a power cut mid-write leaves
+    /// the previous version rather than half of the new one.
+    private func write<T: Encodable>(_ value: T, to name: String) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(value)
+
+        let target = directory.appendingPathComponent(name)
+        let temporary = directory.appendingPathComponent(name + ".tmp")
+        try data.write(to: temporary, options: .atomic)
+        _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
+    }
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test`
+Expected: `Executed 56 tests, with 0 failures`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ios/DwarfApp/DwarfAdapters
+git commit -m "feat(app): persist mode, calibration and masks"
+```
+
+---
+
+## Task 12: The runtime
+
+**Files:**
+- Create: `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/Runtime.swift`
+- Test: `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/RuntimeTests.swift`
+
+The only thing that knows about all the pieces at once. It owns the `Cycle`, feeds it, and
+carries out what it decides.
+
+**This is the task that honours `DwarfCore`'s contract**, and most of its tests exist because
+of a specific bullet in that README. Read it again before starting. In particular: detection
+is asynchronous, so a cycle that has had no answer must pass `.pending` and not an empty
+answer, and an answer must be timestamped with when its *frame* was captured.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `ios/DwarfApp/DwarfAdapters/Tests/DwarfAdaptersTests/RuntimeTests.swift`:
+
+```swift
+import XCTest
+import CoreVideo
+import DwarfCore
+@testable import DwarfAdapters
+
+final class RuntimeTests: XCTestCase {
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private struct Rig {
+        let runtime: Runtime
+        let detector: FakeDetector
+        let transport: FakeTransport
+        let link: ActuatorLink
+        let clock: TestClock
+        let battery: FakeBattery
+        let store: Store
+    }
+
+    /// A calibration dense enough for the Aimer to fit, covering the lower half of the
+    /// frame where the ground is.
+    private func calibration() -> Calibration {
+        var points: [CalibrationPoint] = []
+        for x in stride(from: 0.1, through: 0.9, by: 0.2) {
+            for y in stride(from: 0.55, through: 0.95, by: 0.1) {
+                points.append(CalibrationPoint(image: Point(x: x, y: y),
+                                               pan: (x - 0.5) * 100,
+                                               tilt: 30 - 34 * y,
+                                               rangeM: 8 - 6 * y))
+            }
+        }
+        return Calibration(points: points,
+                           heightOffsets: [HeightOffsetSample(rangeM: 3, deltaTiltDeg: 4),
+                                           HeightOffsetSample(rangeM: 6, deltaTiltDeg: 2)])
+    }
+
+    private func makeRig(mode: Mode = .live) throws -> Rig {
+        let store = Store(directory: directory)
+        store.settings.mode = mode
+        store.calibration = calibration()
+
+        let clock = TestClock()
+        // Noon in June, inside the active window.
+        var components = DateComponents()
+        components.year = 2026; components.month = 6; components.day = 15; components.hour = 12
+        clock.now = Calendar.current.date(from: components)!
+
+        let transport = FakeTransport()
+        transport.isConnected = true
+        let link = ActuatorLink(transport: transport)
+        let detector = FakeDetector()
+        let battery = FakeBattery()
+
+        let runtime = Runtime(
+            store: store,
+            link: link,
+            detector: detector,
+            geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080), quarterTurns: 0),
+            power: PowerManager(battery: battery),
+            clock: SteadyClock(wrapping: clock))
+
+        return Rig(runtime: runtime, detector: detector, transport: transport, link: link,
+                   clock: clock, battery: battery, store: store)
+    }
+
+    private func brightBuffer() -> CVPixelBuffer {
+        var buffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, 1920, 1080,
+                            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, nil, &buffer)
+        let pixels = buffer!
+        CVPixelBufferLockBaseAddress(pixels, [])
+        let y = CVPixelBufferGetBaseAddressOfPlane(pixels, 0)!
+        for row in 0..<1080 {
+            memset(y.advanced(by: row * CVPixelBufferGetBytesPerRowOfPlane(pixels, 0)), 120, 1920)
+        }
+        let uv = CVPixelBufferGetBaseAddressOfPlane(pixels, 1)!
+        for row in 0..<540 {
+            memset(uv.advanced(by: row * CVPixelBufferGetBytesPerRowOfPlane(pixels, 1)), 128, 1920)
+        }
+        CVPixelBufferUnlockBaseAddress(pixels, [])
+        return pixels
+    }
+
+    private func healthyStatus(at uptime: TimeInterval, in rig: Rig) {
+        rig.transport.deliver(Data("""
+        {"armed":true,"pan":0,"tilt":0,"tank":"ok","pump":true,"charge":false,\
+        "fan":false,"temp":22,"fault":null,"shots":0}\n
+        """.utf8), at: uptime)
+    }
+
+    func testACycleWithNoAnswerYetIsPendingNotAnEmptyAnswer() throws {
+        // The contract bullet that, when broken, leaves the whole system green and inert.
+        let rig = try makeRig()
+        rig.detector.next = []
+
+        rig.clock.uptime = 0
+        rig.runtime.handle(frame: brightBuffer())
+
+        XCTAssertEqual(rig.runtime.lastReportWasPending, true,
+                       "no detector answer had come back, so the tracker must not be told the detector looked")
+    }
+
+    func testAnAnswerIsTimestampedWithItsFrameNotItsArrival() throws {
+        let rig = try makeRig()
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.6, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        rig.clock.uptime = 10
+        rig.runtime.handle(frame: brightBuffer())   // asks
+        rig.runtime.waitForDetector()
+        rig.clock.uptime = 10.4
+        rig.runtime.handle(frame: brightBuffer())   // collects
+
+        XCTAssertEqual(rig.runtime.lastAnswerCapturedAt, 10, accuracy: 1e-9,
+                       "the box came from the frame captured at 10, not from the one at 10.4")
+    }
+
+    func testAnIntermittentDetectorStillGetsAShotOff() throws {
+        // End to end, through every real component except the radio and the model: a
+        // motionless cat, a detector that answers roughly every third cycle, and a shot.
+        let rig = try makeRig()
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.62, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        for i in 0..<120 {
+            rig.clock.uptime = Double(i) * 0.1
+            healthyStatus(at: rig.clock.uptime, in: rig)
+            rig.runtime.handle(frame: brightBuffer())
+            if i % 3 == 0 { rig.runtime.waitForDetector() }
+        }
+
+        let shots = rig.transport.sentStrings.filter { $0.contains("\"shoot\"") }
+        XCTAssertFalse(shots.isEmpty, "expected at least one shoot: \(Set(rig.transport.sentStrings))")
+    }
+
+    func testADryRunNeverReachesTheNozzle() throws {
+        let rig = try makeRig(mode: .dryRun)
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.62, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        for i in 0..<120 {
+            rig.clock.uptime = Double(i) * 0.1
+            healthyStatus(at: rig.clock.uptime, in: rig)
+            rig.runtime.handle(frame: brightBuffer())
+            if i % 3 == 0 { rig.runtime.waitForDetector() }
+        }
+
+        XCTAssertTrue(rig.transport.sentStrings.allSatisfy { !$0.contains("\"shoot\"") },
+                      "a dry run that fires is worse than no dry run at all")
+        XCTAssertGreaterThan(rig.runtime.wouldShootCount, 0, "but it must still record what it would have done")
+    }
+
+    func testNoShotWithoutAFreshStatus() throws {
+        // The status is never delivered, so FirePolicy is handed nil every cycle.
+        let rig = try makeRig()
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.62, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        for i in 0..<120 {
+            rig.clock.uptime = Double(i) * 0.1
+            rig.runtime.handle(frame: brightBuffer())
+            if i % 3 == 0 { rig.runtime.waitForDetector() }
+        }
+
+        XCTAssertTrue(rig.transport.sentStrings.allSatisfy { !$0.contains("\"shoot\"") })
+    }
+
+    func testCriticalHeatDisarmsAndStopsLooking() throws {
+        let rig = try makeRig()
+        rig.runtime.thermalOverride = .critical
+        rig.clock.uptime = 1
+        healthyStatus(at: 1, in: rig)
+        rig.runtime.handle(frame: brightBuffer())
+
+        XCTAssertTrue(rig.transport.sentStrings.contains { $0.contains("\"arm\"") && $0.contains("false") })
+        XCTAssertEqual(rig.detector.calls, 0, "nothing should be asked of the model while it is this hot")
+    }
+
+    func testTheDisarmIsSentOnceNotAtFrameRate() throws {
+        let rig = try makeRig()
+        rig.runtime.thermalOverride = .critical
+
+        for i in 0..<30 {
+            rig.clock.uptime = Double(i) * 0.1
+            healthyStatus(at: rig.clock.uptime, in: rig)
+            rig.runtime.handle(frame: brightBuffer())
+        }
+
+        let disarms = rig.transport.sentStrings.filter { $0.contains("\"arm\"") }
+        XCTAssertEqual(disarms.count, 1, "the firmware latches it; repeating is noise: \(disarms.count)")
+    }
+
+    func testTheSchedulerIsToldTheRealFrameSize() throws {
+        // A contract bullet: crop rectangles are fractions of a frame whose size only the
+        // app knows.
+        let rig = try makeRig()
+        XCTAssertEqual(rig.runtime.schedulerConfig.frameWidthPixels, 1920)
+        XCTAssertEqual(rig.runtime.schedulerConfig.frameHeightPixels, 1080)
+    }
+
+    func testAFailingDetectorDoesNotStopTheLoop() throws {
+        struct Broken: Error {}
+        let rig = try makeRig()
+        rig.detector.error = Broken()
+
+        rig.clock.uptime = 1
+        rig.runtime.handle(frame: brightBuffer())
+        rig.runtime.waitForDetector()
+        rig.clock.uptime = 1.2
+        rig.runtime.handle(frame: brightBuffer())
+
+        XCTAssertGreaterThan(rig.runtime.detectorFailures, 0)
+        XCTAssertEqual(rig.runtime.lastReportWasPending, true, "a failed inference is not evidence of absence")
+    }
+}
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test --filter RuntimeTests`
+Expected: `error: cannot find 'Runtime' in scope`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `ios/DwarfApp/DwarfAdapters/Sources/DwarfAdapters/Runtime.swift`:
+
+```swift
+import Foundation
+import CoreVideo
+import DwarfCore
+
+/// The loop. Owns the `Cycle` and is the only thing that knows about every adapter at once.
+///
+/// Most of what follows is `ios/DwarfCore/README.md`'s "contract this package cannot
+/// enforce", made into code. The two that matter most:
+///
+/// - Detection is asynchronous. A cycle with no answer back yet reports `.pending`, never an
+///   empty answer, because an empty answer means "the detector looked and saw nothing" and
+///   counts against confirmation. Report those and a perfectly detected cat never confirms.
+/// - An answer is timestamped with when its **frame** was captured, not when it came back.
+///   Stillness gates firing, and a late answer at the current time makes a moving animal
+///   look stiller than it is.
+public final class Runtime {
+    private let store: Store
+    private let link: ActuatorLink
+    private let detector: Detector
+    private let converter: FrameConverter
+    private let power: PowerManager
+    private let clock: Clock
+    private let cycle: Cycle
+
+    private let detectorQueue = DispatchQueue(label: "garden.dwarf.detector")
+    private var detectorBusy = false
+    /// An answer that has come back and has not been handed to the tracker yet.
+    private var pendingAnswer: (detections: [Detection], capturedAt: TimeInterval)?
+    private let lock = NSLock()
+
+    private var cycleCounter = 0
+
+    public private(set) var schedulerConfig = SchedulerConfig()
+    public private(set) var lastReportWasPending = true
+    public private(set) var lastAnswerCapturedAt: TimeInterval?
+    public private(set) var wouldShootCount = 0
+    public private(set) var detectorFailures = 0
+    public private(set) var lastOutput: CycleOutput?
+    /// Set in tests; production reads `ProcessInfo`.
+    public var thermalOverride: ProcessInfo.ThermalState?
+
+    public init(store: Store, link: ActuatorLink, detector: Detector, geometry: FrameGeometry,
+                power: PowerManager, clock: Clock) {
+        self.store = store
+        self.link = link
+        self.detector = detector
+        self.power = power
+        self.clock = clock
+        self.converter = FrameConverter(geometry: geometry)
+
+        // The one place SchedulerConfig learns how big the frame really is. A remembered
+        // constant here means crops cut from the wrong part of the garden.
+        var config = SchedulerConfig()
+        config.cropPixels = store.settings.modelSide
+        geometry.apply(to: &config)
+        self.schedulerConfig = config
+
+        self.cycle = Cycle(calibration: store.calibration, schedulerConfig: config)
+        self.cycle.masks = store.masks
+        self.cycle.mode = store.settings.mode
+    }
+
+    /// Call once per camera frame, on the capture queue.
+    public func handle(frame pixelBuffer: CVPixelBuffer) {
+        let uptime = clock.uptime
+        link.tick(uptime: uptime)
+
+        guard let gray = converter.gray(from: pixelBuffer) else { return }
+
+        let thermal = thermalOverride ?? ProcessInfo.processInfo.thermalState
+        let decision = power.evaluate(thermal: thermal, meanLuma: gray.meanLuma, uptime: uptime)
+        apply(decision, at: uptime)
+
+        if decision.pauseDetection { return }
+        cycleCounter += 1
+        if decision.cycleDivisor > 1, cycleCounter % decision.cycleDivisor != 0 { return }
+
+        let report = collectAnswer()
+        lastReportWasPending = { if case .pending = report { return true } else { return false } }()
+
+        let output = cycle.process(frame: gray,
+                                   detector: report,
+                                   status: link.status(asOf: uptime),
+                                   now: clock.now,
+                                   uptime: uptime)
+        lastOutput = output
+        carryOut(output.decision)
+        askDetector(about: output.cropRequests, from: pixelBuffer, capturedAt: uptime)
+    }
+
+    /// Replaces the calibration after the owner records a point.
+    public func update(calibration: Calibration) {
+        store.calibration = calibration
+        cycle.update(calibration: calibration)
+    }
+
+    public func update(mode: Mode) {
+        store.settings.mode = mode
+        cycle.mode = mode
+    }
+
+    // MARK: detection
+
+    private func collectAnswer() -> DetectorReport {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let answer = pendingAnswer else { return .pending }
+        pendingAnswer = nil
+        lastAnswerCapturedAt = answer.capturedAt
+        return .answer(answer.detections, capturedAt: answer.capturedAt)
+    }
+
+    private func askDetector(about requests: [CropRequest], from pixelBuffer: CVPixelBuffer,
+                             capturedAt: TimeInterval) {
+        guard !requests.isEmpty else { return }
+        lock.lock()
+        let busy = detectorBusy
+        if !busy { detectorBusy = true }
+        lock.unlock()
+        guard !busy else { return }
+
+        // The inputs are cut on this queue, while the buffer is still guaranteed valid. The
+        // capture system reuses its buffers, and a CVPixelBuffer held past the delegate call
+        // is a buffer whose contents change underneath the model.
+        let side = store.settings.modelSide
+        let inputs: [(CVPixelBuffer, PixelRect)] = requests.compactMap { request in
+            guard let rect = converter.geometry.validPixelRect(of: request.rect),
+                  let input = converter.modelInput(from: pixelBuffer, cropInFrame: rect, side: side)
+            else { return nil }
+            return (input, rect)
+        }
+        guard !inputs.isEmpty else {
+            lock.lock(); detectorBusy = false; lock.unlock()
+            return
+        }
+
+        detectorQueue.async { [weak self] in
+            guard let self else { return }
+            var detections: [Detection] = []
+            var failed = false
+
+            for (input, rect) in inputs {
+                do {
+                    let boxes = try self.detector.detect(input: input)
+                    let letterbox = Letterbox(crop: rect, side: side)
+                    for box in boxes {
+                        let frameBox = letterbox.frameBox(fromModel: box.box, crop: rect,
+                                                          frame: self.converter.geometry.frame)
+                        detections.append(Detection(box: frameBox, confidence: box.confidence))
+                    }
+                } catch {
+                    failed = true
+                }
+            }
+
+            self.lock.lock()
+            if failed {
+                self.detectorFailures += 1
+            }
+            // A failed inference is not evidence of absence, so nothing is handed over and
+            // the next cycle reports pending.
+            if !failed {
+                self.pendingAnswer = (detections, capturedAt)
+            }
+            self.detectorBusy = false
+            self.lock.unlock()
+        }
+    }
+
+    /// Blocks until the detector queue has drained. Tests only.
+    public func waitForDetector() {
+        detectorQueue.sync {}
+    }
+
+    // MARK: acting
+
+    private func carryOut(_ decision: FireDecision) {
+        switch decision {
+        case .none:
+            break
+        case .aim(let pan, let tilt):
+            try? link.send(.aim(pan: pan, tilt: tilt))
+        case .park:
+            try? link.send(.park)
+        case .shoot(let pan, let tilt, let ms):
+            // The only place in the app allowed to turn a decision into water.
+            try? link.send(.shoot(pan: pan, tilt: tilt, ms: ms))
+        case .wouldShoot:
+            // Deliberately not sent. A dry run that fires is worse than no dry run.
+            wouldShootCount += 1
+        }
+    }
+
+    private func apply(_ decision: PowerDecision, at uptime: TimeInterval) {
+        // Once, on the way into critical, not ten times a second for as long as it lasts.
+        // The gnome stays disarmed because the firmware latches it, and a command repeated
+        // at frame rate is a radio kept busy for nothing while the phone is already too hot.
+        if decision.disarm != lastDisarm {
+            lastDisarm = decision.disarm
+            if decision.disarm { try? link.send(.arm(false)) }
+        }
+        if decision.charger != lastCharger {
+            lastCharger = decision.charger
+            try? link.send(.charge(decision.charger))
+        }
+        if decision.fan != lastFan {
+            lastFan = decision.fan
+            try? link.send(.fan(decision.fan))
+        }
+    }
+
+    private var lastCharger: Bool?
+    private var lastFan: Bool?
+    private var lastDisarm: Bool?
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cd ios/DwarfApp/DwarfAdapters && swift test`
+Expected: `Executed 65 tests, with 0 failures`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ios/DwarfApp/DwarfAdapters
+git commit -m "feat(app): wire the runtime together and honour DwarfCore's contract"
+```
+
+---
+
+## Task 13: The camera and the screen
+
+**Files:**
+- Create: `ios/DwarfApp/App/CameraSource.swift`
+- Create: `ios/DwarfApp/App/BatteryReader.swift`
+- Create: `ios/DwarfApp/App/GnomeController.swift`
+- Modify: `ios/DwarfApp/App/RootView.swift`
+- Modify: `ios/DwarfApp/App/DwarfAppMain.swift`
+
+The iOS-only shell: a capture session, the battery, and a screen that shows what the runtime
+is thinking. Deliberately last and deliberately thin — by this point everything that can be
+wrong has a test somewhere else.
+
+The screen matters more than it looks. Until the second plan builds the web UI, it is the
+only way to see whether the gnome is working.
+
+- [ ] **Step 1: Write the camera**
+
+Create `ios/DwarfApp/App/CameraSource.swift`:
+
+```swift
+import Foundation
+import AVFoundation
+import CoreVideo
+
+/// 1080p frames at roughly 10 fps, in the camera's native format.
+///
+/// `420YpCbCr8BiPlanarFullRange` is what the sensor produces, so nothing is converted at
+/// capture time and `FrameConverter` gets the luma plane for free. 1080p rather than 4K:
+/// at 6 m a cat is about 75 px long here, which is enough, and four times the pixels would
+/// cost four times the heat for no more reach.
+public final class CameraSource: NSObject {
+    public var onFrame: ((CVPixelBuffer) -> Void)?
+
+    private let session = AVCaptureSession()
+    private let output = AVCaptureVideoDataOutput()
+    private let queue = DispatchQueue(label: "garden.dwarf.capture")
+
+    public func start() throws {
+        session.beginConfiguration()
+        session.sessionPreset = .hd1920x1080
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            throw CameraError.noCamera
+        }
+        session.addInput(input)
+
+        output.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String:
+                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ]
+        // Frames are dropped rather than queued. A backlog would hand the runtime pictures
+        // of where the cat used to be.
+        output.alwaysDiscardsLateVideoFrames = true
+        output.setSampleBufferDelegate(self, queue: queue)
+        guard session.canAddOutput(output) else { throw CameraError.noCamera }
+        session.addOutput(output)
+
+        try device.lockForConfiguration()
+        // Ask for 10 fps at both ends, so the sensor is not working harder than the pipeline
+        // can consume. On an A9 every unused frame is heat.
+        device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 10)
+        device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 10)
+        // The gnome does not move and the garden does not change distance. Continuous
+        // autofocus hunting through a plastic window is worse than a fixed far focus.
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            device.focusMode = .continuousAutoFocus
+        }
+        device.unlockForConfiguration()
+
+        session.commitConfiguration()
+        session.startRunning()
+    }
+
+    public func stop() {
+        session.stopRunning()
+    }
+
+    public enum CameraError: Error { case noCamera }
+}
+
+extension CameraSource: AVCaptureVideoDataOutputSampleBufferDelegate {
+    public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+                              from connection: AVCaptureConnection) {
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        onFrame?(buffer)
+    }
+}
+```
+
+- [ ] **Step 2: Write the battery reader**
+
+Create `ios/DwarfApp/App/BatteryReader.swift`:
+
+```swift
+import UIKit
+import DwarfAdapters
+
+/// `UIDevice` behind the protocol `PowerManager` expects.
+public final class DeviceBattery: BatteryReader {
+    public init() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+    }
+
+    /// -1 when the level is not available, which `PowerManager` reads as "charge anyway".
+    public var level: Float { UIDevice.current.batteryLevel }
+}
+```
+
+- [ ] **Step 3: Write the controller that holds it all**
+
+Create `ios/DwarfApp/App/GnomeController.swift`:
+
+```swift
+import Foundation
+import SwiftUI
+import DwarfCore
+import DwarfAdapters
+
+/// Assembles the gnome and publishes enough of it for the screen.
+///
+/// Deliberately **not** `@MainActor`: camera frames arrive on the capture queue and go
+/// straight into the runtime from there, so isolating this type to the main actor would
+/// either block the UI or need every frame to hop threads. Only the published properties
+/// touch the main actor, and they do it explicitly.
+final class GnomeController: ObservableObject {
+    @Published private(set) var line = "starting"
+    @Published private(set) var trackCount = 0
+    @Published private(set) var linkUp = false
+    @Published private(set) var mode: Mode = .dryRun
+    /// True when the model could not be loaded. The gnome then tracks nothing at all, and
+    /// silently looking like it works is the worst way for that to present.
+    @Published private(set) var modelMissing = false
+
+    private let camera = CameraSource()
+    private let runtime: Runtime
+    private let store: Store
+    private let link: ActuatorLink
+
+    init() {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory,
+                                                 in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let store = Store(directory: directory)
+        let transport = BluetoothTransport()
+        let link = ActuatorLink(transport: transport)
+        // A missing or unreadable model must be visible, not papered over: the fallback
+        // detector never finds anything, so the gnome would sit there looking healthy and
+        // watching nothing.
+        let detector: Detector
+        var missing = false
+        if let model = try? CoreMLDetector(minConfidence: store.settings.minConfidence) {
+            detector = model
+        } else {
+            detector = FakeDetector()
+            missing = true
+        }
+
+        self.store = store
+        self.link = link
+        self.runtime = Runtime(
+            store: store,
+            link: link,
+            detector: detector,
+            geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080),
+                                    quarterTurns: store.settings.quarterTurns),
+            power: PowerManager(battery: DeviceBattery()),
+            clock: SteadyClock(wrapping: SystemClock()))
+        self.mode = store.settings.mode
+        self.modelMissing = missing
+    }
+
+    func start() {
+        camera.onFrame = { [weak self] buffer in
+            guard let self else { return }
+            self.runtime.handle(frame: buffer)
+            Task { @MainActor in self.refresh() }
+        }
+        do {
+            try camera.start()
+            line = "watching"
+        } catch {
+            line = "no camera: \(error)"
+        }
+    }
+
+    func set(mode: Mode) {
+        self.mode = mode
+        runtime.update(mode: mode)
+        try? store.save()
+    }
+
+    private func refresh() {
+        linkUp = link.isConnected
+        trackCount = runtime.lastOutput?.tracks.count ?? 0
+
+        if modelMissing {
+            line = "MODEL MISSING — nothing is being detected"
+        } else if !store.loadFailures.isEmpty {
+            line = "unreadable: \(store.loadFailures.joined(separator: ", "))"
+        } else if !store.isCalibrated {
+            line = "tracking only — not calibrated"
+        } else if let decision = runtime.lastOutput?.decision {
+            line = describe(decision)
+        }
+    }
+
+    private func describe(_ decision: FireDecision) -> String {
+        switch decision {
+        case .none: return "watching"
+        case .aim(let pan, let tilt): return String(format: "aim %.1f° %.1f°", pan, tilt)
+        case .park: return "parked"
+        case .shoot(_, _, let ms): return "SHOT \(ms) ms"
+        case .wouldShoot(_, _, let ms): return "would shoot \(ms) ms"
+        }
+    }
+}
+```
+
+- [ ] **Step 4: Write the screen**
+
+Replace `ios/DwarfApp/App/RootView.swift`:
+
+```swift
+import SwiftUI
+import DwarfCore
+
+struct RootView: View {
+    @StateObject private var gnome = GnomeController()
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(gnome.linkUp ? Color.green : Color.red)
+                    .frame(width: 10, height: 10)
+                Text(gnome.linkUp ? "gnome connected" : "no link")
+                    .font(.footnote)
+            }
+
+            Text(gnome.line)
+                .font(.system(.title2, design: .monospaced))
+                .multilineTextAlignment(.center)
+
+            Text("\(gnome.trackCount) track\(gnome.trackCount == 1 ? "" : "s")")
+                .font(.footnote).foregroundStyle(.secondary)
+
+            Picker("mode", selection: Binding(get: { gnome.mode },
+                                              set: { gnome.set(mode: $0) })) {
+                Text("disarmed").tag(Mode.disarmed)
+                Text("dry-run").tag(Mode.dryRun)
+                Text("live").tag(Mode.live)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .foregroundStyle(.white)
+        .onAppear { gnome.start() }
+    }
+}
+```
+
+- [ ] **Step 5: Ask for the camera at launch**
+
+In `ios/DwarfApp/App/DwarfAppMain.swift`, add above `WindowGroup`'s content, inside `init`:
+
+```swift
+        AVCaptureDevice.requestAccess(for: .video) { _ in }
+```
+
+and `import AVFoundation` at the top.
+
+- [ ] **Step 6: Build**
+
+```bash
+cd ios/DwarfApp && xcodegen generate
+xcodebuild -project DwarfApp.xcodeproj -scheme DwarfApp -sdk iphoneos -configuration Release build CODE_SIGNING_ALLOWED=NO
+```
+
+Expected: `** BUILD SUCCEEDED **`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add ios/DwarfApp
+git commit -m "feat(app): add the camera, the battery and the status screen"
+```
+
+---
+
+## Task 14: Dry-run on the bench (HARDWARE: phone and ESP32)
+
+**Files:**
+- Create: `hardware/dry-run-checklist.md`
+
+The gnome, assembled loosely on a bench, watching a room, in dry-run, with the pump off and
+the tank empty. This is the milestone the whole plan exists to reach: everything connected,
+nothing wet.
+
+**Prerequisites:** firmware Tasks 10–12 done, the wiring in `hardware/wiring.md` built
+including the gate pull-downs and flyback diodes, and the M0 number from Task 6.
+
+- [ ] **Step 1: Write the checklist**
+
+Create `hardware/dry-run-checklist.md`:
+
+```markdown
+# Dry-run checklist
+
+Pump unplugged, tank empty, valve connected so its click can be heard. Mode `dry-run`
+throughout — the app must never reach `live` during this.
+
+## Before power
+
+- [ ] Gate pull-downs fitted on GPIO 25, 26, 27, 14
+- [ ] Flyback diodes across the solenoid and the pump, banded end to +12 V
+- [ ] Both buck converters confirmed at 6.0 V and 5.0 V off-load
+- [ ] Star ground
+- [ ] Pump disconnected at its connector, not merely switched off in software
+
+## Link
+
+- [ ] App reports "gnome connected" within 10 s of launch
+- [ ] Status notifications at least once a second
+- [ ] Pull the ESP32's power: app reports no link within 3 s
+- [ ] Restore power: reconnects unaided, note how long it takes
+- [ ] Unplug the temperature probe while armed: gnome reports TEMP_SENSOR and disarms
+
+## Seeing
+
+- [ ] Phone mounted the way it will be in the gnome, with the quarter turns set to match
+- [ ] Walk in front of the camera: track count rises
+- [ ] Stand still: the screen reaches "would shoot"
+- [ ] The head turns towards you and follows as you move slowly
+- [ ] Walk out of shot: the head parks after about 10 s
+- [ ] Hold a printed photograph of a cat at 3 m: it is detected
+
+## Refusing
+
+Each of these must end in no "would shoot", and the screen should say why:
+
+- [ ] Closer than 2 m
+- [ ] Standing in a no-fire zone, once one is written into masks.json
+- [ ] Moving continuously
+- [ ] Lights off — after 60 s it stops looking altogether
+- [ ] Mode set to `disarmed`
+
+## Heat
+
+- [ ] Thirty minutes of continuous dry-run. Note the thermal state and whether the fan came on
+- [ ] The phone stays below 35 °C ambient at the sled
+
+## The valve
+
+- [ ] Throughout all of the above, the valve never clicks
+- [ ] Power-cycle the ESP32 with everything connected: still no click
+```
+
+- [ ] **Step 2: Run it**
+
+Work through the checklist. Anything that fails is a finding, not a task to skip.
+
+- [ ] **Step 3: Record what happened**
+
+Fill in the boxes, write the observed numbers into the document — reconnect time, thermal
+state, detection range on a printed cat — and commit it. Those numbers are the baseline the
+field week is judged against.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add hardware/dry-run-checklist.md
+git commit -m "Record the bench dry-run results"
+```
+
+---
+
+## Definition of done
+
+- `cd ios/DwarfApp/DwarfAdapters && swift test` passes, around 65 tests.
+- `cd ios/DwarfCore && swift test` still passes, 162 tests.
+- `xcodebuild -sdk iphoneos ... CODE_SIGNING_ALLOWED=NO` builds the app in Release.
+- `grep -rn "import UIKit" ios/DwarfApp/DwarfAdapters/Sources` returns nothing.
+- `grep -rn "Date()" ios/DwarfApp/DwarfAdapters/Sources` returns nothing outside `Clock.swift`.
+- The M0 number is written into this plan, and `Settings.modelSide` matches it.
+- The dry-run checklist is filled in and committed.
+
+## What this plan deliberately leaves out
+
+- **The web UI, the event store, calibration and mask editors.** The second plan. Until then
+  calibration and masks are files, and the phone's own screen is the only view.
+- **Ack feedback into `FirePolicy`.** Nothing consumes `DeviceAck` beyond counting refusals,
+  so a shot the firmware bounces still spends the animal's budget. `minDeviceInterval`
+  removes the common cause. Proper handling needs the event store to log against.
+- **Background operation.** The camera requires the foreground. Guided Access pins the app.
+- **Recovering from a phone reboot without a computer.** Out of scope in the spec, and still is.
+- **A replay harness.** The spec asks for one that runs recorded clips through the whole
+  pipeline. It needs recorded clips, which need the event store, which is the second plan.
