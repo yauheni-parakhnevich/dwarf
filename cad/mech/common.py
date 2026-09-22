@@ -72,6 +72,19 @@ def pump_body():
     return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.Z_FLOOR + 10, P.Z_FLOOR + 10 + H)
 
 
+# The valve stands on the floor behind the canister's neck, on the centreline, two millimetres
+# clear of the tank cradle's back saddle: its short side runs across X, its long side along Y,
+# which is the only attitude that keeps it inside the base's wall out there. That puts it
+# between the pump at +Y and the tube's run up through the divider's glands.
+VALVE_XY = (P.CANISTER_XY[0] - P.CANISTER[0] / 3 - 10.0 - 2.0 - P.VALVE[1] / 2, 0.0)
+
+
+def valve_body():
+    L, W, H = P.VALVE
+    cx, cy = VALVE_XY
+    return box(cx - W / 2, cx + W / 2, cy - L / 2, cy + L / 2, P.Z_FLOOR, P.Z_FLOOR + H)
+
+
 def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction="down"):
     """Blind holes for heat-set inserts, drilled from each (x, y, z) point."""
     for x, y, z in points:
