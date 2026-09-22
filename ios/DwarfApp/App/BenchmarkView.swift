@@ -39,7 +39,15 @@ struct BenchmarkView: View {
         var lastReport = started
 
         while ProcessInfo.processInfo.systemUptime - started < 600 {
-            _ = try? detector.detect(input: input)
+            // Each inference autoreleases a good deal: CoreML's feature providers, the two
+            // output MLMultiArrays and their backing storage. A tight loop inside a
+            // detached task never returns to a run loop, so without an explicit pool
+            // nothing ever drains and the footprint climbs until iOS kills the app. On a
+            // 2 GB phone that takes a couple of minutes, which reads as "it ran for a
+            // while and then crashed".
+            autoreleasepool {
+                _ = try? detector.detect(input: input)
+            }
             count += 1
 
             let state = ProcessInfo.processInfo.thermalState
@@ -49,14 +57,29 @@ struct BenchmarkView: View {
             if now - lastReport >= 5 {
                 lastReport = now
                 let rate = Double(count) / (now - started)
-                await report(String(format: "%.0f s · %d inferences · %.2f /s · thermal %d",
-                                    now - started, count, rate, worstThermal.rawValue))
+                await report(String(format: "%.0f s · %d inferences · %.2f /s · thermal %d · %d MB",
+                                    now - started, count, rate, worstThermal.rawValue,
+                                    residentMegabytes()))
             }
         }
 
         let elapsed = ProcessInfo.processInfo.systemUptime - started
-        await report(String(format: "DONE %.0f s · %d inferences · %.2f /s · worst thermal %d",
-                            elapsed, count, Double(count) / elapsed, worstThermal.rawValue))
+        await report(String(format: "DONE %.0f s · %d inferences · %.2f /s · worst thermal %d · %d MB",
+                            elapsed, count, Double(count) / elapsed, worstThermal.rawValue,
+                            residentMegabytes()))
+    }
+
+    /// Resident footprint, reported alongside the rate. A number that climbs steadily
+    /// rather than settling is the signature of the pool problem above coming back.
+    private func residentMegabytes() -> Int {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? Int(info.resident_size / 1_048_576) : -1
     }
 
     @MainActor private func report(_ text: String) {
