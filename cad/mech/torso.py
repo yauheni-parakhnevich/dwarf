@@ -1,5 +1,6 @@
 """The dry zone: the belt joint and everything that hangs off the chassis."""
 import math
+from build123d import Axis, Plane, Polygon, revolve
 import params as P
 from mech import part
 from mech.common import cyl_z, cyl_x, box, insert_holes
@@ -34,11 +35,19 @@ def _sled_feet():
 
 @part("belt_flange_lower", section="base")
 def belt_flange_lower():
-    """Ring inside the base's rim with the inserts the belt screws go into."""
+    """Ring inside the base's rim with the inserts the belt screws go into.
+
+    Sixteen millimetres tall, and the base flares by five over that height, so a straight ring
+    sized at its narrowest would stand off the wall everywhere but its top. It is revolved from
+    a profile instead: the outer edge follows ring_r_out height by height and meets the wall all
+    the way down, the inner edge stands at FLANGE_R_IN.
+    """
     z1 = P.Z_BELT
     z0 = z1 - 2 * P.RING_T
-    r_out = P.ring_r_out(P.BASE_PROFILE, z0, z1)
-    ring = cyl_z(r_out, z0, z1) - cyl_z(P.FLANGE_R_IN, z0 - 1, z1 + 1)
+    heights = (z0, z0 + 4, z0 + 8, z0 + 12, z1)
+    outer = [(P.ring_r_out(P.BASE_PROFILE, z, z), z) for z in heights]
+    section = Plane.XZ * Polygon(*[(P.FLANGE_R_IN, z0)], *outer, (P.FLANGE_R_IN, z1))
+    ring = revolve(section, axis=Axis.Z)
     return insert_holes(ring, [(*_polar(P.FLANGE_SCREW_R, a), z1) for a in P.FLANGE_SCREW_ANGLES], depth=P.INSERT_DEPTH + 2)
 
 
@@ -110,7 +119,7 @@ def phone_sled():
     tray = tray - pocket
     # the lens clip stands 12 mm proud of the back glass: a channel up the whole back at the
     # camera, so the phone drops straight down into the tray with the clip already on
-    tray = tray - box(P.PHONE_BACK_X - 0.01, x1 + 1, P.CAM_Y - 14, P.CAM_Y + 14, z0 - 1, z1 + 1)
+    tray = tray - box(P.PHONE_BACK_X - 0.01, x1 + 1, P.CAM_Y - P.LENS_CLIP_W / 2, P.CAM_Y + P.LENS_CLIP_W / 2, z0 - 1, z1 + 1)
     # the back lip stops a third of the way up, so the back glass is not rubbed ...
     lip_top = P.PHONE_BOTTOM_Z + 30
     tray = tray - box(P.PHONE_BACK_X - 0.01, x1 + 1, y0 - 1, y1 + 1, lip_top, z1 + 1)

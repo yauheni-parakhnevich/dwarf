@@ -218,3 +218,19 @@ def test_divider_fills_the_base_cup(parts):
 def test_electronics_fit_on_the_deck():
     boards = [P.ESP32, P.XL4015, P.XL4015, P.MOSFET, P.MOSFET, P.MOSFET]
     assert sum(w * h for w, h in boards) * 1.3 <= P.EDECK_L * P.EDECK_W
+
+
+def test_lower_belt_flange_follows_the_bases_flare(parts):
+    """Revolved, not a straight ring: at every height it reaches the wall, and through none of it.
+
+    Measured on a slice rather than by intersecting a thin probe ring: a ring half a millimetre
+    off the revolve's conical face makes OCCT return nonsense (an empty common and a cut bigger
+    than the ring itself), which would pass for the wrong reason.
+    """
+    flange = parts["belt_flange_lower"]
+    z0 = P.Z_BELT - 2 * P.RING_T
+    for z in (z0, z0 + 4, z0 + 8, z0 + 12, P.Z_BELT):
+        band = flange & box(-120, 120, -120, 120, max(z0, z - 0.5), min(P.Z_BELT, z + 0.5))
+        r_max = max(math.hypot(v.X, v.Y) for v in band.vertices())
+        assert r_max > P.ring_r_out(P.BASE_PROFILE, z, z) - 0.5, (z, r_max)   # out at the wall here
+        assert r_max < P.shell_r(P.BASE_PROFILE, z) + 0.1, (z, r_max)         # never through the skin
