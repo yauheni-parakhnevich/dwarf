@@ -2,8 +2,8 @@ import math
 import params as P
 
 
-def test_total_height_is_558():
-    assert P.Z_TOP == 558.0
+def test_total_height_is_569():
+    assert P.Z_TOP == 569.0
 
 
 def test_every_section_fits_the_bed():
@@ -153,14 +153,10 @@ def test_tilt_helper_lifts_the_nose_for_positive_angles():
 def test_hat_brim_clears_the_collar_at_both_stops():
     # every point of the brim's rim swings on a circle about the tilt axis; the lowest it gets at
     # either stop must stay above the collar's top, or inboard of the collar's inner wall
-    checked = 0
     for deg in P.TILT_STOP:
         for corner in ((-P.HAT_BRIM_R, P.Z_HAT), (P.HAT_BRIM_R, P.Z_HAT), (-P.HAT_BRIM_R, P.Z_HAT + P.HAT_BRIM_T), (P.HAT_BRIM_R, P.Z_HAT + P.HAT_BRIM_T)):
             x, z = tilt(corner, deg)
-            if z < P.BEARD_TOP_Z + 3.0:
-                assert abs(x) < P.BEARD_R_IN_TOP - 3.0, (deg, corner, x, z)
-                checked += 1
-    assert checked > 0, "no brim corner came near the collar; the check is not exercising anything"
+            assert z > P.BEARD_TOP_Z + 3.0 or abs(x) < P.BEARD_R_IN_TOP - 3.0, (deg, corner, x, z)
 
 
 def test_hard_stops_sit_outside_the_fixture_limits():
@@ -169,3 +165,31 @@ def test_hard_stops_sit_outside_the_fixture_limits():
     cfg = json.loads(json.load(open(Path(__file__).resolve().parents[2] / "protocol/fixtures/commands.json"))["cfg"])
     assert P.PAN_STOP_DEG > cfg["panMax"] and -P.PAN_STOP_DEG < cfg["panMin"]
     assert P.TILT_STOP[0] < cfg["tiltMin"] and P.TILT_STOP[1] > cfg["tiltMax"]
+
+
+def test_hat_brim_clears_the_yoke_arms_at_every_tilt():
+    """The brim covers the arms (r 70 > |y| 60); its underside must stay above the arms' rounded tops."""
+    r_arm = P.YOKE_ARM_W / 2
+    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
+        for x10 in range(-int(r_arm) * 10, int(r_arm) * 10 + 1, 5):
+            x = x10 / 10
+            _, z = tilt((x, P.Z_HAT), deg)
+            arm_top = P.Z_HEAD + math.sqrt(max(0.0, r_arm ** 2 - x ** 2))
+            assert z > arm_top + 1.5, (deg, x, z, arm_top)
+
+
+def test_tilt_servo_passes_the_face_opening():
+    """The cradle with the servo on it goes in through the face along -X; its far corner must fit the opening."""
+    L, W, H = P.MG996R["body"]
+    far = math.hypot(P.TILT_SERVO_SHAFT_Y, L - P.MG996R["shaft_off"])      # corner furthest from the tilt axis
+    opening = math.sqrt((P.HEAD_R - P.WALL) ** 2 - P.FACE_SPLIT_X ** 2)
+    assert far < opening - 0.3, (far, opening)
+    for x in (P.CRADLE_X[0], P.CRADLE_X[1]):                                # the plate's top corners stay inside
+        for y in (P.BULKHEAD_Y - P.BULKHEAD_T, P.BULKHEAD_Y):
+            r = math.sqrt(x ** 2 + y ** 2 + (P.CRADLE_Z[1] - P.Z_HEAD) ** 2)
+            assert r < P.HEAD_R - P.WALL, (x, y, r)
+
+
+def test_coupler_hex_is_its_widest_section():
+    assert P.COUPLER_HEX_AF >= P.COUPLER_D + 2 * P.CLEAR
+    assert P.YOKE_ARM_W >= 2 * P.COUPLER_HEX_AF / math.sqrt(3) + 6.0

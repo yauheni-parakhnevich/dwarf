@@ -30,8 +30,8 @@ DECK_T = 6.0
 RING_T = 8.0               # interface rings unioned into the shell
 Z_HEAD = 458.0             # tilt axis and head centre
 HEAD_R = 45.0
-Z_HAT = 481.0              # underside of the brim
-Z_TOP = 558.0
+Z_HAT = 492.0              # underside of the brim: 34 above the tilt axis, so at +45 the brim clears the yoke arms
+Z_TOP = 569.0
 Z_LENS = 245.0
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
@@ -168,6 +168,7 @@ CRANK_T = 5.0
 LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
 PIN_BOSS_H = 0.5
+PIN_BOSS_D = 8.0
 Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 333; the crank's top is the shaft face, the horn sits in its pocket
 Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 328
 Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 327.5; a boss on crank and foot takes the screw's clamp, not the link
@@ -214,7 +215,7 @@ EAR_R = 12.0                   # both ears are the coupler's diameter
 EAR_OUT_Y = HEAD_R + 6.0       # outer face of the ear boss / coupler
 YOKE_GAP = 1.0
 YOKE_ARM_T = 8.0
-YOKE_ARM_W = 28.0              # 4 mm of wall either side of the coupler's hex
+YOKE_ARM_W = 36.0              # 3.5 mm of wall either side of the 25 mm hex's corners
 YOKE_RING_R_IN = 44.0          # the yoke stands on a ring on the plate's rim
 YOKE_RING_T = 3.0
 YOKE_SCREW_R = 46.7
@@ -225,20 +226,21 @@ HORN_ACCESS_D = 4.6            # counterbores down the coupler for the horn scre
 HORN_SCREWS_USED = (0.0, 180.0)   # two of the horn's four holes
 INSERT_M4_D = 5.6
 INSERT_M4_DEPTH = 8.0
-COUPLER_HEX_AF = 17.0
-TILT_SERVO_SHAFT_Y = 25.0      # servo shaft face inside the head, +Y side
+COUPLER_HEX_AF = 25.0          # wider than the shaft: the coupler enters from outside through this hex
+TILT_SERVO_SHAFT_Y = 21.0      # servo shaft face inside the head, +Y side; the body's far corner must pass the face opening
+TILT_SERVO_UP = True           # the body's long side runs up from the shaft, so its tabs sit where the sphere is wide
 BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 10.1; the cradle plate's +Y face, the tabs sit on it
 BULKHEAD_T = 2.5
-BULKHEAD_BOSS_D = 9.0          # bosses round the four insert holes, INSERT_DEPTH + 1 tall, on the -Y side
+BULKHEAD_BOSS_D = 8.5          # bosses round the four insert holes, INSERT_DEPTH + 1 tall, on the -Y side
 # the cradle is assembled with the servo on the bench and slides in through the face opening
 # along -X, into two rails on the back of the head; a lip on the lower rail and a stop block on
 # the face cap box it in. No screw is driven inside the head.
-CRADLE_X = (-20.0, 14.0)
-CRADLE_Z = (424.0, 492.0)
+CRADLE_X = (-12.0, 14.0)
+CRADLE_Z = (438.0, 497.0)      # spans the servo's tab bosses with the body running up; the top corners stay inside the sphere
 RAIL_T = 3.0                   # the rails' lips either side of the plate
 RAIL_H = 6.0                   # how far a rail reaches above/below the plate's edge
 RAIL_LIP_L = 2.5               # the lower rail's front lip, which the plate drops in behind
-FACE_STOP_Z = (478.0, 490.0)   # the face cap's stop block bears on the plate's top front edge
+FACE_STOP_Z = (486.0, 496.0)   # the face cap's stop block bears on the plate's top front edge
 HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
 FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
