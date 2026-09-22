@@ -305,6 +305,10 @@ bool bleOwnsLiveness(Millis now) {
 // ISR-to-loop() handoff exactly, for the same reason -- the BLE host task is
 // just as much "somewhere else" as an interrupt is.
 volatile bool g_bleJustDisconnected = false;
+// millis() at which the current link was established, or 0 when idle. Written
+// from the NimBLE host task, read from loop(), hence volatile like its
+// neighbours.
+volatile Millis g_bleConnectedAt = 0;
 
 // BLE writes arrive on the NimBLE task. Queue them and handle them in loop(),
 // so all controller state stays on one task.
@@ -325,6 +329,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         (void)server;
         g_bleConnected = true;
+        // When this link arrived, so a central that connects and then never
+        // proves who it is can be shown the door. See dropUnauthenticated().
+        g_bleConnectedAt = millis();
         // A fresh connection has not proven anything yet: it must not be
         // credited with the previous connection's (or nobody's) recency.
         // Serial keeps liveness ownership until this central actually sends
@@ -335,6 +342,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onDisconnect(NimBLEServer* server) override {
         (void)server;
         g_bleConnected = false;
+        g_bleConnectedAt = 0;
         g_bleCmdSeen = false;
         g_bleJustDisconnected = true;
         // Keep the gnome reachable after the phone walks away.
@@ -612,11 +620,48 @@ void setup() {
     Serial.printf("{\"blePasskey\":\"%06u\"}\n", g_blePasskey);
 }
 
+// How long a central may stay connected without completing pairing.
+//
+// Connecting is not gated -- only reading and writing the protected
+// characteristics is -- so without this a stranger can open links and simply
+// hold them. NimBLE allows three at once, and nothing ever reclaims one, so a
+// few idle connections lock the phone out of the gnome entirely: no commands,
+// no heartbeat, and the firmware's own watchdog then disarms it. Denial of
+// service rather than danger, but trivially achievable from the pavement and
+// invisible from indoors. Ten seconds is far longer than a passkey exchange
+// needs and far shorter than an attacker would like.
+constexpr Millis kAuthGraceMs = 10000;
+
+// Disconnects a link that has been up past the grace period without becoming
+// authenticated. Bonded reconnections re-encrypt in well under a second, so
+// this never touches the phone.
+void dropUnauthenticated(Millis now) {
+    if (!g_bleConnected || g_bleConnectedAt == 0) return;
+    if (now - g_bleConnectedAt < kAuthGraceMs) return;
+
+    NimBLEServer* server = NimBLEDevice::getServer();
+    if (server == nullptr) return;
+
+    // Ask the stack, not our own bookkeeping: a link is authenticated only if
+    // the Security Manager says so.
+    for (uint16_t handle : server->getPeerDevices()) {
+        ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(handle, &desc) != 0) continue;
+        if (desc.sec_state.authenticated) {
+            // Legitimate and paired: stop sweeping until the next connection.
+            g_bleConnectedAt = 0;
+            return;
+        }
+        server->disconnect(handle);
+    }
+}
+
 void loop() {
     const Millis now = millis();
 
     pollSerial(now);
     pollBle(now);
+    dropUnauthenticated(now);
 
     if (g_valveHardStop) {
         g_valveHardStop = false;
