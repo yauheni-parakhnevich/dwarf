@@ -328,6 +328,23 @@ git add ios/DwarfCore
 git commit -m "feat(core): add grayscale frame type"
 ```
 
+**Post-review addendum (applied in commit `9251a0f`):** two guards added after review.
+
+1. **`luma(x:y:)` gained a `precondition` on both coordinates.** A negative `x` with a
+   positive `y` can compute a flat index that lands *inside* the buffer, silently returning
+   a pixel from the wrong row — corrupting a frame diff rather than crashing. `precondition`
+   rather than `assert`, so it holds in release too; it is not on the hot path, because the
+   motion detector iterates `pixels.indices` directly rather than calling the accessor. The
+   doc comment says so, to stop a later reader "optimising" the check away.
+2. **The trusting initialiser gained a debug-only `assert`** on `pixels.count == width *
+   height`. A mismatched buffer otherwise produces a plausible-looking `meanLuma` over the
+   wrong denominator with no signal at all. It stays `assert` rather than `precondition`
+   because skipping that check is the whole reason this initialiser exists.
+
+The trap itself cannot be tested in-process, so the added tests pin the boundary that must
+*not* trap: every valid coordinate of a small frame, corners included. The suite is 11 tests
+after this task.
+
 ---
 
 ### Task 2: Motion detector
@@ -821,6 +838,27 @@ git add ios/DwarfCore
 git commit -m "feat(core): add detector scheduler with motion crops and sweep tiles"
 ```
 
+**Post-review addendum (applied in commit `e337743`):** analysis of the committed version
+found two design gaps, both fixed before later tasks built on this output.
+
+1. **Crop size hardcoded the capture resolution.** `cropWidth = 640/1920` and
+   `cropHeight = 640/1080` encoded an assumption the type could not check, and it would fail
+   silently the day capture resolution changed — the pixel crop would stop being square and
+   something downstream would have to letterbox or stretch it. The config now stores
+   `cropPixels`, `frameWidthPixels` and `frameHeightPixels`, and derives the normalised crop
+   from them, guarding division by zero and clamping into 0...1. A square model input is a
+   pixel-space property, so it is now expressed in pixels. The defaults are numerically
+   identical, so no existing test changed.
+2. **The smallest blob could be starved forever.** Selection re-sorted by area every cycle
+   and took the top N, so with a stable size ordering the smallest blob was *never* given a
+   fitted crop — only ever glanced at by a sweep tile at a fraction of the effective
+   resolution. That is exactly the small, distant cat the system most wants to discourage.
+   The largest blob is still served every cycle, and the remaining slots now rotate through
+   the rest, so every blob is served within `rest.count` cycles. No blob identity tracking
+   was needed: the rotation walks positions in each cycle's freshly sorted list.
+
+The suite is 29 tests after this task.
+
 ---
 
 ### Task 4: Tracker
@@ -1138,6 +1176,36 @@ git add ios/DwarfCore
 git commit -m "feat(core): add tracker with confirmation and stillness"
 ```
 
+**Post-review addendum (applied in commit `cee5af7`):** adversarial analysis of the
+committed version found four real defects in this design. All were measured, not argued,
+and all are fixed. `isConfirmed` and `isStill` are what license a shot, so these matter.
+
+1. **A pacing cat read as still.** Stillness compared only the first and last sample, so a
+   cat that walked out and back within the window — or paced side to side — reported
+   `isStill == true`. Stillness is now **path length** across the retained samples divided
+   by elapsed time, which is strictly more conservative: anything genuinely stationary still
+   passes.
+2. **Two crops of one cat counted as two independent looks.** Confirmation wants 2 of 3
+   looks at *different moments*, but `update` appended a look per call, so a cat covered by
+   both a motion crop and a sweep tile in one cycle was confirmed off one instant. Looks at
+   the same timestamp now merge, keeping the higher confidence. Track creation is also
+   deduplicated within a call, so overlapping detections cannot mint two tracks on one
+   animal and double its shot budget.
+3. **Identity swaps at crossings.** Traced: two cats converging swap tracks at the crossing
+   point, carrying confirmation, stillness and later their shot counts to the wrong animal.
+   Nearest-neighbour association cannot fix this without velocity or appearance modelling,
+   which is out of scope. Instead `Track.isAmbiguous` marks tracks within
+   `ambiguityFactor * gate` of each other, and FirePolicy refuses to fire on them. The
+   tie-break also changed from `<=` to `<` so near-ties resolve by order considered rather
+   than by array position.
+4. **The association gate shattered tracks under throttling.** Measured: a cat crossing at
+   0.25 frame-widths/s held one id at 10 fps but produced **ten** ids at 3 fps, never
+   confirming. The gate now widens with the time since that track was last seen
+   (`gate + maxTrackSpeed * dt`), the same reasoning already applied to the motion
+   detector's alpha. After the fix the 3 fps case holds a single id and confirms.
+
+The suite is 47 tests after this task.
+
 ---
 
 ### Task 5: Mask zones
@@ -1249,6 +1317,29 @@ Expected: `Executed 5 tests, with 0 failures`.
 git add ios/DwarfCore
 git commit -m "feat(core): add mask zones"
 ```
+
+**Post-review addendum (applied in commit `521874b`):** analysis found that every failure
+mode in this module failed *open*. Harmless for an ignore zone — nothing gets filtered — but
+for a no-fire zone it means the safety zone silently protects nothing. Three fixes:
+
+1. **A non-finite point is now inside every no-fire zone.** Every IEEE comparison against
+   NaN is false, so a corrupted coordinate previously meant "fire away". An unknown position
+   is exactly when not firing is right. `isIgnored` keeps the old behaviour, since treating
+   NaN as ignored would silently discard real detections.
+2. **A margin of 0.005 around no-fire zones.** Boundary inclusion fell out of the geometry —
+   top and left inclusive, bottom and right exclusive — so whether a cat on the line was
+   protected depended on which edge it stood on. Now any point within the margin of an edge
+   is inside. A zero-length segment falls back to point-to-point distance rather than
+   dividing by zero.
+3. **`validate()` reports degenerate zones** — too few points, zero area, non-finite
+   coordinates — with the zone's index and kind. It does not throw or filter: the point is
+   that the web UI can tell the owner "that no-fire zone protects nothing" instead of
+   silently obeying a zone collapsed by a click without a drag.
+
+Self-intersection detection was declined: a bow tie produces a defensible two-lobe
+interpretation, and the detection code would be disproportionate.
+
+The suite is 58 tests after this task.
 
 ---
 
@@ -1476,24 +1567,27 @@ final class CalibrationTests: XCTestCase {
         XCTAssertTrue(Calibration.empty.heightOffsets.isEmpty)
     }
 
-    func testHeightOffsetInterpolatesBetweenSamples() {
-        XCTAssertEqual(sample.heightOffset(atRange: 5.0), 2.65, accuracy: 1e-9)
-        XCTAssertEqual(sample.heightOffset(atRange: 4.5), 2.925, accuracy: 1e-9)
+    // heightOffset returns Double? — nil means "nothing was measured", which must stay
+    // distinguishable from a measured zero. XCTAssertEqual(_:_:accuracy:) needs a
+    // FloatingPoint, not an Optional, so unwrap first, exactly as the fit tests do.
+    func testHeightOffsetInterpolatesBetweenSamples() throws {
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 5.0)), 2.65, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 4.5)), 2.925, accuracy: 1e-9)
     }
 
-    func testHeightOffsetClampsOutsideTheCalibratedSpan() {
-        XCTAssertEqual(sample.heightOffset(atRange: 2.0), 3.2, accuracy: 1e-9)
-        XCTAssertEqual(sample.heightOffset(atRange: 9.0), 2.1, accuracy: 1e-9)
+    func testHeightOffsetClampsOutsideTheCalibratedSpan() throws {
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 2.0)), 3.2, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(sample.heightOffset(atRange: 9.0)), 2.1, accuracy: 1e-9)
     }
 
     func testHeightOffsetIsNilWithoutSamples() {
         XCTAssertNil(Calibration.empty.heightOffset(atRange: 5))
     }
 
-    func testASingleHeightSampleAppliesEverywhere() {
+    func testASingleHeightSampleAppliesEverywhere() throws {
         let one = Calibration(points: [], heightOffsets: [HeightOffsetSample(rangeM: 5, deltaTiltDeg: 2.7)])
-        XCTAssertEqual(one.heightOffset(atRange: 2), 2.7, accuracy: 1e-9)
-        XCTAssertEqual(one.heightOffset(atRange: 8), 2.7, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(one.heightOffset(atRange: 2)), 2.7, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(one.heightOffset(atRange: 8)), 2.7, accuracy: 1e-9)
     }
 }
 ```
@@ -1580,6 +1674,36 @@ Expected: `Executed 6 tests, with 0 failures`.
 git add ios/DwarfCore
 git commit -m "feat(core): add calibration store and quadratic surface fit"
 ```
+
+**Post-review addendum (applied in commit `f38cabe`):** numerical analysis of the committed
+fit, plus one correction to this plan's own test code.
+
+1. **Duplicate ranges produced a step in the aim correction.** Two height-offset samples at
+   the same range — an owner re-shooting the same distance on a breezy day — gave
+   `3.9 → 3.1`, `4.0 → 3.0`, `4.1 → 1.05`: a two-degree discontinuity at one range. Two
+   readings at one range are repeat measurements of one quantity, so they are now averaged
+   before interpolating. The same collapse applies at the clamped ends.
+2. **The `1e-12` pivot threshold is now documented as conditional.** It is only correct
+   because the matrix is built from coordinates normalised to 0...1, which bounds its entries
+   to roughly the sample count regardless of the pan, tilt and range magnitudes being fitted
+   — those enter only the right-hand side. Raw pixel coordinates would need a relative
+   tolerance instead.
+
+**Measurements worth keeping** (from the same analysis): `cond(AᵀA)` is about 9.4e2 for
+samples spread over the frame, 2.5e4 for the realistic case of samples clustered in the
+lower half where the ground is, and 3.2e5 for a tight band — all far above the threshold, so
+the solver's rejection path fires only on genuinely degenerate layouts. Extrapolating 0.35
+beyond the calibrated band roughly triples the error under plausible click noise, which is
+why the Aimer flags solutions from outside that band rather than trusting them. And a single
+mis-clicked sample moves the surface by ~9.45 pan units while showing a residual of 26.6
+against a typical 1–3, so the per-point residuals in the web UI do make a bad shot obvious —
+which is why no automatic outlier rejection was added.
+
+Declined: outlier rejection (the residual display already exposes bad shots, and automatic
+rejection would risk discarding a legitimate sample from an awkward corner) and any
+extrapolation handling here (the Aimer's flag covers it).
+
+The suite is 73 tests after this task.
 
 ---
 
@@ -1880,6 +2004,40 @@ git add ios/DwarfCore
 git commit -m "feat(core): add aimer with body and head targeting"
 ```
 
+**Post-review addendum (applied in commit `3bc8ffd`):** four fixes, one of them the largest
+single behavioural improvement in this package so far.
+
+1. **The body/head split was a cliff, not a boundary.** Measured: crossing 4 m moved tilt by
+   **3.34°** — the whole height offset appearing at once — from a range change under a
+   centimetre, which is far smaller than ordinary detector box jitter. A cat pausing near
+   4 m would have seen the aim hop between its body and its head, shot after shot. The
+   offset now ramps linearly across a 40 cm band (`bodyHeadBlendM`), so the same crossing
+   moves tilt by **0.0137°**, with no step across the band larger than 0.172°. Mid-band the
+   gnome aims at the shoulders, which is a perfectly good place to put water. `target` still
+   flips its label at the midpoint for logs, which is documented, since a `.head` solution
+   near the split legitimately carries only part of the offset.
+2. **The head point was never checked against the calibrated area.** A stretched or merged
+   box could put it far outside anything ever measured — and that is the point pan is
+   computed from for head shots — with no flag raised. It is now checked whenever the target
+   is `.head`.
+3. **Flag reasons are ranked by severity**, worst first: non-finite fit, outside servo
+   limits, outside the calibrated area, missing height offset. Previously the first check to
+   run won, so a servo that physically could not reach the computed aim was reported as "no
+   height offset calibrated". `flagReasons` carries them all; `flagReason` is the worst.
+   When the fit returns non-finite the limit check is skipped, since NaN comparisons would
+   otherwise manufacture a second spurious reason.
+4. **The head-point pan choice is now tested against a yard that can show it.** The original
+   synthetic yard had pan depending only on x, so head-point and ground-point pan agreed to
+   1e-12 and the design decision was untested. A calibration with real x·y coupling makes
+   the difference measurable (0.36° at the frame edge) and pins it.
+
+Declined: a tighter shape than the bounding box for the calibrated area. A convex hull still
+would not detect an interior gap — the skipped flowerbed case — so the honest mitigation is
+the per-point residuals the UI already shows. The limitation is now documented on
+`isInsideCalibratedArea`.
+
+The suite is 86 tests after this task.
+
 ---
 
 ### Task 8: Outgoing commands
@@ -2067,6 +2225,40 @@ Expected: `Executed 10 tests, with 0 failures`.
 git add ios/DwarfCore
 git commit -m "feat(core): encode outgoing BLE commands"
 ```
+
+**Post-review addendum (applied in commit `d30fcd6`):** analysis against the real firmware
+parser found the most dangerous property in this package, and it is not in the code — it is
+in what the code silently protects against.
+
+1. **`JSONSerialization` does not throw on a non-finite `Double`.** It raises an
+   Objective-C `NSInvalidArgumentException` ("Invalid number value (NaN) in JSON write")
+   that a Swift `do/catch` **cannot** intercept: the process dies. Verified empirically, not
+   assumed. So the `isFinite` checks are not protocol politeness — they are the only thing
+   between a bad angle and a crashed app inside a sealed gnome that needs the body opened to
+   restart. That protection now rests on structure rather than convention: every case routes
+   through one `serialize` helper that sweeps the finished dictionary for non-finite values
+   and throws before `JSONSerialization` sees them, so a future case that forgets its own
+   check still fails safely. The doc comment quotes the exception text and says plainly that
+   a regression means a process crash, not a red test.
+2. **A burst longer than the firmware's cap is now refused.** `.shoot(ms: 40000)` was
+   accepted by the parser and silently clamped to 500 ms by `Shooter::request`, with no ack
+   reporting the difference — so a policy bug would have fired a legal-looking shot and left
+   no trace. `Command.maxBurstMs` mirrors `ShooterConfig::maxBurstMs`, and exceeding it
+   throws.
+3. **Angles are rounded to two decimals**, which bounds precision an order of magnitude
+   below the servo's ~0.27° deadband and absorbs upstream floating-point drift.
+
+**A correction worth recording:** the stated reason for rounding — that it would shrink
+messages — is false, and the implementer measured it rather than agreeing. `JSONSerialization`
+prints near-full precision regardless, so `-59.9` serialises as `-59.899999999999999` either
+way; only values landing on power-of-two fractions shorten. A worst-case `shoot` is 74 bytes
+before and after, against a 180-byte budget. The fix was kept for the reason that does hold.
+
+Declined: tolerance-based `Equatable`. Equality on a command carrying `Double`s is exact, so
+`Command` is documented as unsuitable for use as a dictionary key or a change-detection
+cache when angles are computed; change detection should compare the decision instead.
+
+The suite is 100 tests after this task.
 
 ---
 
@@ -2390,6 +2582,38 @@ git add ios/DwarfCore
 git commit -m "feat(core): decode device status and check both sides against the fixtures"
 ```
 
+**Post-review addendum (applied in commits `494babe` and `6717ca3`):** the cross-check
+earned its keep on its first run, and analysis found the incoming twin of the encoder's
+crash.
+
+1. **This plan's decoder would have rejected a real firmware message.** `formatStatus`
+   serialises a non-finite temperature — a dead or disconnected probe — as `"temp":null`,
+   and the `temp_sensor` fixture contains exactly that. The plan's `number()` treated null
+   as a missing field. Null now decodes to NaN, with the `TEMP_SENSOR` fault carrying the
+   meaning alongside it. This is precisely the disagreement the shared fixtures exist to
+   surface.
+2. **`UInt32(shots)` terminated the process** for a negative or out-of-range value —
+   verified in a subprocess, uncatchable, exactly the failure class found in the encoder.
+   One corrupted BLE notification that still parsed as JSON would have killed an app sealed
+   inside a gnome that needs the body opened to restart. Counters are now validated before
+   narrowing and throw `DecodingError.outOfRange`; a fractional value truncates
+   deliberately, with a comment saying so.
+3. The fixture switch gained the `valve_timeout` and `temp_sensor` cases the plan's template
+   predated, per its own instruction to add cases rather than relax the `default: XCTFail`.
+
+Declined, with reasons: no `.unknown` case for `tank` (it fails closed today, an
+unrecognised string reads as "not ok", and the firmware's field is strictly two-valued);
+no distinction between truncated and garbage input (`notAnObject` is right for both, and the
+next notification is a second away).
+
+**Fixture gaps recorded for later**, should a bug ever point this way: every fault fixture
+has the head centred and charging on, so no fixture crosses a fault with an off-centre aim
+or with charging disabled; the transient where the pump may still read on at the instant
+`VALVE_TIMEOUT` latches is uncovered; and ack coverage exercises one reject reason and one
+success only.
+
+The suite is 113 tests after this task.
+
 ---
 
 ### Task 10: Fire policy
@@ -2408,6 +2632,7 @@ below must hold before a shot is requested:
 | Mode is `live` | Dry-run exists so a week of logs can be reviewed before any water flows |
 | Track is confirmed | Two of three looks, not one hopeful frame |
 | Track is still | A shot takes about a second to arrive; leading a walking cat is beyond this machine |
+| Track is not ambiguous | Two tracks close enough to have swapped identities mean the confirmation, stillness and shot count may belong to the other animal |
 | Range at least 2 m | Closer than that the jet is a hard stream, not spread spray |
 | Ground point outside every no-fire zone | The owner drew those for a reason |
 | Aim solution not flagged | Outside the servo limits, outside the calibrated area, or a head shot with no height data |
@@ -2443,10 +2668,12 @@ final class FirePolicyTests: XCTestCase {
     }
 
     private func track(id: Int = 1, x: Double = 0.5, y: Double = 0.7,
-                       confirmed: Bool = true, still: Bool = true) -> Track {
+                       confirmed: Bool = true, still: Bool = true,
+                       ambiguous: Bool = false) -> Track {
         Track(id: id,
               box: Rect(x: x - 0.04, y: y - 0.06, width: 0.08, height: 0.06),
-              confidence: 0.9, lastSeen: 0, isConfirmed: confirmed, isStill: still)
+              confidence: 0.9, lastSeen: 0, isConfirmed: confirmed, isStill: still,
+              isAmbiguous: ambiguous)
     }
 
     private func healthyStatus() -> DeviceStatus {
@@ -2457,7 +2684,8 @@ final class FirePolicyTests: XCTestCase {
     private func solution(range: Double = 5, flagged: Bool = false) -> AimSolution {
         AimSolution(pan: 12, tilt: 4, rangeM: range,
                     target: range >= 4 ? .head : .body,
-                    isFlagged: flagged, flagReason: flagged ? "test" : nil)
+                    isFlagged: flagged, flagReason: flagged ? "test" : nil,
+                    flagReasons: flagged ? ["test"] : [])
     }
 
     private func input(mode: Mode = .live, tracks: [Track]? = nil,
@@ -2513,6 +2741,15 @@ final class FirePolicyTests: XCTestCase {
         let policy = FirePolicy()
         guard case .aim = policy.decide(input(tracks: [track(still: false)])) else {
             return XCTFail("expected aim only")
+        }
+    }
+
+    func testAnAmbiguousTrackIsFollowedNotFired() {
+        var ambiguous = track()
+        ambiguous.isAmbiguous = true
+        let policy = FirePolicy()
+        guard case .aim = policy.decide(input(tracks: [ambiguous])) else {
+            return XCTFail("two tangled cats: follow, never fire")
         }
     }
 
@@ -2807,6 +3044,10 @@ public final class FirePolicy {
     private func canFire(_ track: Track, _ solution: AimSolution, _ input: PolicyInput) -> Bool {
         guard input.mode == .live || input.mode == .dryRun else { return false }
         guard track.isConfirmed, track.isStill else { return false }
+        // Nearest-neighbour association cannot tell two crossing animals apart, so the
+        // tracker flags the overlap rather than guessing. Water while two cats are tangled
+        // is exactly when the history behind "confirmed and still" is least trustworthy.
+        guard !track.isAmbiguous else { return false }
         guard !solution.isFlagged else { return false }
         guard solution.rangeM >= limits.minRangeM else { return false }
         guard !input.masks.isNoFire(track.groundPoint) else { return false }
@@ -2859,7 +3100,7 @@ its own cooldowns would predict nothing.
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `cd ios/DwarfCore && swift test --filter FirePolicyTests`
-Expected: `Executed 20 tests, with 0 failures`.
+Expected: `Executed 21 tests, with 0 failures`.
 
 - [ ] **Step 5: Commit**
 
@@ -2867,6 +3108,39 @@ Expected: `Executed 20 tests, with 0 failures`.
 git add ios/DwarfCore
 git commit -m "feat(core): add fire policy with welfare limits"
 ```
+
+**Post-review addendum (applied in commits `0df44ec` and `1dd527f`):** the adversarial pass
+on this file found the most serious defect in the package — the project's central welfare
+guarantee did not hold.
+
+1. **The per-animal shot cap was defeated by ordinary tracker churn.** Budgets were keyed by
+   `Track.id`, but the tracker mints a fresh id after any occlusion, any detector gap longer
+   than its 3 s drop, or two cats crossing. Demonstrated: three shots at one id, then the
+   same animal at a new id fired immediately. A cap that resets when a cat walks behind a
+   bush is not a cap. Shots are now budgeted **by place and time** — each shot records its
+   ground point, and the cap counts shots within `animalRadius` (0.15 of frame width) over
+   `animalWindow` (10 minutes). The id-churn attempt is now refused; a genuinely different
+   cat across the yard is unaffected; the same cat an hour later gets a fresh budget, which
+   is the intent. The per-id `minShotInterval` stays as it was, since a churned id only
+   makes that cooldown stricter.
+2. **The head never parked when the system stopped operating.** The disarmed and
+   after-dark guards returned before any bookkeeping, so the head stayed wherever it last
+   aimed — all night, pointed at a fence. Both guards now park once on the way out.
+3. **Aiming at an unfireable cat cost 91,612 servo commands per afternoon.** A cat napping
+   in a no-fire zone was tracked at 5 Hz indefinitely. After 30 s of continuous *structural*
+   refusal — no-fire zone, flagged solution, inside minimum range — the policy parks and
+   stops aiming until the refusal clears. Same scenario now: 90 aim commands and one park.
+   Behavioural refusals (unconfirmed, not still, ambiguous) deliberately do not back off,
+   since they can clear within a second and the head should stay pre-positioned.
+
+Kept deliberately: a dry-run shot consumes real budget, because a dry run whose logs do not
+predict live behaviour is worthless. That justification now lives in the source, not only in
+this plan.
+
+Also fixed in this plan: the test helper hardcoded `solutions: [1: ...]` while accepting
+arbitrary track ids, so a test using track 2 got no solution at all.
+
+The suite is 142 tests after this task.
 
 ---
 
@@ -3120,6 +3394,49 @@ git add ios/DwarfCore
 git commit -m "feat(core): wire the pipeline together in Cycle"
 ```
 
+**Post-review addendum (applied in commit `e3b60bc`):** the implementation needed no
+reconciliation against the amended components — every change from Tasks 0–10 turned out to
+be additive, and `Cycle` only ever passes whole config values through — so the plan's code
+compiled and passed as written. The review of the assembled pipeline found one defect, and
+it was the one that mattered most.
+
+1. **Silent cycles starved confirmation, so the finished gnome would never have fired.**
+   `Cycle.process` ran the tracker on every call, and the tracker logged a miss against
+   every track it did not match. But detection runs outside this package and answers *late*
+   — a cycle or two after the crops that produced it — so most cycles carry no detector news
+   at all. Those cycles were being counted as looks that saw nothing. With the default
+   `confirmHits: 2` of `confirmWindow: 3`, a detector answering once every three cycles can
+   never reach two hits in the last three looks. Demonstrated against the committed code: a
+   motionless cat, detected with 0.9 confidence every single time the detector actually
+   looked, sat in frame for three seconds and never became confirmed. Every component passed
+   its own tests; the assembled system was inert. The cause was that "a `process()` call" and
+   "a look at the animal" had been silently treated as the same unit of measure, and the
+   package's own tests fed detections every cycle, so nothing could see the difference.
+
+   Callers now say which it is. `DetectorReport.answer(_:capturedAt:)` carries the detections
+   with the uptime of the frame they came from; `.pending` says nothing has come back and
+   leaves every look history untouched. Ageing still runs on the caller's clock, so a
+   detector that dies outright does not leave a phantom cat on the lawn.
+
+2. **The capture time also fixes what speed is measured over.** Timestamping a late answer
+   with the current time makes a moving animal look stiller than it is — the distance is
+   real, the interval is not — and stillness is a precondition for firing. Constant latency
+   cancels out; jitter does not, and the jitter on an iPhone 6s running YOLO is the same
+   order as the stillness threshold. `Cycle` drops an answer older than one already applied,
+   or one whose capture time is not finite: losing a look costs a fraction of a second of
+   confirmation, where a rewind corrupts position, speed, stillness and the association gate
+   at once.
+
+Confirmed clean by the same pass: there is no route from an empty or failed calibration to a
+shot (`Aimer.init?` returns nil below six points, so `solutions` stays empty and the policy
+returns before `canFire` is ever consulted), while tracking, motion and the live view keep
+working — which is the only way a gnome can ever be calibrated in the first place. And
+`update(calibration:)` deliberately leaves shot budgets, cooldowns and track history alone:
+those are a record about the animal and the hardware, not about the aim model, and resetting
+them would let a recalibration launder a cat's recent shot count.
+
+The suite is 154 tests after this task.
+
 ---
 
 ## Definition of done
@@ -3133,6 +3450,68 @@ git commit -m "feat(core): wire the pipeline together in Cycle"
 - `FixtureTests` passes against `protocol/fixtures/`, the same files the firmware tests use.
 - Every welfare rule in the table at the head of Task 10 has a test that fails when the rule
   is removed.
+
+## System-level review
+
+Run after all twelve tasks closed, against the assembled package and the firmware together,
+looking only for what shows up where components meet. The same pass on the firmware found
+that project's two worst bugs. Findings and rulings:
+
+**Accepted and fixed** (commits `12e2d43`, `e14a5a1`):
+
+1. **A second cat was starved indefinitely.** The policy ranked candidates by confidence and
+   acted only on the top one. A cat that had spent its three shots was *rate-limited*, not
+   *structurally* unfireable, so the backoff never triggered and it kept the head pointed at
+   itself for as long as it stayed in frame. Demonstrated: two cats sitting still a metre
+   apart for thirty seconds, three shots at the first, none at the second. In a yard with a
+   resident cat and a visitor, the visitor is never deterred. A candidate that can be fired
+   at now is preferred; ranking still decides between two that both can; ties break by id so
+   the outcome does not depend on sort stability. No test in the package had ever passed two
+   tracks in one `PolicyInput`.
+2. **Nothing modelled the single nozzle.** `minShotInterval` is per track by design, so the
+   fix above would have asked for two shots a tenth of a second apart. The firmware holds a
+   5 s cooldown and refuses anything sooner - the shot would be bounced while still spending
+   the animal's budget here. `FireLimits.minDeviceInterval` (6 s) covers the cooldown, the
+   move, the settle, the burst and the link.
+3. **The spec's 200-400 ms welfare range was enforced nowhere.** The only ceilings were 500
+   ms, on both sides, and both are about what the hardware will do rather than what the
+   animal should receive. `FirePolicy` clamps `burstMs` and `minRangeM` into the welfare
+   envelope whenever limits are set, non-finite failing safe; `Command.encoded()` enforces
+   the 400 ms ceiling independently, so it holds on paths that never consult the policy.
+4. **The shared fixture checked message shape, not the numbers.** Both suites asserted
+   `-60/60/-30/40` as literals typed into the tests, so `AimLimits` and the firmware's
+   `Limits` agreed by discipline alone. Both now assert against their own defaults. Verified
+   by moving Swift's `panMin` to -55 and watching the fixture test fail.
+
+**Declined, with reasons:**
+
+- *Lock down `Command.shoot` so only `FirePolicy` can build one.* Calibration is impossible
+  without firing outside the policy - the owner records test shots to build the fit in the
+  first place - so a policy-only nozzle would make the gnome uncalibratable. The burst
+  ceiling is enforced at the wire boundary instead; range and zones cannot be, because a
+  `shoot` carries angles and not a range. Written into the package README as the first line
+  of the app's contract.
+- *`FirePolicy` marks itself unparked while uncalibrated.* Real, and harmless: no aim command
+  is ever emitted in that state, and the eventual `park` is idempotent.
+
+**Deferred to the DwarfApp plan:**
+
+- *Nothing consumes `DeviceAck`.* A shot the firmware refuses still spends the animal's
+  budget. `minDeviceInterval` removes the common cause, but acks belong with the transport,
+  which is not in this package.
+- *`DeviceStatus` carries no timestamp,* so a stale one keeps authorising shots. The
+  firmware's 3 s heartbeat watchdog means those shots are refused rather than fired, which
+  bounds this to bookkeeping rather than safety.
+
+**Checked and clean:** ESP32 reboot (the device boots disarmed and re-validates its own state
+on every shot, and no firmware clock reaches this package), BLE drop and reconnect, the app
+backgrounding for an hour, daylight saving (wall clock and monotonic clock are cleanly
+separated, and only the active-hours gate uses the wall clock), and mid-session recalibration.
+
+The suite is 162 tests. The contract the app must honour, which nothing in this package can
+enforce, is written up in `ios/DwarfCore/README.md`.
+
+---
 
 ## What this plan deliberately leaves out
 
