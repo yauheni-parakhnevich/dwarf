@@ -38,7 +38,13 @@ targets:
         UIRequiresFullScreen: true
         # The phone lies on its side in the gnome's belly; see the plan's note on
         # orientation. Locking this stops iOS rotating the UI when the gnome is carried.
+        # Every orientation. Which way the phone sits in the gnome is a mechanical
+        # decision, not the app's to make, and a screen that is sideways while
+        # someone is setting the mount up is a screen nobody can use. The camera is
+        # unaffected either way: the buffer arrives in the sensor's own orientation
+        # whatever the UI does, and Settings.quarterTurns is what corrects it.
         UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: The gnome watches the garden for cats.

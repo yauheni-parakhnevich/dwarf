@@ -13,7 +13,23 @@ struct RootView: View {
     @StateObject private var gnome = GnomeController()
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Side by side when there is width for it, stacked when there is not. The phone
+        // may end up either way up in the gnome, and the diagnostics are no use in a
+        // column two words wide.
+        GeometryReader { geometry in
+            if geometry.size.width >= geometry.size.height {
+                HStack(spacing: 0) { pane }
+            } else {
+                VStack(spacing: 0) { pane }
+            }
+        }
+        .background(Color.black)
+        .foregroundStyle(.white)
+        .onAppear { gnome.start() }
+    }
+
+    @ViewBuilder private var pane: some View {
+        Group {
             preview
                 .aspectRatio(gnome.frameAspect, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,11 +51,8 @@ struct RootView: View {
                 }
                 .padding(12)
             }
-            .frame(width: 300)
+            .frame(maxWidth: 340)
         }
-        .background(Color.black)
-        .foregroundStyle(.white)
-        .onAppear { gnome.start() }
     }
 
     // MARK: the picture
