@@ -21,7 +21,7 @@ without a printer.
 | Where the shell meets the mechanism | **Interface parts are modelled in build123d and unioned into the shell mesh** | Precise features (the belt flange with its screw bosses, the turntable deck, the ear bosses for the tilt axle) stay in the tool that does precision. The shell wraps around them |
 | Beard | **Fixed to the torso** as a collar around the neck, not to the head | A beard on a nodding head would sweep the chest. On the torso it shrouds the bearing gap, keeps rain off the mechanism and hides the fan exhaust |
 | Pan drive | DS3218 under the turntable deck, off-axis, **parallelogram linkage** to a crank on the turntable plate | The mechanical design puts the servo in the torso driving a short hollow shaft. A servo cannot be coaxial with a hollow shaft that has tube and wires passing through it. Equal cranks with a parallel link transfer the angle exactly 1:1 over ±60° with no gear backlash; the only play is at two steel pins |
-| Tilt drive | MG996R on the turntable plate, horn bolted straight to one ear boss; other ear on a steel pin | No linkage to lose precision in. The ears hide both pivots |
+| Tilt drive | MG996R **inside the head** on a bulkhead, its horn on a printed coupler that passes out through the +Y ear into a hex in the yoke arm; the −Y ear is a boss with an M4 steel pin | No linkage to lose precision in, and the servo body cannot sit outside the head: there it would stand 43 mm proud of the yoke, outside the collar. The mechanical design already routes the tilt servo's wires up through the shaft into the head. The ears hide both pivots |
 | Bought parts not yet bought | Every bought dimension is a **parameter with a listing-typical default**, listed in one table and flagged for re-measurement | The bearing, canister, pump and valve are on order or not ordered. Nothing here is committed to their exact sizes; the model is rebuilt from measurements when they arrive |
 | Generated files | `cad/out/` is **not committed** | STEP and STL for a dozen parts run to tens of megabytes and change on every parameter tweak. The source is the artefact; a tagged release can carry the binaries when a design is frozen |
 
@@ -63,9 +63,9 @@ STEP and an STL through a shared `export(part, name)` helper. All dimensions com
 | Turntable plate | Bearing's rotating ring; hollow shaft; yoke; tilt servo | The head's foundation. Carries the pan crank on its underside |
 | Hollow shaft | Bonded into the plate; passes through the bearing bore | OD 20 mm, ID 12 mm: room for 6 mm PU tube plus three servo wires with slack. Flared top so the tube's bend radius stays above 25 mm |
 | Pan crank, pan link, servo crank | DS3218 horn; turntable plate; M3 screws into inserts as pins | Both cranks 20 mm, link 44 mm equal to the centre distance, all in the band above the plate. The link is the only part that can bind, so it has 0.3 mm clearance at each pin and a printed stop on the deck limits the servo, not the link |
-| Yoke | Turntable plate; head ear bosses | Two arms; one carries the MG996R, the other a bore for an M4 pin. Hard stops at −35° and +45°, outside the protocol fixture's `cfg` of −30° to +40° |
-| Ear bosses (×2, interface part) | Head shell; yoke | One has a hexagonal pocket for the servo horn adapter, the other a plain bore. Unioned into the head mesh |
-| Servo brackets | DS3218 under the deck; MG996R on the yoke | Metal screws through the horns; no printed splines |
+| Yoke | Turntable plate; coupler and ear boss | Two arms on a bridge across the plate; +Y holds the coupler's hex, −Y takes the M4 pin and carries two stop pegs. Hard stops at −35° and +45°, outside the protocol fixture's `cfg` of −30° to +40° |
+| Ear boss (interface part), coupler, tilt bulkhead (interface part) | Head shell; yoke; MG996R | The −Y ear boss is unioned into the head with the tilt stop tab. The coupler is a separate part: horn pocket inside, hex outside, turning in a 20.6 mm bore in the head wall. The bulkhead is a chord plate inside the head the servo's tabs screw to |
+| Servo mounting | DS3218 hangs in a notch in the deck with its tabs on the deck top and nuts below; MG996R on the bulkhead | Metal screws through the horns; no printed splines |
 | Nozzle holder | Head mouth; brass nozzle; PU tube barb | Heat-set inserts for its retaining screws, never printed threads near water |
 | Belt flange (interface part) | Base's top edge; divider deck; upper torso's lower edge | Four M3 heat-set bosses; the upper torso's skirt shingles over the base by 8 mm |
 | Divider deck | Belt flange; two glands; base cradle beneath | 100 % infill in the slicer; a raised lip for the PU bead |
@@ -116,9 +116,9 @@ collar, a coat with a belt and buckle at the split line, and boots on the base.
 | Base | 0–218 | PETG | Boots, coat hem, feet, stake flange, the belt flange's lower half |
 | Upper torso | 210–392 | PETG | Belly, coat, window opening, vent openings, phone rails, the belt flange's upper half and the turntable deck's mounting ring |
 | Beard collar | 330–420 | PETG | The beard and the neck shroud; bolts to the upper torso from inside |
-| Face | 405–490, front half | ASA if enclosed, else PETG | Nose, cheeks, brows, moustache, mouth opening, front halves of both ear bosses |
-| Back of head | 405–490, rear half | Same as face | Rear halves of the ear bosses, hat seat |
-| Hat | 470–550 | PETG | Bonded to the head |
+| Face | 405–495, the cap in front of x = 20 | ASA if enclosed, else PETG | Nose, cheeks, brows, moustache, mouth opening, nozzle bosses inside |
+| Back of head | 405–495, behind x = 20 | Same as face | Both ears, the tilt bulkhead, the face lip, the bottom opening for tube and wires |
+| Hat | 473–550 | PETG | Bonded to the head on a spherical seat |
 
 Horizontal seams shingle with the upper part outside the lower; vertical seams (face to back
 of head) have dowel pockets and an inside lip. The belt split is the one seam that reopens,
