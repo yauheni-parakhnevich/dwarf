@@ -243,3 +243,16 @@ renders are inspected after every change to the shell scripts.
   tube and wires drop out of the shaft. The deck is 80 mm in radius to carry the servo's
   hangers. The band above the plate now holds only the tube and wires. §1's "pan drive" row and
   §3's linkage rows are superseded by this.
+- **2026-09-22, Tasks 3–4 review.** Numbers as built: the pan servo sits at (5, −60), the deck is
+  84 mm in radius, and the link's centreline comes to 14.6 mm of the pan axis at the +65° stop.
+  The mechanism review then proved the head uninstallable: an MG996R cannot be threaded onto a
+  plate inside a 90 mm sphere, none of its screws has a driver path, and a coupler with a horn
+  boss cannot pass the wall. The tilt servo now rides a **cradle assembled on the bench** that
+  slides in through the face opening along rails on the back of the head and is boxed in by a lip
+  and a stop block on the face cap; the **coupler** is a plain 24 mm cylinder with a hex, entered
+  from outside through the arm and a 24.6 mm wall bore, its two horn screws driven down
+  counterbores; the ear pin is an M4 bolt into an insert; the arm's cross screw has an insert.
+  The pan crank's top is the servo's shaft face so the horn sits in its pocket; the deck's stop
+  posts are separate pins so the deck prints flat, their tops 1.5 mm under the yoke; the shaft
+  reaches below the link's plane; link eyes ride on 3.2 mm bores with half-millimetre bosses.
+  The fan frame follows the barrel instead of standing proud of the shoulder at 348 mm.
