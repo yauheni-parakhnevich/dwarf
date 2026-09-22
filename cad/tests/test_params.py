@@ -189,7 +189,8 @@ def test_tilt_servo_passes_the_face_opening():
         "servo -Y top corner": math.hypot(H - P.TILT_SERVO_SHAFT_Y, top - P.Z_HEAD),
         "cradle top front corner": math.hypot(P.BULKHEAD_Y, P.CRADLE_Z[1] - P.Z_HEAD),
         "cradle top back corner": math.hypot(P.BULKHEAD_Y - P.BULKHEAD_T, P.CRADLE_Z[1] - P.Z_HEAD),
-        "upper boss tip": math.hypot(P.BULKHEAD_Y - P.BULKHEAD_T - P.INSERT_DEPTH - 1, P.CRADLE_Z[1] - 0.15 + P.BULKHEAD_BOSS_D / 2 - P.Z_HEAD),
+        "upper boss tip": math.hypot(P.BULKHEAD_Y - P.BULKHEAD_T - P.INSERT_DEPTH - 1,
+                                     top - L / 2 + P.MG996R["holes"][0] / 2 + P.BULKHEAD_BOSS_D / 2 - P.Z_HEAD),
     }
     for what, r in needs.items():
         assert r < opening - 0.3, (what, r, opening)
