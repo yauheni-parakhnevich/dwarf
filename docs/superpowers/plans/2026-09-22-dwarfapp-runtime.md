@@ -3654,6 +3654,9 @@ final class GnomeController: ObservableObject {
     @Published private(set) var trackCount = 0
     @Published private(set) var linkUp = false
     @Published private(set) var mode: Mode = .dryRun
+    /// Counters that should normally read empty. Anything here means the gnome is running
+    /// but not doing what it looks like it is doing.
+    @Published private(set) var health = ""
     /// True when the model could not be loaded. The gnome then tracks nothing at all, and
     /// silently looking like it works is the worst way for that to present.
     @Published private(set) var modelMissing = false
@@ -3719,8 +3722,19 @@ final class GnomeController: ObservableObject {
     }
 
     private func refresh() {
+        let snapshot = runtime.snapshot
         linkUp = link.isConnected
-        trackCount = runtime.lastOutput?.tracks.count ?? 0
+        trackCount = snapshot.tracks.count
+
+        // Everything the review of Task 12 added a counter for, surfaced. A gnome that has
+        // quietly stopped working should say so on its own screen rather than be diagnosed
+        // from a crash report.
+        health = [
+            snapshot.droppedRequests > 0 ? "dropped \(snapshot.droppedRequests)" : nil,
+            snapshot.sendFailures > 0 ? "send fails \(snapshot.sendFailures)" : nil,
+            snapshot.detectorFailures > 0 ? "model fails \(snapshot.detectorFailures)" : nil,
+            snapshot.lumaUnusable ? "luma unusable" : nil
+        ].compactMap { $0 }.joined(separator: " · ")
 
         if modelMissing {
             line = "MODEL MISSING — nothing is being detected"
@@ -3728,8 +3742,8 @@ final class GnomeController: ObservableObject {
             line = "unreadable: \(store.loadFailures.joined(separator: ", "))"
         } else if !store.isCalibrated {
             line = "tracking only — not calibrated"
-        } else if let decision = runtime.lastOutput?.decision {
-            line = describe(decision)
+        } else {
+            line = describe(snapshot.decision)
         }
     }
 
@@ -3772,6 +3786,12 @@ struct RootView: View {
 
             Text("\(gnome.trackCount) track\(gnome.trackCount == 1 ? "" : "s")")
                 .font(.footnote).foregroundStyle(.secondary)
+
+            if !gnome.health.isEmpty {
+                Text(gnome.health)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+            }
 
             Picker("mode", selection: Binding(get: { gnome.mode },
                                               set: { gnome.set(mode: $0) })) {
