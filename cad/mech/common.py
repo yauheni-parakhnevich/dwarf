@@ -38,18 +38,16 @@ def servo_body(spec, shaft_xyz, axis="z"):
     """A servo as a solid, for clearance checks and cutters.
 
     `shaft_xyz` is where the output shaft leaves the body and `axis` is the shaft direction.
-    Only the two orientations this design uses exist: "z" is shaft up with the body's length
-    running along -Y from the shaft end (pan); "y" is shaft along +Y with the length running
-    along -Z (tilt).
+    Only the orientations this design uses exist:
+    "-z": shaft down, body above the shaft face, length running +X from the shaft end (pan);
+    "y":  shaft along +Y, body behind the shaft face, length running -Z from the shaft end (tilt).
     """
     L, W, H = spec["body"]
     off = spec["shaft_off"]
     sx, sy, sz = shaft_xyz
-    if axis == "z":
-        # length along -Y: body spans y in [sy - (L - off), sy + off]
-        return box(sx - W / 2, sx + W / 2, sy - (L - off), sy + off, sz - H, sz)
+    if axis == "-z":
+        return box(sx - off, sx + (L - off), sy - W / 2, sy + W / 2, sz, sz + H)
     if axis == "y":
-        # shaft along +Y, length along -Z: body spans z in [sz - (L - off), sz + off]
         return box(sx - W / 2, sx + W / 2, sy - H, sy, sz - (L - off), sz + off)
     raise ValueError(axis)
 

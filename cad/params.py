@@ -144,28 +144,39 @@ BEARING_OPEN = 32.0
 BEARING_PITCH = 48.0
 BEARING_HOLE = 3.4
 SHAFT_OD, SHAFT_ID = 20.0, 12.0
-DECK_R = 70.0                  # the wall's inner radius here is about 87
+DECK_R = 80.0                  # the wall's inner radius here is about 87
 RING_R_IN = 50.0
 RING_R_OUT = 66.0              # the ring is a narrow annulus; four webs reach the wall
 RING_WEB_W = 8.0
 DECK_SCREW_R = 58.0
-DECK_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]   # off the pan servo's tab screws
+DECK_SCREW_ANGLES = [30.0, 150.0, 210.0, 330.0]   # off the pan servo's hangers and the phone
 PLATE_R = 50.0
 PLATE_T = 5.0
 Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 391
-PAN_OFFSET = 44.0              # pan servo axis, behind the pan axis on -X
-CRANK_L = 20.0
-CRANK_REST_DEG = 90.0          # both cranks point +Y at rest, so the link runs beside the shaft's mouth, not over it
-LINK_T = 3.0
+# --- pan drive: the servo hangs under the deck, shaft pointing down, and the parallelogram
+#     lives below the deck where the torso is wide. The plate's front stop tab carries a column
+#     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
+PAN_SERVO_XY = (5.0, -54.0)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -64 .. -44)
+PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # link length, 48.33
+CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
+CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
+Z_PAN_SHAFT_FACE = 333.0       # the servo's output face, looking down; body top 373.5, under the deck
+Z_PAN_HORN_BOTTOM = Z_PAN_SHAFT_FACE - 2.5
 CRANK_T = 5.0
-PIN_POST_D = 8.0
-Z_SERVO_HORN_TOP = Z_DECK + 12.5 + 2.5               # body top 392.5, horn 2.5 above it
-Z_CRANK_TOP = Z_SERVO_HORN_TOP + CRANK_T             # 400
-Z_LINK_TOP = Z_CRANK_TOP + LINK_T                    # 403
+LINK_T = 3.0
+Z_CRANK_TOP = Z_PAN_HORN_BOTTOM              # 330.5; the crank pockets the horn from below
+Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 325.5
+Z_LINK_TOP = Z_CRANK_BOTTOM                  # 325.5
+Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 322.5
+LINK_EYE_R = M3_CLEAR / 2 + 3.0
+PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
+PAN_FOOT_R_IN = CRANK_L - 4.0                # the column's foot reaches inward to the pin at CRANK_L
+DECK_SLOT = (PAN_COLUMN[0] - CLEAR, PAN_COLUMN[1] + CLEAR, 72.0)   # r0, r1, half-angle
+PAN_HANGER = 10.0                            # square columns under the deck the servo tabs screw to
 PAN_STOP_DEG = 65.0
-STOP_TAB_W = 6.0
-STOP_POST_R = 58.0
+STOP_POST_R = 60.0
 STOP_POST_D = 6.0
+STOP_TAB_W = 6.0
 TILT_STOP = (-35.0, 45.0)
 
 # --- servos: (length, width, height), tab span, tab thickness, tab height from the bottom,
@@ -177,16 +188,18 @@ MG996R = dict(body=(40.7, 19.7, 42.9), tab_span=53.0, tab_t=2.5, tab_z=28.0, sha
 HORN_D = 21.0
 HORN_T = 2.5
 HORN_SCREW_R = 7.0
-# pan servo: shaft up at (-PAN_OFFSET, 0); body runs along -Y from the shaft end, hangs in a
-# notch in the deck with its tabs resting on the deck top
-PAN_SERVO_XY = (-PAN_OFFSET, 0.0)
-PAN_SERVO_BODY_Z0 = Z_DECK - DS3218["tab_z"]         # 352
-PAN_NOTCH = ((-PAN_OFFSET - DS3218["body"][1] / 2 - 0.5, -DS3218["body"][0] + DS3218["shaft_off"] - 0.5),
-             (-PAN_OFFSET + DS3218["body"][1] / 2 + 0.5, DS3218["shaft_off"] + 0.5))   # (x0,y0),(x1,y1)
-# the deck ring is cut wider than the notch so the tab screws and their nuts pass too
-PAN_RING_CUT = ((PAN_NOTCH[0][0] - 1.0, PAN_NOTCH[0][1] - (DS3218["tab_span"] - DS3218["body"][0]) / 2 - 2.0),
-                (PAN_NOTCH[1][0] + 1.0, PAN_NOTCH[1][1] + (DS3218["tab_span"] - DS3218["body"][0]) / 2 + 2.0))
-LINK_EYE_R = M3_CLEAR / 2 + 3.0
+# pan servo footprint in plan, with its tabs, plus 2 mm: the deck ring is cut away here
+_L, _W, _H = DS3218["body"]
+_tab = (DS3218["tab_span"] - _L) / 2
+def pan_hangers():
+    """Plan positions of the four columns under the deck the pan servo's tabs screw to."""
+    along, across = DS3218["holes"]
+    cx = PAN_SERVO_XY[0] - DS3218["shaft_off"] + _L / 2
+    return [(cx + dx, PAN_SERVO_XY[1] + dy) for dx in (-along / 2, along / 2) for dy in (-across / 2, across / 2)]
+
+
+PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y for _, y in pan_hangers()) - PAN_HANGER / 2 - 2.0),
+                (max(x for x, _ in pan_hangers()) + PAN_HANGER / 2 + 2.0, max(y for _, y in pan_hangers()) + PAN_HANGER / 2 + 2.0))
 
 # --- head, ears, tilt ---------------------------------------------------------------------
 EAR_R = 9.0
