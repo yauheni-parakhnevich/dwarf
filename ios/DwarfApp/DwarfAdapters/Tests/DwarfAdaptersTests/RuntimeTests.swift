@@ -111,7 +111,7 @@ final class RuntimeTests: XCTestCase {
         rig.clock.uptime = 0
         rig.runtime.handle(frame: brightBuffer())
 
-        XCTAssertEqual(rig.runtime.lastReportWasPending, true,
+        XCTAssertEqual(rig.runtime.snapshot.lastReportWasPending, true,
                        "no detector answer had come back, so the tracker must not be told the detector looked")
     }
 
@@ -126,7 +126,7 @@ final class RuntimeTests: XCTestCase {
         rig.clock.uptime = 10.4
         rig.runtime.handle(frame: brightBuffer())   // collects
 
-        XCTAssertEqual(try XCTUnwrap(rig.runtime.lastAnswerCapturedAt), 10, accuracy: 1e-9,
+        XCTAssertEqual(try XCTUnwrap(rig.runtime.snapshot.lastAnswerCapturedAt), 10, accuracy: 1e-9,
                        "the box came from the frame captured at 10, not from the one at 10.4")
     }
 
@@ -162,7 +162,7 @@ final class RuntimeTests: XCTestCase {
 
         XCTAssertTrue(rig.transport.sentStrings.allSatisfy { !$0.contains("\"shoot\"") },
                       "a dry run that fires is worse than no dry run at all")
-        XCTAssertGreaterThan(rig.runtime.wouldShootCount, 0, "but it must still record what it would have done")
+        XCTAssertGreaterThan(rig.runtime.snapshot.wouldShootCount, 0, "but it must still record what it would have done")
     }
 
     func testNoShotWithoutAFreshStatus() throws {
@@ -224,7 +224,7 @@ final class RuntimeTests: XCTestCase {
         rig.clock.uptime = 1.2
         rig.runtime.handle(frame: brightBuffer())
 
-        XCTAssertGreaterThan(rig.runtime.detectorFailures, 0)
-        XCTAssertEqual(rig.runtime.lastReportWasPending, true, "a failed inference is not evidence of absence")
+        XCTAssertGreaterThan(rig.runtime.snapshot.detectorFailures, 0)
+        XCTAssertEqual(rig.runtime.snapshot.lastReportWasPending, true, "a failed inference is not evidence of absence")
     }
 }

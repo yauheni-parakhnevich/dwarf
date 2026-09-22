@@ -30,12 +30,28 @@ public final class Runtime {
 
     private var cycleCounter = 0
 
-    public private(set) var schedulerConfig = SchedulerConfig()
-    public private(set) var lastReportWasPending = true
-    public private(set) var lastAnswerCapturedAt: TimeInterval?
-    public private(set) var wouldShootCount = 0
-    public private(set) var detectorFailures = 0
-    public private(set) var lastOutput: CycleOutput?
+    /// Immutable after init, so it needs no guarding.
+    public let schedulerConfig: SchedulerConfig
+
+    private var state = RuntimeSnapshot()
+    private var pendingMode: Mode?
+    private var pendingCalibration: Calibration?
+
+    /// One consistent view of what the runtime last did, for a screen or a log.
+    ///
+    /// A snapshot rather than a handful of properties, and taken under the lock, because
+    /// the alternative was demonstrably unsafe: every `public private(set)` field used to be
+    /// read without synchronisation from whatever queue the UI happened to be on, while the
+    /// capture queue wrote them. ThreadSanitizer found real races on that surface, and an
+    /// uninstrumented build of the same scenario segfaulted inside ARC — a reader holding a
+    /// half-assigned `CycleOutput` while its arrays were released underneath it. Six
+    /// separate fields could also disagree with each other mid-cycle; one value cannot.
+    public var snapshot: RuntimeSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return state
+    }
+
     /// Set in tests; production reads `ProcessInfo`.
     public var thermalOverride: ProcessInfo.ThermalState?
 
@@ -62,6 +78,8 @@ public final class Runtime {
 
     /// Call once per camera frame, on the capture queue.
     public func handle(frame pixelBuffer: CVPixelBuffer) {
+        applyPendingUpdates()
+
         let uptime = clock.uptime
         link.tick(uptime: uptime)
 
@@ -76,27 +94,57 @@ public final class Runtime {
         if decision.cycleDivisor > 1, cycleCounter % decision.cycleDivisor != 0 { return }
 
         let report = collectAnswer()
-        lastReportWasPending = { if case .pending = report { return true } else { return false } }()
+        let pending = { if case .pending = report { return true } else { return false } }()
+        mutate { $0.lastReportWasPending = pending }
 
         let output = cycle.process(frame: gray,
                                    detector: report,
                                    status: link.status(asOf: uptime),
                                    now: clock.now,
                                    uptime: uptime)
-        lastOutput = output
+        mutate { $0.decision = output.decision; $0.tracks = output.tracks
+                 $0.cropRequests = output.cropRequests; $0.meanLuma = output.meanLuma }
         carryOut(output.decision)
         askDetector(about: output.cropRequests, from: pixelBuffer, capturedAt: uptime)
     }
 
     /// Replaces the calibration after the owner records a point.
+    ///
+    /// Queued rather than applied here. `Cycle`, `FirePolicy` and `Store` are all plain
+    /// mutable state with no locks of their own, so touching them from a settings screen
+    /// while a frame is being processed on the capture queue is the same race as the one
+    /// the snapshot above exists to close. Taking a lock around them instead would deadlock
+    /// against `askDetector`, which already holds it. Queuing means everything that touches
+    /// the pipeline happens on one queue, which is the property that actually makes this
+    /// class safe rather than merely lock-decorated.
     public func update(calibration: Calibration) {
-        store.calibration = calibration
-        cycle.update(calibration: calibration)
+        lock.lock()
+        pendingCalibration = calibration
+        lock.unlock()
     }
 
     public func update(mode: Mode) {
-        store.settings.mode = mode
-        cycle.mode = mode
+        lock.lock()
+        pendingMode = mode
+        lock.unlock()
+    }
+
+    private func applyPendingUpdates() {
+        lock.lock()
+        let mode = pendingMode
+        let calibration = pendingCalibration
+        pendingMode = nil
+        pendingCalibration = nil
+        lock.unlock()
+
+        if let mode {
+            store.settings.mode = mode
+            cycle.mode = mode
+        }
+        if let calibration {
+            store.calibration = calibration
+            cycle.update(calibration: calibration)
+        }
     }
 
     // MARK: detection
@@ -106,7 +154,7 @@ public final class Runtime {
         defer { lock.unlock() }
         guard let answer = pendingAnswer else { return .pending }
         pendingAnswer = nil
-        lastAnswerCapturedAt = answer.capturedAt
+        state.lastAnswerCapturedAt = answer.capturedAt
         return .answer(answer.detections, capturedAt: answer.capturedAt)
     }
 
@@ -115,7 +163,15 @@ public final class Runtime {
         guard !requests.isEmpty else { return }
         lock.lock()
         let busy = detectorBusy
-        if !busy { detectorBusy = true }
+        if busy {
+            // The sweep's round-robin advanced anyway, inside Cycle, so a detector that
+            // cannot keep up does not merely answer late — it silently skips most of the
+            // rotation. Counted so that is visible rather than inferred.
+            state.droppedRequests += 1
+        } else {
+            detectorBusy = true
+            state.detectorBusySince = capturedAt
+        }
         lock.unlock()
         guard !busy else { return }
 
@@ -155,7 +211,7 @@ public final class Runtime {
 
             self.lock.lock()
             if failed {
-                self.detectorFailures += 1
+                self.state.detectorFailures += 1
             }
             // A failed inference is not evidence of absence, so nothing is handed over and
             // the next cycle reports pending.
@@ -163,6 +219,7 @@ public final class Runtime {
                 self.pendingAnswer = (detections, capturedAt)
             }
             self.detectorBusy = false
+            self.state.detectorBusySince = nil
             self.lock.unlock()
         }
     }
@@ -179,16 +236,34 @@ public final class Runtime {
         case .none:
             break
         case .aim(let pan, let tilt):
-            try? link.send(.aim(pan: pan, tilt: tilt))
+            send(.aim(pan: pan, tilt: tilt))
         case .park:
-            try? link.send(.park)
+            send(.park)
         case .shoot(let pan, let tilt, let ms):
             // The only place in the app allowed to turn a decision into water.
-            try? link.send(.shoot(pan: pan, tilt: tilt, ms: ms))
+            send(.shoot(pan: pan, tilt: tilt, ms: ms))
         case .wouldShoot:
             // Deliberately not sent. A dry run that fires is worse than no dry run.
-            wouldShootCount += 1
+            mutate { $0.wouldShootCount += 1 }
         }
+    }
+
+    /// `try?` at every send site means a shot the policy genuinely authorised can fail to
+    /// leave the phone with no trace at all. The firmware's watchdog still protects the
+    /// animal, so this is bookkeeping rather than safety, but "did the shot actually go
+    /// out" should be answerable.
+    private func send(_ command: Command) {
+        do {
+            try link.send(command)
+        } catch {
+            mutate { $0.sendFailures += 1 }
+        }
+    }
+
+    private func mutate(_ change: (inout RuntimeSnapshot) -> Void) {
+        lock.lock()
+        change(&state)
+        lock.unlock()
     }
 
     private func apply(_ decision: PowerDecision, at uptime: TimeInterval) {
@@ -197,19 +272,51 @@ public final class Runtime {
         // at frame rate is a radio kept busy for nothing while the phone is already too hot.
         if decision.disarm != lastDisarm {
             lastDisarm = decision.disarm
-            if decision.disarm { try? link.send(.arm(false)) }
+            if decision.disarm { send(.arm(false)) }
         }
         if decision.charger != lastCharger {
             lastCharger = decision.charger
-            try? link.send(.charge(decision.charger))
+            send(.charge(decision.charger))
         }
         if decision.fan != lastFan {
             lastFan = decision.fan
-            try? link.send(.fan(decision.fan))
+            send(.fan(decision.fan))
         }
     }
 
     private var lastCharger: Bool?
     private var lastFan: Bool?
     private var lastDisarm: Bool?
+}
+
+/// One consistent view of what the runtime last did.
+///
+/// Every field is a value type, copied out under the lock in a single read, so a reader on
+/// another queue gets a coherent picture rather than six fields that may disagree with each
+/// other — or, as it was before, a `CycleOutput` being released underneath it mid-assignment.
+public struct RuntimeSnapshot: Sendable {
+    public var decision: FireDecision = .none
+    public var tracks: [Track] = []
+    public var cropRequests: [CropRequest] = []
+    public var meanLuma: Double = 0
+    /// Capture time of the newest detector answer the tracker has been given, or nil when
+    /// none has ever landed.
+    public var lastAnswerCapturedAt: TimeInterval?
+    public var lastReportWasPending = true
+    public var wouldShootCount = 0
+    public var detectorFailures = 0
+    /// Commands the policy authorised that failed to reach the gnome.
+    public var sendFailures = 0
+    /// Crop requests skipped because the detector was still busy with the previous ones.
+    /// A steadily climbing count means the model cannot keep up with the cycle rate, which
+    /// starves the sweep and, past a point, stops still animals ever being confirmed.
+    public var droppedRequests = 0
+    /// Capture time of the answer the detector is working on, or nil when it is idle.
+    /// There is no timeout around a CoreML call and none can be added — it cannot be
+    /// cancelled — so a model that hangs would otherwise stop all detection for good with
+    /// no symptom but tracks quietly ageing out. A value here that stops changing is that
+    /// symptom.
+    public var detectorBusySince: TimeInterval?
+
+    public init() {}
 }
