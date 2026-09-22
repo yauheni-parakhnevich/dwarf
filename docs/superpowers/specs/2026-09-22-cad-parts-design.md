@@ -234,3 +234,12 @@ renders are inspected after every change to the shell scripts.
   across it. The deck ring is cut around the pan servo. The yoke stands on a ring on the plate's
   rim rather than on feet outside it. The window is biased 6 mm above the lens so it stops above
   the belt joint.
+- **2026-09-22, Task 3.** The parallelogram could not live above the plate at all: a servo whose
+  horn clears the yoke ring has its body top above the plate's underside, and that body sits
+  inside the plate's radius. The pan servo now hangs under the deck, shaft down, at (5, −54);
+  the plate's front stop tab carries a column through an arc slot in the deck to a foot bar
+  with the crank pin at 30 mm; the link runs below both cranks. With 30 mm cranks and the servo
+  54 mm off the axis no bar comes within 14 mm of the pan axis at any angle, which is where the
+  tube and wires drop out of the shaft. The deck is 80 mm in radius to carry the servo's
+  hangers. The band above the plate now holds only the tube and wires. §1's "pan drive" row and
+  §3's linkage rows are superseded by this.
