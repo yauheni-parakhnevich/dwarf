@@ -79,25 +79,71 @@ enum class CmdSource { Serial, Ble };
 // forceSafe()'s watchdog, which is the firmware's last line of defence.
 //
 // The fix: liveness belongs to at most one channel at a time.
-//   - While a BLE central is connected, BLE alone owns the heartbeat. Serial
-//     commands still execute (arm, aim, shoot, ... all still work -- the
-//     console remains a real command path for debugging a misbehaving BLE
-//     link), they just do not count as proof the phone is present.
-//   - While no BLE central is connected, serial owns the heartbeat, exactly
-//     as it did before BLE existed (Task 10's bench workflow -- arm/park/
-//     shoot from the USB console with no phone anywhere nearby -- keeps
-//     working unchanged).
-// Ownership is tracked by CURRENT connection state, not by "has a central
-// ever connected since boot". A permanent, one-way handover to BLE would
-// mean that after any disconnect -- planned, or the phone crashing -- nobody
-// could use the serial console (the tool this firmware provides for exactly
-// that situation, per Task 10: "the debugging path when BLE misbehaves")
-// without a full power cycle. That is not needed for safety: the instant a
-// disconnect is detected, onDisconnect below drives the controller to
-// forceSafe() directly, so by the time ownership reverts to serial the gnome
-// is already parked, disarmed and charging -- there is no stale liveness
-// left for a bench session to mask.
+//   - While a BLE central is connected AND has sent a real command recently
+//     (see bleOwnsLiveness() below -- "recently" is the same 3 s window the
+//     heartbeat itself uses), BLE alone owns the heartbeat. Serial commands
+//     still execute (arm, aim, shoot, ... all still work -- the console
+//     remains a real command path for debugging a misbehaving BLE link),
+//     they just do not count as proof the phone is present.
+//   - Otherwise -- no central connected, or one connected but silent for 3 s
+//     or more (a "zombie" connection that never sent the radio-level
+//     disconnect event, e.g. a crashed phone app) -- serial owns the
+//     heartbeat, exactly as it did before BLE existed (Task 10's bench
+//     workflow -- arm/park/shoot from the USB console with no phone anywhere
+//     nearby -- keeps working unchanged).
+// Ownership is tracked by CURRENT, RECENT proof of life, not by "has a
+// central ever connected since boot" and not merely by "is a central
+// currently attached at the radio level". A permanent, one-way handover to
+// BLE on first connection would mean that after any disconnect -- planned,
+// or the phone crashing -- nobody could use the serial console (the tool
+// this firmware provides for exactly that situation, per Task 10: "the
+// debugging path when BLE misbehaves") without a full power cycle. Gating on
+// raw connection state alone very nearly repeats the original bug: measured
+// on hardware, a central that connects and then falls silent forever (never
+// triggering onDisconnect) let a subsequent serial command run with no
+// watchdog ever re-engaging afterwards, because BLE still "owned" the slot
+// without feeding it and serial's refreshes stayed suppressed. Neither
+// problem needs a full power cycle or a permanent handover to fix: the
+// instant a real disconnect is detected, onDisconnect below drives the
+// controller to forceSafe() directly (so by the time ownership reverts to
+// serial the gnome is already parked, disarmed and charging -- there is no
+// stale liveness left for a bench session to mask), and the instant BLE's
+// own proof of life goes stale -- disconnected or not -- ownership reverts
+// to serial on its own.
 volatile bool g_bleConnected = false;
+
+// A raw "is a central attached" flag is not enough on its own: a central can
+// connect and then go silent forever without ever sending the radio-level
+// disconnect ServerCallbacks::onDisconnect reacts to -- a crashed phone app,
+// one that lost its own network/foreground state but left the BLE link up,
+// or simply a slow phone that has not sent its first message yet. If
+// g_bleConnected alone gated serial's heartbeat refresh, that first ordinary
+// 3 s timeout would still fire and disarm correctly (linkUp_ has its own
+// clock, independent of any of this), but from that moment on NOTHING would
+// be enforcing liveness at all: BLE still "owns" the slot but is not feeding
+// it, and serial's refreshes stay suppressed because g_bleConnected is still
+// true. Measured on hardware: a BLE central that connects and never sends a
+// command lets a subsequent serial arm/command run with no watchdog ever
+// re-engaging, for as long as the zombie connection lasts.
+//
+// The fix is to require BLE to have proven life RECENTLY, not merely to be
+// connected: g_bleCmdSeen/g_lastBleCmd track whether a real command has
+// arrived over BLE, and bleOwnsLiveness() below only credits BLE with
+// ownership while that proof is still fresh (the same 3 s window
+// Controller's own heartbeat uses). The instant BLE goes stale -- connected
+// or not -- ownership reverts to serial automatically, without waiting for a
+// radio-level disconnect event.
+bool g_bleCmdSeen = false;
+Millis g_lastBleCmd = 0;
+
+// Mirrors ControllerConfig::heartbeatTimeoutMs (default-constructed on
+// g_controller below), which main.cpp has no getter for. Keep in sync with
+// controller.h if that default ever changes.
+constexpr Millis kBleOwnershipTimeoutMs = 3000;
+
+bool bleOwnsLiveness(Millis now) {
+    return g_bleConnected && g_bleCmdSeen && (now - g_lastBleCmd) < kBleOwnershipTimeoutMs;
+}
 
 // Set from the NimBLE host task's onDisconnect callback, consumed once from
 // loop(). Controller is single-task-owned (see the comment on CmdCallbacks
@@ -127,11 +173,17 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         (void)server;
         g_bleConnected = true;
+        // A fresh connection has not proven anything yet: it must not be
+        // credited with the previous connection's (or nobody's) recency.
+        // Serial keeps liveness ownership until this central actually sends
+        // its first command.
+        g_bleCmdSeen = false;
     }
 
     void onDisconnect(NimBLEServer* server) override {
         (void)server;
         g_bleConnected = false;
+        g_bleCmdSeen = false;
         g_bleJustDisconnected = true;
         // Keep the gnome reachable after the phone walks away.
         NimBLEDevice::startAdvertising();
@@ -179,12 +231,22 @@ void applyOutputs() {
 }
 
 void handleJson(const char* json, Millis now, CmdSource source) {
-    // See the comment on g_bleConnected: BLE always counts as proof of life;
-    // serial only counts while no BLE central currently owns that role. This
-    // never gates whether the command is executed -- ack/appearance is
-    // identical either way -- only whether it feeds the 3 s heartbeat.
-    const bool refreshHeartbeat = (source == CmdSource::Ble) || !g_bleConnected;
-    const Ack ack = g_controller.handle(parseCommand(json), now, refreshHeartbeat);
+    const Command cmd = parseCommand(json);
+
+    // Record BLE's own proof of life using exactly the criterion Controller
+    // uses for its heartbeat (a recognised command, not just any byte on the
+    // wire): see bleOwnsLiveness() and the comment on g_bleCmdSeen above.
+    if (source == CmdSource::Ble && cmd.type != CmdType::None) {
+        g_bleCmdSeen = true;
+        g_lastBleCmd = now;
+    }
+
+    // BLE always counts as proof of life for its own commands; serial counts
+    // only while BLE does not currently own that role. This never gates
+    // whether the command is executed -- ack/appearance is identical either
+    // way -- only whether it feeds the 3 s heartbeat.
+    const bool refreshHeartbeat = (source == CmdSource::Ble) || !bleOwnsLiveness(now);
+    const Ack ack = g_controller.handle(cmd, now, refreshHeartbeat);
     if (!ack.present) return;
     char buf[128];
     const size_t n = formatAck(ack.cmd, ack.ok, ack.why, buf, sizeof(buf));
