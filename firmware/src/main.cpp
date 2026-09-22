@@ -3,6 +3,8 @@
 #include <ESP32Servo.h>
 #include <NimBLEDevice.h>
 #include <OneWire.h>
+#include <Preferences.h>
+#include <esp_random.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -55,12 +57,152 @@ constexpr char kServiceUuid[] = "EC61AB6F-D20E-4217-93F9-4A3DF81B75D3";
 constexpr char kCmdUuid[] = "7C7FBA40-4383-4738-AD6B-09986229ED6A";
 constexpr char kStatusUuid[] = "6DF54A5A-41DC-4414-AB6A-1354C959CF0A";
 
+// --- BLE access control --------------------------------------------------
+//
+// Originally the service was wide open: anyone in range could connect with
+// nRF Connect and write cmd. The firmware's own limits bound the *damage* a
+// write can do (angles clamped, bursts capped at 500 ms, 5 s cooldown, the
+// hardware valve timer closing the solenoid from an ISR regardless of any
+// of this), but none of that stops a stranger choosing to aim a burst at a
+// person, or emptying the tank out of spite. This section closes that. It
+// is a radio/transport policy, not decision logic, so -- per the
+// lib/dwarf constraint -- it lives here and nowhere near Controller.
+//
+// Design:
+//   - Bonding + LE Secure Connections + a passkey (mitm=true) are required
+//     for `cmd`: WRITE_ENC | WRITE_AUTHEN on top of WRITE means the NimBLE
+//     host itself rejects a write from an unencrypted or unauthenticated
+//     link with a GATT error -- CmdCallbacks::onWrite is never entered for
+//     that case, so our code cannot get this wrong because it never runs.
+//     `status` gets the matching READ_ENC | READ_AUTHEN: an unbonded
+//     central cannot even observe tank/fault/shots, because
+//     NimBLECharacteristic::notify() silently skips any subscriber whose
+//     link is not encrypted (see its `reqSec` check).
+//   - The ESP32 has no display or keypad, so BLE_HS_IO_DISPLAY_ONLY plus a
+//     passkey is the closest fit available: the gnome "shows" a code it
+//     cannot actually display, and whoever pairs a new central must already
+//     know it out of band. The passkey is NOT a compile-time constant --
+//     this repository is public, and a passkey anyone can read in source is
+//     not a passkey; it would give the appearance of MITM protection with
+//     none of the substance. Each board draws its own random six-digit
+//     passkey the first time it boots, persists it in NVS, and prints it
+//     over serial on every boot (see loadOrCreatePasskey() below) -- so
+//     learning it requires the same physical-USB-access trust boundary the
+//     bond-erase escape hatch already sits behind, not a read of this file.
+//   - Bonds persist in NVS across reboots: NimBLEDevice::init() below calls
+//     nvs_flash_init() and ble_store_config_init() internally, and
+//     CONFIG_BT_NIMBLE_MAX_BONDS is pinned to 1 in platformio.ini -- exactly
+//     one phone is meant to hold a bond at a time; a second pairing requires
+//     the serial escape hatch below first.
+//   - Transmit power is set to the lowest level this radio supports
+//     (ESP_PWR_LVL_N12, -12 dBm) in setup(). The phone lives centimetres
+//     from this board inside the same gnome body, so ordinary BLE range is
+//     never needed; cutting it shrinks who can even attempt to pair from
+//     "anyone on the pavement" toward roughly arm's length. It is a range
+//     reduction that raises the bar, not a hard boundary -- a directional
+//     antenna extends any attacker's effective range regardless of our
+//     transmit power, since receive sensitivity is what actually limits
+//     them, not what we send at.
+//
+// Passkey generation and storage. Kept in NVS, next to the bonds it
+// protects, under its own namespace so erasing it is a deliberate act (see
+// eraseBleBonds() below) rather than a side effect of anything else that
+// touches NVS.
+constexpr const char* kPasskeyPrefsNamespace = "dwarf-ble";
+constexpr const char* kPasskeyPrefsKey = "passkey";
+
+// Six identical digits (10 values: 000000, 111111, ..., 999999) or six
+// digits running consecutively in either direction (10 more: 012345 up
+// through 456789, and 987654 down through 543210) are exactly the handful
+// of guesses an attacker tries before anything else -- also, incidentally,
+// 123456 is NimBLEServerCallbacks' documented "did you forget to set a
+// passkey" sentinel (see NimBLEServer.cpp), so excluding it is doubly
+// correct. Redrawing on a degenerate hit costs nothing at boot and removes
+// all twenty of them from the guessable space for free.
+bool isDegeneratePasskey(uint32_t v) {
+    char digits[6];
+    for (int i = 5; i >= 0; --i) {
+        digits[i] = static_cast<char>(v % 10);
+        v /= 10;
+    }
+    bool allSame = true;
+    bool ascending = true;
+    bool descending = true;
+    for (int i = 1; i < 6; ++i) {
+        if (digits[i] != digits[0]) allSame = false;
+        if (digits[i] != digits[i - 1] + 1) ascending = false;
+        if (digits[i] != digits[i - 1] - 1) descending = false;
+    }
+    return allSame || ascending || descending;
+}
+
+// esp_random() is the ESP32's hardware TRNG (not a seeded PRNG), so this is
+// suitable for a security-relevant value. % 1000000 has a ~1e-7 relative
+// bias (2^32 is not an exact multiple of 1e6), which matters nowhere near
+// as much as the six-digit search space itself already does not: this is
+// defence against a passer-by guessing or shoulder-surfing, not a
+// cryptographic key, and needs to be typed by a human either way.
+uint32_t drawPasskey() {
+    uint32_t v;
+    do {
+        v = esp_random() % 1000000u;
+    } while (isDegeneratePasskey(v));
+    return v;
+}
+
+// Loads the passkey persisted from a previous boot, or draws and persists a
+// fresh one if this is the first boot ever, or the most recent one after
+// eraseBleBonds() ran (which deliberately clears this key too -- see its
+// comment). Called once from setup(), and again from eraseBleBonds() itself.
+uint32_t loadOrCreatePasskey() {
+    Preferences prefs;
+    prefs.begin(kPasskeyPrefsNamespace, /*readOnly=*/false);
+    uint32_t pk;
+    if (prefs.isKey(kPasskeyPrefsKey)) {
+        pk = prefs.getUInt(kPasskeyPrefsKey, 0);
+    } else {
+        pk = drawPasskey();
+        prefs.putUInt(kPasskeyPrefsKey, pk);
+    }
+    prefs.end();
+    return pk;
+}
+
+// Set once in setup() from loadOrCreatePasskey(), and again by
+// eraseBleBonds() when it draws a fresh one. Read by setup() to print it on
+// every boot (see its own comment for why "every", not just the first).
+uint32_t g_blePasskey = 0;
+
+// Serial-only escape hatch: erases every BLE bond and makes the gnome
+// pairable again. Typed as a bare line, never JSON, so it can never be
+// confused with a phone-originated command and never needs a parser.
+//
+// This is deliberately NOT part of the JSON wire protocol
+// (firmware/lib/dwarf/protocol.h, protocol/fixtures/):
+//   1. Its entire purpose is to recover from a broken BLE bond -- phone
+//      restored, app reinstalled, NVS wiped on either side. In exactly that
+//      situation BLE itself is the thing that no longer works, so a
+//      wire-protocol command could never reach the firmware to run this in
+//      the first place. It has to live on a channel that does not depend on
+//      BLE already working, which only serial is.
+//   2. It requires physical possession of the USB cable by construction.
+//      Putting the same power on the wire protocol would mean a *bonded*
+//      central could erase the legitimate phone's own bond over the air --
+//      a foot-gun with no offsetting benefit, since a bonded phone has no
+//      legitimate reason to ever do that remotely, and an unbonded central
+//      cannot write cmd at all (that is this task's whole point).
+//   3. Keeping it out of protocol.h keeps firmware/lib/dwarf/ exactly as
+//      pure and Arduino/NimBLE-free as it already is, and leaves
+//      protocol/fixtures/ and both the C++ and Swift test suites untouched.
+constexpr const char* kEraseBondsLine = "erase-bonds";
+
 struct CmdMsg {
     char json[192];
 };
 
 QueueHandle_t g_cmdQueue = nullptr;
 NimBLECharacteristic* g_statusChar = nullptr;
+NimBLEServer* g_server = nullptr;
 
 // Which channel a command arrived on. Only used to decide whether the
 // command may refresh the phone-liveness heartbeat -- see the big comment on
@@ -198,7 +340,69 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         // Keep the gnome reachable after the phone walks away.
         NimBLEDevice::startAdvertising();
     }
+
+    // Diagnostic only -- printed to serial, never onto the wire protocol
+    // (this is not a Status or Ack and must not be confused with either).
+    // Fires whenever pairing/bonding for a link completes, successfully or
+    // not, which is the one moment worth surfacing on the bench: whether
+    // the link that is about to start sending commands actually ended up
+    // encrypted, authenticated (passkey verified) and bonded, or whether it
+    // is limping along some lesser state a client library negotiated down
+    // to. It changes nothing -- the WRITE_ENC | WRITE_AUTHEN flags on cmd
+    // are what actually enforce this -- it just makes the outcome visible.
+    void onAuthenticationComplete(ble_gap_conn_desc* desc) override {
+        if (desc == nullptr) return;
+        Serial.printf(
+            "{\"bleAuth\":true,\"encrypted\":%s,\"authenticated\":%s,\"bonded\":%s}\n",
+            desc->sec_state.encrypted ? "true" : "false",
+            desc->sec_state.authenticated ? "true" : "false",
+            desc->sec_state.bonded ? "true" : "false");
+    }
 };
+
+// Serial-only escape hatch for kEraseBondsLine (see its own comment above).
+// Disconnects anyone currently attached (an already-encrypted link survives
+// its own bond record being deleted -- the session keys already in RAM keep
+// working until the link actually tears down -- so leaving a connected
+// central alone here would let it keep commanding right up until it
+// happened to disconnect on its own), erases every bond from NVS, draws and
+// persists a fresh passkey, and makes sure advertising is running so a
+// fresh pairing can start immediately.
+//
+// The passkey is redrawn here, not just the bonds: a gnome whose bonds were
+// just wiped -- because it is about to be re-paired with a different phone,
+// or because the old one is presumed lost -- must not go on answering to a
+// number someone else once read off it. Applied to the running session at
+// once (setSecurityPasskey) so the very next pairing attempt already uses
+// it; no reboot needed, though the new value is also what a reboot would
+// load from NVS from this point on.
+//
+// Deliberately touches none of Controller's state directly. The
+// disconnect(s) issued here run the same ServerCallbacks::onDisconnect path
+// as any other disconnect, which already sets g_bleJustDisconnected and
+// therefore drives Controller::forceSafe() from loop() on the very next
+// tick -- exactly Task 11's "a known disconnect is handled at once" design,
+// reused rather than duplicated.
+void eraseBleBonds() {
+    const int before = NimBLEDevice::getNumBonds();
+    if (g_server != nullptr) {
+        for (uint16_t connId : g_server->getPeerDevices()) {
+            g_server->disconnect(connId);
+        }
+    }
+    NimBLEDevice::deleteAllBonds();
+    NimBLEDevice::startAdvertising();  // idempotent if already advertising
+
+    Preferences prefs;
+    prefs.begin(kPasskeyPrefsNamespace, /*readOnly=*/false);
+    g_blePasskey = drawPasskey();
+    prefs.putUInt(kPasskeyPrefsKey, g_blePasskey);
+    prefs.end();
+    NimBLEDevice::setSecurityPasskey(g_blePasskey);
+
+    Serial.printf("{\"erasedBonds\":true,\"before\":%d,\"after\":%d,\"blePasskey\":\"%06u\"}\n",
+                  before, NimBLEDevice::getNumBonds(), g_blePasskey);
+}
 
 bool tankOk() { return digitalRead(PIN_FLOAT) == FLOAT_WATER_PRESENT_LEVEL; }
 
@@ -263,14 +467,20 @@ void handleJson(const char* json, Millis now, CmdSource source) {
     emit(buf, n);
 }
 
-// Reads one JSON object per line from the USB serial monitor.
+// Reads one line per line from the USB serial monitor: either one JSON
+// command object, or the bare kEraseBondsLine escape hatch (never both --
+// see its comment above for why that command is deliberately not JSON).
 void pollSerial(Millis now) {
     while (Serial.available() > 0) {
         const char ch = static_cast<char>(Serial.read());
         if (ch == '\n' || ch == '\r') {
             if (g_lineLen > 0) {
                 g_line[g_lineLen] = '\0';
-                handleJson(g_line, now, CmdSource::Serial);
+                if (std::strcmp(g_line, kEraseBondsLine) == 0) {
+                    eraseBleBonds();
+                } else {
+                    handleJson(g_line, now, CmdSource::Serial);
+                }
                 g_lineLen = 0;
             }
         } else if (g_lineLen < sizeof(g_line) - 1) {
@@ -357,15 +567,32 @@ void setup() {
 
     NimBLEDevice::init("dwarf");
     NimBLEDevice::setMTU(185);
+
+    // Lowest transmit power this radio supports, for both advertising and
+    // any resulting connection: see the BLE access-control comment block
+    // above for why range is not needed here and what this trades away.
+    NimBLEDevice::setPower(ESP_PWR_LVL_N12, ESP_BLE_PWR_TYPE_ADV);
+    NimBLEDevice::setPower(ESP_PWR_LVL_N12, ESP_BLE_PWR_TYPE_DEFAULT);
+
+    // Bonding + LE Secure Connections + passkey entry (MITM). See the BLE
+    // access-control comment block above for the full design and rationale.
+    g_blePasskey = loadOrCreatePasskey();
+    NimBLEDevice::setSecurityAuth(/*bonding=*/true, /*mitm=*/true, /*sc=*/true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+    NimBLEDevice::setSecurityPasskey(g_blePasskey);
+
     NimBLEServer* server = NimBLEDevice::createServer();
     server->setCallbacks(new ServerCallbacks());
+    g_server = server;
 
     NimBLEService* service = server->createService(kServiceUuid);
-    NimBLECharacteristic* cmdChar =
-        service->createCharacteristic(kCmdUuid, NIMBLE_PROPERTY::WRITE);
+    NimBLECharacteristic* cmdChar = service->createCharacteristic(
+        kCmdUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC |
+                      NIMBLE_PROPERTY::WRITE_AUTHEN);
     cmdChar->setCallbacks(new CmdCallbacks());
     g_statusChar = service->createCharacteristic(
-        kStatusUuid, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ);
+        kStatusUuid, NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ |
+                          NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN);
     service->start();
 
     NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
@@ -377,6 +604,12 @@ void setup() {
 
     g_controller.update(millis(), tankOk(), g_tempC);
     Serial.println("{\"boot\":\"dwarf\"}");
+    // Printed on every boot, not only the first: the owner will need this
+    // again after replacing a phone or wiping the app, and a number the
+    // gnome printed once, months ago, is not a recovery path. Reading it
+    // needs a USB cable plugged into this console -- the same trust
+    // boundary as the erase-bonds escape hatch that can redraw it.
+    Serial.printf("{\"blePasskey\":\"%06u\"}\n", g_blePasskey);
 }
 
 void loop() {
