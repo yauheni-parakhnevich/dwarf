@@ -52,9 +52,9 @@ def servo_body(spec, shaft_xyz, axis="z", length_dir=(0, -1, 0)):
 
 
 def phone_body():
-    """The iPhone standing upright, camera end down, screen facing -X, camera on the centreline."""
+    """The iPhone standing upright, camera end down, screen facing -X, centred; its camera is at CAM_Y."""
     return box(P.PHONE_FRONT_X, P.PHONE_BACK_X,
-               -P.PHONE_Y_OFFSET - P.PHONE_W / 2, -P.PHONE_Y_OFFSET + P.PHONE_W / 2,
+               P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
                P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
 
 

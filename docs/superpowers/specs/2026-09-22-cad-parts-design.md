@@ -216,3 +216,15 @@ renders are inspected after every change to the shell scripts.
   and nozzle guidance.
 - Weatherproofing and paint.
 - Any printed part in the pressurised water path.
+
+## 11. Revisions
+
+- **2026-09-22, Task 1 of the plan.** The first layout test found the phone did not fit: 138 mm of
+  phone between a chassis at 230 and a deck ring at 358 leaves 133 mm, and the torso narrowed below
+  the phone's top corners. As built in `cad/params.py`: the deck rises to 380 and everything above
+  it by 8 mm (head centre 458, brim 481, top **558 mm**); the lens sits at 245; the shoulders stay
+  96 mm in radius up to 373 and are hidden under the beard collar; the deck ring is a narrow
+  annulus (50–66 mm) joined to the wall by four webs so the phone passes outside it; the phone is
+  centred and its camera sits 22.5 mm off the centreline, an offset the aiming calibration absorbs
+  like every other. `BASE_PROFILE` is the outer skin only; the raised floor is a separate revolve
+  row. The layout table in §2 is superseded by `params.py` where they differ.

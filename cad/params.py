@@ -25,29 +25,31 @@ SCREW_HEAD_H = 3.0
 Z_FLOOR = 26.0             # underside of the raised floor; the skirt below has drain arches
 Z_BELT = 210.0             # the split
 Z_BASE_TOP = 218.0         # the base's rim, hidden inside the torso's skirt
-Z_TORSO_TOP = 392.0
-Z_DECK = 372.0             # top face of the turntable deck
+Z_TORSO_TOP = 400.0
+Z_DECK = 380.0             # top face of the turntable deck
 DECK_T = 6.0
 RING_T = 8.0               # interface rings unioned into the shell
-Z_HEAD = 450.0             # tilt axis and head centre
+Z_HEAD = 458.0             # tilt axis and head centre
 HEAD_R = 45.0
-Z_HAT = 473.0              # underside of the brim
-Z_TOP = 550.0
-Z_LENS = 235.0
+Z_HAT = 481.0              # underside of the brim
+Z_TOP = 558.0
+Z_LENS = 245.0
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
-BASE_PROFILE = [(0.0, Z_FLOOR), (108.0, Z_FLOOR), (112.0, 0.0), (125.0, 90.0), (108.0, 170.0),
-                (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
-TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 260.0), (105.0, 300.0), (96.0, 340.0),
-                 (76.0, Z_DECK), (66.0, Z_TORSO_TOP)]
+# outer skins only; shell_r walks these. The base's raised floor is a separate revolve row.
+BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (108.0, 170.0), (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
+BASE_FLOOR_R = 108.0
+# broad shoulders up to 365 so the phone's top corners clear the wall; the beard collar hides them
+TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 260.0), (105.0, 300.0), (100.0, 340.0),
+                 (96.0, 373.0), (80.0, 388.0), (66.0, Z_TORSO_TOP)]
 HAT_BRIM_R = 70.0
 HAT_BRIM_T = 8.0
 HAT_CONE_R = 50.0
 HAT_TIP_R = 4.0
 HAT_BEND = 15.0            # how far the tip leans forward
-BEARD_TOP_Z = 415.0
+BEARD_TOP_Z = 423.0
 BEARD_BOTTOM_FRONT_Z = 330.0
-BEARD_BOTTOM_BACK_Z = 375.0
+BEARD_BOTTOM_BACK_Z = 383.0
 BEARD_T = 3.0
 
 SECTION_Z = {
@@ -101,9 +103,11 @@ LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 60.0
 HOOD_DEPTH = 15.0
 HOOD_PITCH_DEG = 10.0
-# the camera is on the gnome's centreline; the phone is offset sideways to put it there
-PHONE_Y_OFFSET = PHONE_W / 2 - PHONE_CAM_FROM_SIDE      # 22.55, phone shifted to -Y
-PHONE_BOTTOM_Z = Z_LENS - PHONE_CAM_FROM_END           # 224
+# the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
+# calibration absorbs like every other fixed offset
+PHONE_Y_OFFSET = 0.0
+CAM_Y = PHONE_Y_OFFSET + PHONE_W / 2 - PHONE_CAM_FROM_SIDE   # 22.55
+PHONE_BOTTOM_Z = Z_LENS - PHONE_CAM_FROM_END           # 234
 LENS_FRONT_X = shell_r(TORSO_PROFILE, Z_LENS) - WALL - ACRYLIC_T - LENS_GAP
 PHONE_BACK_X = LENS_FRONT_X - LENS_CLIP_T              # back glass
 PHONE_FRONT_X = PHONE_BACK_X - PHONE_T                 # screen
@@ -120,7 +124,7 @@ EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
-Z_FAN = 355.0
+Z_FAN = 363.0
 VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 232.0
 
 # --- turntable ----------------------------------------------------------------------------
@@ -132,19 +136,21 @@ BEARING_HOLE = 3.4
 SHAFT_OD, SHAFT_ID = 20.0, 12.0
 DECK_R = 63.6                  # inside the shoulders' inner wall
 RING_R_IN = 50.0
-DECK_SCREW_R = 51.0
+RING_R_OUT = 66.0              # the ring is a narrow annulus; four webs reach the wall
+RING_WEB_W = 8.0
+DECK_SCREW_R = 58.0
 DECK_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
 PLATE_R = 50.0
 PLATE_T = 5.0
-Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 383
+Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 391
 PAN_OFFSET = 44.0              # pan servo axis, behind the pan axis on -X
 CRANK_L = 20.0
 LINK_T = 3.0
 CRANK_T = 5.0
 PIN_POST_D = 8.0
-Z_SERVO_HORN_TOP = Z_DECK + 12.5 + 2.5               # body top 384.5, horn 2.5 above it
-Z_CRANK_TOP = Z_SERVO_HORN_TOP + CRANK_T             # 392
-Z_LINK_TOP = Z_CRANK_TOP + LINK_T                    # 395
+Z_SERVO_HORN_TOP = Z_DECK + 12.5 + 2.5               # body top 392.5, horn 2.5 above it
+Z_CRANK_TOP = Z_SERVO_HORN_TOP + CRANK_T             # 400
+Z_LINK_TOP = Z_CRANK_TOP + LINK_T                    # 403
 PAN_STOP_DEG = 65.0
 STOP_TAB_W = 6.0
 STOP_POST_R = 58.0
@@ -163,7 +169,7 @@ HORN_SCREW_R = 7.0
 # pan servo: shaft up at (-PAN_OFFSET, 0); body runs along -Y from the shaft end, hangs in a
 # notch in the deck with its tabs resting on the deck top
 PAN_SERVO_XY = (-PAN_OFFSET, 0.0)
-PAN_SERVO_BODY_Z0 = Z_DECK - DS3218["tab_z"]         # 344
+PAN_SERVO_BODY_Z0 = Z_DECK - DS3218["tab_z"]         # 352
 PAN_NOTCH = ((-PAN_OFFSET - DS3218["body"][1] / 2 - 0.5, -DS3218["body"][0] + DS3218["shaft_off"] - 0.5),
              (-PAN_OFFSET + DS3218["body"][1] / 2 + 0.5, DS3218["shaft_off"] + 0.5))   # (x0,y0),(x1,y1)
 
@@ -182,7 +188,7 @@ HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
 FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
 FACE_LIP_L = 5.0
-Z_MOUTH = Z_HEAD - 22.0        # 428
+Z_MOUTH = Z_HEAD - 22.0        # 436
 MOUTH_D = 12.0
 NOZZLE_D = 8.0
 NOZZLE_BOSS_Y = 12.0
