@@ -228,3 +228,9 @@ renders are inspected after every change to the shell scripts.
   centred and its camera sits 22.5 mm off the centreline, an offset the aiming calibration absorbs
   like every other. `BASE_PROFILE` is the outer skin only; the raised floor is a separate revolve
   row. The layout table in §2 is superseded by `params.py` where they differ.
+- **2026-09-22, Tasks 1–2 review.** At pan zero both cranks pointed backwards and the link's far
+  eye sat inside the neck wall; the neck is now 76 mm in radius (`TORSO_R_TOP`), hidden under the
+  collar, and both cranks point +Y at rest so the link runs beside the shaft's mouth rather than
+  across it. The deck ring is cut around the pan servo. The yoke stands on a ring on the plate's
+  rim rather than on feet outside it. The window is biased 6 mm above the lens so it stops above
+  the belt joint.

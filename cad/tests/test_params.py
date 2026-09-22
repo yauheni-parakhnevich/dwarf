@@ -58,12 +58,23 @@ def test_linkage_band_is_clear_of_the_head():
     assert P.Z_LINK_TOP + P.SCREW_HEAD_H < underside
 
 
+def crank_pins(deg):
+    """Plate pin and servo pin at a pan angle: both cranks are CRANK_L at CRANK_REST_DEG + deg."""
+    a = math.radians(P.CRANK_REST_DEG + deg)
+    v = (P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a))
+    return v, (-P.PAN_OFFSET + v[0], v[1])
+
+
 def _linkage_max_radius(deg):
-    """Farthest point of the pan linkage from the pan axis at a pan angle. Cranks point -X at rest."""
-    a = math.radians(deg)
-    plate_pin = (-P.CRANK_L * math.cos(a), -P.CRANK_L * math.sin(a))
-    servo_pin = (-P.PAN_OFFSET - P.CRANK_L * math.cos(a), -P.CRANK_L * math.sin(a))
+    """Farthest point of the pan linkage from the pan axis at a pan angle."""
+    plate_pin, servo_pin = crank_pins(deg)
     return max(math.hypot(*plate_pin), math.hypot(*servo_pin)) + P.LINK_EYE_R
+
+
+def test_link_at_rest_clears_the_shaft_mouth():
+    # the link is a bar 6 wide between the pins; at rest it must not lie across the shaft's flare
+    plate_pin, servo_pin = crank_pins(0)
+    assert min(abs(plate_pin[1]), abs(servo_pin[1])) - 3.0 > P.SHAFT_OD / 2 + 3.0 + 1.0
 
 
 def test_pan_linkage_sweeps_inside_the_neck_and_the_collar():
