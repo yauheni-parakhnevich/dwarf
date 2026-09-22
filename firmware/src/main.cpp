@@ -181,6 +181,29 @@ uint32_t loadOrCreatePasskey() {
 // every boot (see its own comment for why "every", not just the first).
 uint32_t g_blePasskey = 0;
 
+// While the pairing window is open the gnome answers to this instead of its own
+// passkey. It is public on purpose, and publishing it costs nothing, because it
+// only works during a window that can only be opened by pressing a button
+// inside the body. The proof of physical access moves from "read the number off
+// a serial console" to "you had the gnome open", which is the same claim made
+// more cheaply -- and, unlike the serial route, it needs no computer in the
+// garden.
+constexpr uint32_t kOpenPairingPasskey = 0;
+// Long enough to find the dialog and type six zeroes, short enough that a gnome
+// left open does not stay pairable all afternoon.
+constexpr Millis kPairingWindowMs = 60000;
+// A press, not a knock. Servicing the gnome should not be able to wipe its bond
+// by brushing against the deck.
+constexpr Millis kPairingHoldMs = 3000;
+
+Millis g_pairingWindowEnds = 0;
+Millis g_pairButtonSince = 0;
+bool g_pairButtonHandled = false;
+
+bool pairingWindowOpen(Millis now) {
+    return g_pairingWindowEnds != 0 && now < g_pairingWindowEnds;
+}
+
 // Serial-only escape hatch: erases every BLE bond and makes the gnome
 // pairable again. Typed as a bare line, never JSON, so it can never be
 // confused with a phone-originated command and never needs a parser.
@@ -373,6 +396,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             desc->sec_state.encrypted ? "true" : "false",
             desc->sec_state.authenticated ? "true" : "false",
             desc->sec_state.bonded ? "true" : "false");
+        // A bond is what the window was open for. Close it at once rather than
+        // leaving the gnome pairable for the rest of the minute.
+        if (desc->sec_state.bonded) g_pairingWindowEnds = 0;
     }
 };
 
@@ -418,6 +444,57 @@ void eraseBleBonds() {
 
     Serial.printf("{\"erasedBonds\":true,\"before\":%d,\"after\":%d,\"blePasskey\":\"%06u\"}\n",
                   before, NimBLEDevice::getNumBonds(), g_blePasskey);
+}
+
+// Opens the window: forget the phone we knew, answer to the public passkey, and
+// say so. Reuses eraseBleBonds() wholesale rather than repeating it, so the
+// disconnect and the forceSafe() that follows behave exactly as they already do.
+void openPairingWindow(Millis now) {
+    eraseBleBonds();
+    NimBLEDevice::setSecurityPasskey(kOpenPairingPasskey);
+    g_pairingWindowEnds = now + kPairingWindowMs;
+    Serial.printf("{\"pairingWindow\":\"open\",\"seconds\":%lu,\"passkey\":\"%06u\"}\n",
+                  static_cast<unsigned long>(kPairingWindowMs / 1000), kOpenPairingPasskey);
+}
+
+void closePairingWindow() {
+    g_pairingWindowEnds = 0;
+    // Back to this gnome's own number, so the public one is good for exactly
+    // the window it was opened for and not a second longer.
+    NimBLEDevice::setSecurityPasskey(g_blePasskey);
+    digitalWrite(PIN_STATUS_LED, LOW);
+    Serial.println("{\"pairingWindow\":\"closed\"}");
+}
+
+// A hold, debounced by the hold itself: the button has to be down continuously
+// for kPairingHoldMs before anything happens, and has to be released before it
+// can fire again.
+void pollPairingButton(Millis now) {
+    const bool down = digitalRead(PIN_PAIR_BUTTON) == LOW;
+
+    if (!down) {
+        g_pairButtonSince = 0;
+        g_pairButtonHandled = false;
+        return;
+    }
+    if (g_pairButtonSince == 0) {
+        g_pairButtonSince = now;
+        return;
+    }
+    if (!g_pairButtonHandled && now - g_pairButtonSince >= kPairingHoldMs) {
+        g_pairButtonHandled = true;
+        openPairingWindow(now);
+    }
+}
+
+// Blinks while the window is open, and shuts it when the minute is up.
+void servicePairingWindow(Millis now) {
+    if (g_pairingWindowEnds == 0) return;
+    if (now >= g_pairingWindowEnds) {
+        closePairingWindow();
+        return;
+    }
+    digitalWrite(PIN_STATUS_LED, ((now / 250) % 2) == 0 ? HIGH : LOW);
 }
 
 bool tankOk() { return digitalRead(PIN_FLOAT) == FLOAT_WATER_PRESENT_LEVEL; }
@@ -562,6 +639,12 @@ void setup() {
     pinMode(PIN_CHARGER, OUTPUT);
     digitalWrite(PIN_CHARGER, HIGH);  // charging on by default, so the phone can boot
     pinMode(PIN_FLOAT, INPUT);
+    // Inside the body, on the electronics deck: holding it for three seconds
+    // forgets the paired phone and opens a minute to pair a new one. That is
+    // the recovery path that needs no computer in the garden.
+    pinMode(PIN_PAIR_BUTTON, INPUT_PULLUP);
+    pinMode(PIN_STATUS_LED, OUTPUT);
+    digitalWrite(PIN_STATUS_LED, LOW);
 
     ESP32PWM::allocateTimer(0);
     ESP32PWM::allocateTimer(1);
@@ -677,6 +760,8 @@ void loop() {
 
     pollSerial(now);
     pollBle(now);
+    pollPairingButton(now);
+    servicePairingWindow(now);
     dropUnauthenticated(now);
 
     if (g_valveHardStop) {
