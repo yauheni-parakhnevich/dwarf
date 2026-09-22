@@ -7,7 +7,7 @@ from mech.common import box, cyl_z, servo_body
 
 @pytest.fixture(scope="session")
 def parts():
-    import mech.turntable  # noqa: F401
+    import mech.turntable, mech.torso  # noqa: E401,F401
     from mech import ALL
     return {name: fn() for name, fn in ALL}
 
@@ -160,3 +160,61 @@ def test_ear_tab_meets_the_pegs_only_at_the_stops(parts):
         assert (ear.rotate(tilt_axis, deg) & yoke).volume < 1e-6, deg
     for deg in (P.TILT_STOP[0] - 3, P.TILT_STOP[1] + 3):
         assert (ear.rotate(tilt_axis, deg) & yoke).volume > 1e-3, deg
+
+
+def test_phone_slot_fits_the_phone_with_clearance(parts):
+    from mech.common import phone_body
+    sled = parts["phone_sled"]
+    phone = phone_body()
+    assert (sled & phone).volume < 1e-6                        # the phone drops in
+    # the slot is not sloppy: growing the phone by 2*CLEAR in thickness makes it collide
+    fat = box(P.PHONE_FRONT_X - P.CLEAR - 0.05, P.PHONE_BACK_X + P.CLEAR + 0.05,
+              P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
+              P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
+    assert (sled & fat).volume > 0
+
+
+def test_phone_sled_only_fits_camera_down(parts):
+    """Flip the phone end for end: the lens clip now sits where the sled has no cutout."""
+    sled = parts["phone_sled"]
+    clip = box(P.PHONE_BACK_X, P.LENS_FRONT_X, P.CAM_Y - 12, P.CAM_Y + 12, P.Z_LENS - 12, P.Z_LENS + 12)     # correct way
+    assert (sled & clip).volume < 1e-6
+    # flipped end for end, the camera moves to the top and mirrors to y = -CAM_Y. The sled's back
+    # holds the phone there, so the clip standing proud of the back glass has nowhere to go and
+    # the phone cannot seat.
+    flipped_phone = box(P.PHONE_FRONT_X, P.PHONE_BACK_X + 1,
+                        P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
+                        P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
+    assert (sled & flipped_phone).volume > 0
+
+
+def test_nothing_stands_in_the_phones_volume(parts):
+    """Every dry-zone part keeps out of the phone: the sled's pocket surrounds it, nothing touches it."""
+    from mech.common import phone_body
+    phone = phone_body()
+    for name in ("belt_flange_lower", "belt_flange_upper", "divider", "chassis",
+                 "phone_sled", "electronics_deck", "fan_frame"):
+        assert (phone & parts[name]).volume < 1e-6, name
+
+
+def test_belt_screws_line_up(parts):
+    lower, upper, divider = parts["belt_flange_lower"], parts["belt_flange_upper"], parts["divider"]
+    for a in P.FLANGE_SCREW_ANGLES:
+        x = P.FLANGE_SCREW_R * math.cos(math.radians(a)); y = P.FLANGE_SCREW_R * math.sin(math.radians(a))
+        probe = cyl_z(P.M3_CLEAR / 2 - 0.05, P.Z_BELT - 4, P.Z_BASE_TOP + P.RING_T + 1, x, y)
+        assert (probe & upper).volume < 1e-6, a
+        assert (probe & divider).volume < 1e-6, a
+        insert = cyl_z(P.INSERT_D / 2 - 0.05, P.Z_BELT - P.INSERT_DEPTH + 0.1, P.Z_BELT - 0.1, x, y)
+        assert (insert & lower).volume < 1e-6, a
+
+
+def test_divider_fills_the_base_cup(parts):
+    bb = parts["divider"].bounding_box()
+    assert math.isclose(bb.min.Z, P.Z_BELT, abs_tol=1e-6)
+    assert math.isclose(bb.max.Z, P.Z_BASE_TOP, abs_tol=1e-6)
+    assert bb.max.X <= P.shell_r(P.BASE_PROFILE, P.Z_BELT) - P.WALL - P.CLEAR + 1e-6
+
+
+def test_electronics_fit_on_the_deck():
+    boards = [P.ESP32, P.XL4015, P.XL4015, P.MOSFET, P.MOSFET, P.MOSFET]
+    assert sum(w * h for w, h in boards) * 1.3 <= P.EDECK_L * P.EDECK_W
