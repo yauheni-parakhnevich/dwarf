@@ -133,8 +133,18 @@ volatile bool g_bleConnected = false;
 // Controller's own heartbeat uses). The instant BLE goes stale -- connected
 // or not -- ownership reverts to serial automatically, without waiting for a
 // radio-level disconnect event.
-bool g_bleCmdSeen = false;
-Millis g_lastBleCmd = 0;
+//
+// Both are written from two tasks -- loop() (a real BLE command arriving)
+// and the NimBLE host task (onConnect's reset) -- with no lock between them,
+// same as g_bleConnected/g_bleJustDisconnected above/below, so both are
+// volatile for the same reason: this is a plain-bool handoff, not a
+// synchronised one, and volatile only keeps the compiler from caching a
+// stale value in a register across that handoff. The worst a lost or
+// reordered update here can do is misjudge ownership for one ~10 ms loop()
+// tick, never corrupt Controller state itself (nothing here touches it
+// directly).
+volatile bool g_bleCmdSeen = false;
+volatile Millis g_lastBleCmd = 0;
 
 // Mirrors ControllerConfig::heartbeatTimeoutMs (default-constructed on
 // g_controller below), which main.cpp has no getter for. Keep in sync with
