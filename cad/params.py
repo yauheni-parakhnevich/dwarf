@@ -155,8 +155,11 @@ EDECK_LAYOUT = {
     "mosfet_a": (6.0, -45.0, 40.0, -18.0),
     "mosfet_b": (6.0, -16.0, 40.0, 11.0),
 }
-# deck screws, relative to EDECK_POS: the four corners the layout leaves free
-EDECK_HOLES = [(-54.0, -44.0), (-54.0, 44.0), (52.0, -44.0), (52.0, 13.0)]
+# deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
+# the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
+# under its back corners would stand off the chassis and into the wall
+EDECK_HOLES = [(51.0, -41.0), (51.0, 41.0), (-17.0, 12.0)]
+EDECK_POSTS = [(-50.0, -28.0), (-50.0, 28.0)]
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival
 ESP32_HOLES = None                # devkit boards vary; it sits in a printed cradle (two rails + tie slots)
 EDECK_STANDOFF = 8.0
