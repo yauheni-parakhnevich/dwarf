@@ -94,6 +94,33 @@ public struct PolicyInput: Sendable {
     }
 }
 
+/// Why the policy did not fire at the animal it was considering.
+public enum FireRefusal: String, Equatable, Sendable, CaseIterable {
+    /// Disarmed, or in calibration: the system is not operating at all.
+    case notOperating
+    case notConfirmed
+    case notStill
+    /// Too close to another track to trust which history belongs to which animal.
+    case ambiguous
+    /// The aim solution itself cannot be trusted — outside the servo limits, outside the
+    /// calibrated area, or no height offset for this range.
+    case aimFlagged
+    /// Inside the minimum range, where the jet is a hard stream rather than a spray.
+    case tooClose
+    case noFireZone
+    /// No status, or one too old to believe. The link is down or silent.
+    case noFreshStatus
+    /// The gnome answered, and said it cannot fire: disarmed, tank empty, or a fault.
+    case deviceNotReady
+    case animalCapReached
+    case hourlyCapReached
+    case animalCoolingDown
+    /// One nozzle, and the firmware would refuse a shot this soon after the last.
+    case nozzleCoolingDown
+    /// No aim could be computed at all, which in practice means an uncalibrated gnome.
+    case noAimSolution
+}
+
 public enum FireDecision: Equatable, Sendable {
     case none
     case aim(pan: Double, tilt: Double)
@@ -124,6 +151,9 @@ public final class FirePolicy {
     /// in an unbroken streak of that. Cleared the moment it fires or stops being
     /// structurally unfireable. See `isStructurallyUnfireable`.
     private var refusedSince: [Int: TimeInterval] = [:]
+    /// Why the best candidate was not fired at this cycle, or nil when it was. Reset to
+    /// nil when there is nothing to consider at all.
+    public private(set) var lastRefusal: FireRefusal?
     private var lastAim: TimeInterval?
     private var lastActivity: TimeInterval?
     private var parked = true
@@ -155,6 +185,7 @@ public final class FirePolicy {
             .sorted { $0.confidence == $1.confidence ? $0.id < $1.id : $0.confidence > $1.confidence }
 
         guard !candidates.isEmpty else {
+            lastRefusal = nil
             return parkIfIdle(input.uptime)
         }
 
@@ -169,6 +200,13 @@ public final class FirePolicy {
             guard let solution = input.solutions[candidate.id] else { return false }
             return canFire(candidate, solution, input)
         } ?? candidates[0]
+
+        // Recorded for whoever is watching, about the animal actually being considered.
+        if let solution = input.solutions[best.id] {
+            lastRefusal = refusal(best, solution, input)
+        } else {
+            lastRefusal = .noAimSolution
+        }
 
         guard let solution = input.solutions[best.id] else {
             lastActivity = input.uptime
@@ -212,27 +250,44 @@ public final class FirePolicy {
         return aimIfDue(pan: solution.pan, tilt: solution.tilt, at: input.uptime)
     }
 
-    /// Every condition, in one place. Each line is a rule from the spec.
     private func canFire(_ track: Track, _ solution: AimSolution, _ input: PolicyInput) -> Bool {
-        guard input.mode == .live || input.mode == .dryRun else { return false }
-        guard track.isConfirmed, track.isStill else { return false }
+        refusal(track, solution, input) == nil
+    }
+
+    /// Every condition, in one place, and why it said no. Each line is a rule from the spec.
+    ///
+    /// Returning the reason rather than a bare false is what makes a gnome diagnosable. It
+    /// spends most of its life not firing, and "not confirmed yet" and "standing in a
+    /// no-fire zone" and "the tank is empty" all used to collapse into the same silent
+    /// verdict. The owner's question is never "did it fire" — they can see that — it is
+    /// always "why didn't it".
+    private func refusal(_ track: Track, _ solution: AimSolution,
+                         _ input: PolicyInput) -> FireRefusal? {
+        guard input.mode == .live || input.mode == .dryRun else { return .notOperating }
+        guard track.isConfirmed else { return .notConfirmed }
+        guard track.isStill else { return .notStill }
         // Nearest-neighbour association cannot tell two crossing animals apart, so the
         // tracker flags the overlap rather than guessing. Water while two cats are tangled
         // is exactly when the history behind "confirmed and still" is least trustworthy.
-        guard !track.isAmbiguous else { return false }
-        guard !solution.isFlagged else { return false }
-        guard solution.rangeM >= limits.minRangeM else { return false }
-        guard !input.masks.isNoFire(track.groundPoint) else { return false }
-        guard let status = input.status, status.canFire else { return false }
-        guard shotsNear(track.groundPoint, endingAt: input.uptime) < limits.maxShotsPerAnimal else { return false }
-        guard shotsInLastHour(endingAt: input.uptime) < limits.maxShotsPerHour else { return false }
+        guard !track.isAmbiguous else { return .ambiguous }
+        guard !solution.isFlagged else { return .aimFlagged }
+        guard solution.rangeM >= limits.minRangeM else { return .tooClose }
+        guard !input.masks.isNoFire(track.groundPoint) else { return .noFireZone }
+        guard let status = input.status else { return .noFreshStatus }
+        guard status.canFire else { return .deviceNotReady }
+        guard shotsNear(track.groundPoint, endingAt: input.uptime) < limits.maxShotsPerAnimal else {
+            return .animalCapReached
+        }
+        guard shotsInLastHour(endingAt: input.uptime) < limits.maxShotsPerHour else {
+            return .hourlyCapReached
+        }
         if let last = lastShotByTrack[track.id],
-           input.uptime - last < limits.minShotInterval { return false }
+           input.uptime - last < limits.minShotInterval { return .animalCoolingDown }
         // The hardware itself, not the animal: one nozzle, and a firmware cooldown that
         // would refuse this shot anyway. See `FireLimits.minDeviceInterval`.
         if let last = recentShots.last,
-           input.uptime - last < limits.minDeviceInterval { return false }
-        return true
+           input.uptime - last < limits.minDeviceInterval { return .nozzleCoolingDown }
+        return nil
     }
 
     /// Refusal reasons that are about the aim itself — where the animal is standing, or
@@ -289,6 +344,11 @@ public final class FirePolicy {
         lastShotByTrack[id] = uptime
         recentShots.append(uptime)
         shotHistory.append((point: point, uptime: uptime))
+    }
+
+    /// How many shots are still counted against the hourly ceiling, for a status display.
+    public func shotsInLastHour(asOf uptime: TimeInterval) -> Int {
+        shotsInLastHour(endingAt: uptime)
     }
 
     private func shotsInLastHour(endingAt uptime: TimeInterval) -> Int {

@@ -499,4 +499,91 @@ final class FirePolicyTests: XCTestCase {
         XCTAssertEqual(policy.limits.burstMs, 400)
         XCTAssertEqual(policy.limits.minRangeM, 2)
     }
+
+    // MARK: why it did not fire
+
+    func testTheRefusalNamesTheRuleThatStoppedIt() {
+        let policy = FirePolicy()
+
+        _ = policy.decide(input(tracks: [track(confirmed: false)]))
+        XCTAssertEqual(policy.lastRefusal, .notConfirmed)
+
+        _ = policy.decide(input(tracks: [track(still: false)]))
+        XCTAssertEqual(policy.lastRefusal, .notStill)
+
+        _ = policy.decide(input(tracks: [track(ambiguous: true)]))
+        XCTAssertEqual(policy.lastRefusal, .ambiguous)
+
+        _ = policy.decide(input(range: 1.2))
+        XCTAssertEqual(policy.lastRefusal, .tooClose)
+
+        _ = policy.decide(input(flagged: true))
+        XCTAssertEqual(policy.lastRefusal, .aimFlagged)
+    }
+
+    func testASilentLinkIsNamedAsSuch() {
+        // The input helper substitutes a healthy status for nil, so this one is built by
+        // hand: a link that has gone quiet is the single most likely reason a working
+        // gnome stops firing, and it must not read as anything else.
+        let policy = FirePolicy()
+        let candidate = track()
+        let silent = PolicyInput(
+            mode: .live,
+            tracks: [candidate],
+            solutions: [candidate.id: solution()],
+            masks: .empty,
+            status: nil,
+            meanLuma: 120,
+            now: noon(),
+            uptime: 100)
+
+        _ = policy.decide(silent)
+        XCTAssertEqual(policy.lastRefusal, .noFreshStatus)
+    }
+
+    func testANoFireZoneIsNamedRatherThanBlamedOnTheAnimal() {
+        // The animal is confirmed, still and in range: the only thing wrong is where it is
+        // standing, and an owner staring at a gnome that will not fire needs to be told
+        // that rather than left to guess.
+        let policy = FirePolicy()
+        let masks = MaskSet(noFireZones: [Polygon(points: [
+            Point(x: 0.3, y: 0.5), Point(x: 0.7, y: 0.5),
+            Point(x: 0.7, y: 0.9), Point(x: 0.3, y: 0.9)
+        ])])
+
+        _ = policy.decide(input(masks: masks))
+        XCTAssertEqual(policy.lastRefusal, .noFireZone)
+    }
+
+    func testAShotLeavesNoRefusalBehind() {
+        let policy = FirePolicy()
+        guard case .shoot = policy.decide(input()) else { return XCTFail("expected a shot") }
+        XCTAssertNil(policy.lastRefusal)
+    }
+
+    func testAnEmptyGardenIsNotARefusal() {
+        // Nothing to consider is not the same as something refused, and a screen that
+        // showed the last animal's reason forever would be lying.
+        let policy = FirePolicy()
+        _ = policy.decide(input(tracks: [track(confirmed: false)]))
+        XCTAssertNotNil(policy.lastRefusal)
+
+        _ = policy.decide(input(tracks: []))
+        XCTAssertNil(policy.lastRefusal)
+    }
+
+    func testTheCapsAreNamedSeparately() {
+        let policy = FirePolicy()
+        var uptime: TimeInterval = 100
+
+        // Three shots at one place exhausts that animal's budget.
+        for _ in 0..<3 {
+            _ = policy.decide(input(uptime: uptime))
+            uptime += 60
+        }
+        _ = policy.decide(input(uptime: uptime))
+        XCTAssertEqual(policy.lastRefusal, .animalCapReached)
+        XCTAssertEqual(policy.shotsInLastHour(asOf: uptime), 3)
+    }
 }
+
