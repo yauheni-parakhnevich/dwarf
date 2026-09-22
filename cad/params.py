@@ -107,6 +107,7 @@ PHONE_L, PHONE_W, PHONE_T = 138.3, 67.1, 7.1
 PHONE_CAM_FROM_END = 11.0      # rear camera centre from the phone's end
 PHONE_CAM_FROM_SIDE = 11.0     # ... and from its side
 LENS_CLIP_T = 12.0             # clip-on lens in front of the back glass
+LENS_CLIP_W = 28.0             # the clip's width across the phone; measure the clip on arrival
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 48.0
@@ -135,7 +136,7 @@ EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
-Z_FAN = 363.0
+Z_FAN = 348.0                  # the whole 50 mm frame stays inside the shoulder; the exhaust sits on the back below the collar
 VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 245.0   # above the torso flange (226)
 
 # --- turntable ----------------------------------------------------------------------------
