@@ -22,6 +22,7 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: garden.dwarf.app
         CURRENT_PROJECT_VERSION: "1"
