@@ -51,7 +51,7 @@ def test_shaft_bore_takes_tube_and_wires(parts):
     clear = cyl_z(P.SHAFT_ID / 2 - 0.05, bb.min.Z - 1, bb.max.Z + 1)
     assert (clear & shaft).volume < 1e-6                     # SHAFT_ID passes from end to end
     assert (cyl_z(P.SHAFT_ID / 2 + 0.05, bb.min.Z - 1, bb.max.Z + 1) & shaft).volume > 1e-3
-    assert P.SHAFT_ID >= P.TUBE_OD + 3 * 1.5 + 1.5           # tube, three wires and slack
+    assert P.SHAFT_ID >= P.TUBE_OD + 3 * 1.5 + 2             # tube, three wires and slack, spec 6
 
 
 def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
@@ -437,15 +437,15 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
 
 
 def test_hatch_bosses_take_a_blind_insert_and_stay_in_the_wall(parts):
-    """One bracket per screw, each with a short insert facing the panel and material behind it."""
+    """One bracket per screw, each with a blind insert facing the panel and material behind it."""
     bosses = parts["hatch_bosses"]
     assert len(bosses.solids()) == len(P.HATCH_SCREWS)
     for z, a in P.HATCH_SCREWS:
         r_in = P.shell_r(P.TORSO_PROFILE, z) - P.WALL
-        bore = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH_SHORT + 0.1, r_in - 0.1, 0, z).rotate(Axis.Z, a)
+        bore = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH + 0.1, r_in - 0.1, 0, z).rotate(Axis.Z, a)
         assert (bore & bosses).volume < 1e-6, (z, a)                      # the insert's hole is clear
-        behind = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH_SHORT - 0.9,
-                       r_in - P.INSERT_DEPTH_SHORT - 0.1, 0, z).rotate(Axis.Z, a)
+        behind = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH - 0.9,
+                       r_in - P.INSERT_DEPTH - 0.1, 0, z).rotate(Axis.Z, a)
         assert (behind & bosses).volume > 1e-3, (z, a)                    # ... and it is blind
     assert (bosses - skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)).volume < 1e-6   # never proud
 

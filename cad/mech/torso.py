@@ -26,10 +26,12 @@ SLED_KEY_OVERRUN = 6.0       # the key finger runs this far past the flipped cam
 SLED_LIP_TOP = 30.0          # the back lip stops this far above the phone's bottom
 BOSS_R = 5.5                 # the chassis's bosses round a blind M3 insert
 STANDOFF_R = 4.0
-# The electronics deck's screws, relative to EDECK_POS. EDECK_STANDOFF_INSET would put three of
-# the four under a board (xl4015_a, mosfet_c and esp32 cover those corners), and a screw head
-# under a board holds it off the deck, so they sit in the gaps EDECK_LAYOUT leaves instead.
-EDECK_HOLES = [(50.0, -40.0), (50.0, 8.0), (-17.0, 40.0), (-17.0, 10.0)]
+# The electronics deck's screws, relative to EDECK_POS. P.EDECK_HOLES puts two of the four at
+# the deck's back corners, r 94.83 from the axis: the chassis stops at CHASSIS_R 90 and the
+# torso's wall is at 97.24 by z 250, so no standoff can stand there. Three screws it is - a
+# plate on three points cannot rock - with the back end carried on two plain posts instead.
+EDECK_HOLES = [(51.0, -41.0), (51.0, 41.0), (-17.0, 12.0)]
+EDECK_POSTS = [(-80.0, -28.0), (-80.0, 28.0)]   # absolute; they only hold the deck's back up
 ESP32_RAIL_T = 2.4           # the cradle's rails either side of the devkit
 ESP32_RAIL_H = 4.0
 TIE_SLOT_W = 3.0             # cable-tie slots
@@ -42,9 +44,16 @@ def _wedge(half_deg, z0, z1, r=220.0):
 
 
 def _edeck_holes():
-    """Plan positions of the electronics deck's four screws, shared with the chassis."""
+    """Plan positions of the electronics deck's screws, shared with the chassis."""
     ex, ey = P.EDECK_POS
     return [(ex + x, ey + y) for x, y in EDECK_HOLES]
+
+
+def _window_prism():
+    """Everything behind the camera window's opening in the panel."""
+    y = P.CAM_Y
+    z = P.Z_LENS + P.WINDOW_Z_BIAS
+    return box(0.0, 220.0, y - P.WINDOW_W / 2, y + P.WINDOW_W / 2, z - P.WINDOW_H / 2, z + P.WINDOW_H / 2)
 
 
 def _sled_locks():
@@ -164,6 +173,8 @@ def chassis():
     for x, y in _edeck_holes():                                      # electronics deck standoffs
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
         c = insert_holes(c, [(x, y, z1 + P.EDECK_STANDOFF)])
+    for x, y in EDECK_POSTS:                                         # ... and two posts under its back
+        c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
     return c
 
 
@@ -290,22 +301,23 @@ def hatch_bosses():
     """Four brackets inside the opening's edges that the belly panel screws into.
 
     Each reaches in from the side of the opening - where the shell is - to the screw's line, and
-    stands proud of the wall far enough for a blind insert facing the panel. They are cut back by
-    the sled's slide envelope: at the lower pair the sled's flank passes within four millimetres,
-    which is why the insert is the short one.
+    stands proud of the wall far enough for a full blind insert facing the panel. Two cuts keep
+    them honest: the sled's slide envelope, which at thirty degrees passes 9.5 mm inboard of the
+    lower pair, and the window's opening, which the lower +Y bracket would otherwise show a
+    millimetre and a half of through the glass.
     """
     bosses = None
-    sweep = _sled_envelope(P.CLEAR)
+    trim = _sled_envelope(P.CLEAR) + _window_prism()
     for z, a in P.HATCH_SCREWS:
         r_in = P.shell_r(P.TORSO_PROFILE, z) - P.WALL          # the panel's inner face
-        r_face = r_in - P.INSERT_DEPTH_SHORT - 1.0
+        r_face = r_in - P.INSERT_DEPTH - 1.0
         s = 1.0 if a > 0 else -1.0
         t_out = 16.0                                            # out past the opening's edge
         b = box(r_face, r_in + 1.2, min(-5.0 * s, t_out * s), max(-5.0 * s, t_out * s), z - 5, z + 5)
-        b = b - cyl_x(P.INSERT_D / 2, r_in - P.INSERT_DEPTH_SHORT, r_in + 2.2, 0.0, z)
+        b = b - cyl_x(P.INSERT_D / 2, r_in - P.INSERT_DEPTH, r_in + 2.2, 0.0, z)
         b = b.rotate(Axis.Z, a)
         bosses = b if bosses is None else bosses + b
-    return (bosses & skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)) - sweep
+    return (bosses & skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)) - trim
 
 
 @part("fan_frame", section="torso")
