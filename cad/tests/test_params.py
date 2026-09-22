@@ -2,8 +2,8 @@ import math
 import params as P
 
 
-def test_total_height_is_569():
-    assert P.Z_TOP == 569.0
+def test_total_height_is_589():
+    assert P.Z_TOP == 589.0
 
 
 def test_every_section_fits_the_bed():

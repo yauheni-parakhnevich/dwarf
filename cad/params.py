@@ -22,34 +22,34 @@ SCREW_HEAD_H = 3.0
 
 # --- heights ---------------------------------------------------------------------------
 Z_FLOOR = 26.0             # underside of the raised floor; the skirt below has drain arches
-Z_BELT = 210.0             # the split
-Z_BASE_TOP = 218.0         # the base's rim, hidden inside the torso's skirt
-Z_TORSO_TOP = 400.0
-Z_DECK = 380.0             # top face of the turntable deck
+Z_BELT = 230.0             # the split; 20 mm higher than first drawn so a 2 L canister and the pump stack below it
+Z_BASE_TOP = 238.0         # the base's rim, hidden inside the torso's skirt
+Z_TORSO_TOP = 420.0
+Z_DECK = 400.0             # top face of the turntable deck
 DECK_T = 6.0
 RING_T = 8.0               # interface rings unioned into the shell
-Z_HEAD = 458.0             # tilt axis and head centre
+Z_HEAD = 478.0             # tilt axis and head centre
 HEAD_R = 48.0              # the face opening must pass the tilt servo on its cradle; 45 was 2 mm short
-Z_HAT = 492.0              # underside of the brim: 34 above the tilt axis, so at +45 the brim clears the yoke arms
-Z_TOP = 569.0
-Z_LENS = 245.0
+Z_HAT = 512.0              # underside of the brim: 34 above the tilt axis, so at +45 the brim clears the yoke arms
+Z_TOP = 589.0
+Z_LENS = 265.0
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
 # outer skins only; shell_r walks these. The base's raised floor is a separate revolve row.
-BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (108.0, 170.0), (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
+BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (112.0, 180.0), (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
 BASE_FLOOR_R = 108.0
 # broad shoulders up to 365 so the phone's top corners clear the wall; the beard collar hides them
-TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 260.0), (105.0, 300.0), (100.0, 340.0),
-                 (96.0, 373.0), (84.0, 388.0), (76.0, Z_TORSO_TOP)]
+TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 280.0), (105.0, 320.0), (100.0, 360.0),
+                 (96.0, 393.0), (84.0, 408.0), (76.0, Z_TORSO_TOP)]
 TORSO_R_TOP = 76.0            # neck opening; the pan linkage sweeps inside it
 HAT_BRIM_R = 70.0
 HAT_BRIM_T = 8.0
 HAT_CONE_R = 50.0
 HAT_TIP_R = 4.0
 HAT_BEND = 15.0            # how far the tip leans forward
-BEARD_TOP_Z = 423.0
-BEARD_BOTTOM_FRONT_Z = 330.0
-BEARD_BOTTOM_BACK_Z = 383.0
+BEARD_TOP_Z = 443.0
+BEARD_BOTTOM_FRONT_Z = 350.0
+BEARD_BOTTOM_BACK_Z = 403.0
 BEARD_T = 3.0
 BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
 BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
@@ -136,8 +136,8 @@ EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
-Z_FAN = 348.0                  # the whole 50 mm frame stays inside the shoulder; the exhaust sits on the back below the collar
-VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 245.0   # above the torso flange (226)
+Z_FAN = 368.0                  # the whole 50 mm frame stays inside the shoulder; the exhaust sits on the back below the collar
+VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 265.0   # above the torso flange (246)
 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
@@ -162,7 +162,7 @@ PAN_SERVO_XY = (5.0, -60.0)    # servo axis; the body runs +X from the shaft end
 PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.21
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
-Z_PAN_SHAFT_FACE = 333.0       # the servo's output face, looking down; body top 373.5, under the deck
+Z_PAN_SHAFT_FACE = 353.0       # the servo's output face, looking down; body top 393.5, under the deck
 Z_PAN_HORN_BOTTOM = Z_PAN_SHAFT_FACE - 2.5
 CRANK_T = 5.0
 LINK_T = 3.0
@@ -229,18 +229,18 @@ INSERT_M4_DEPTH = 8.0
 COUPLER_HEX_AF = 25.0          # wider than the shaft: the coupler enters from outside through this hex
 TILT_SERVO_SHAFT_Y = 21.0      # servo shaft face inside the head, +Y side; the body's far corner must pass the face opening
 TILT_SERVO_UP = True           # the body's long side runs up from the shaft, so its tabs sit where the sphere is wide
-BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 10.1; the cradle plate's +Y face, the tabs sit on it
+BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 6.1; the cradle plate's +Y face, the tabs sit on it
 BULKHEAD_T = 2.5
 BULKHEAD_BOSS_D = 8.5          # bosses round the four insert holes, INSERT_DEPTH + 1 tall, on the -Y side
 # the cradle is assembled with the servo on the bench and slides in through the face opening
 # along -X, into two rails on the back of the head; a lip on the lower rail and a stop block on
 # the face cap box it in. No screw is driven inside the head.
 CRADLE_X = (-12.0, 14.0)
-CRADLE_Z = (438.0, 497.0)      # spans the servo's tab bosses with the body running up; the top corners stay inside the sphere
+CRADLE_Z = (458.0, 517.0)      # spans the servo's tab bosses with the body running up; the top corners stay inside the sphere
 RAIL_T = 3.0                   # the rails' lips either side of the plate
 RAIL_H = 6.0                   # how far a rail reaches above/below the plate's edge
 RAIL_LIP_L = 2.5               # the lower rail's front lip, which the plate drops in behind
-FACE_STOP_Z = (486.0, 496.0)   # the face cap's stop block bears on the plate's top front edge
+FACE_STOP_Z = (506.0, 516.0)   # the face cap's stop block bears on the plate's top front edge
 HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
 FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
@@ -248,25 +248,30 @@ FACE_LIP_L = 5.0
 Z_MOUTH = Z_HEAD - 22.0        # 436
 MOUTH_D = 12.0
 NOZZLE_D = 8.0
-NOZZLE_BOSS_Y = 12.0
+NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
 NOZZLE_HOLDER_X = (15.0, 28.0)
 TILT_STOP_TAB_R = 15.0
 
 # --- base, wet zone -----------------------------------------------------------------------
-CANISTER = (220.0, 140.0, 110.0)     # lying flat, long axis X, neck towards -X
+CANISTER = (160.0, 120.0, 105.0)     # lying flat, long axis X, neck towards -X. 2.0 L gross: the base's circle takes no more
 CAN_THREAD_MAJOR = 38.0
 CAN_THREAD_PITCH = 3.0
 CAN_THREAD_LEN = 12.0
 CAN_NECK_ID = 30.0
-CANISTER_XY = (10.0, -20.0)          # centre of the lying canister in plan
+CANISTER_XY = (0.0, 0.0)             # centred: its corners are the tightest thing in the base
+CANISTER_Z0 = Z_FLOOR + 6.0          # on its cradle
 PUMP = (160.0, 100.0, 65.0)
 PUMP_FEET = (130.0, 70.0)
-PUMP_XY = (0.0, 65.0)
+PUMP_XY = (0.0, 0.0)                 # bridged above the canister on the pump mount's legs
+PUMP_Z0 = CANISTER_Z0 + CANISTER[2] + 10.0   # 143: mount plate 4 above the canister, grommets 6
+PUMP_LEG = 10.0
+PUMP_LEG_XY = (CANISTER[0] / 2 + 10.0, 45.0)   # legs stand beside the canister's ends
 VALVE = (45.0, 25.0, 55.0)
+VALVE_XY = (0.0, 65.0)               # beside the pump, on the pump mount's plate
 FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
-FILLER_D = 20.0
-FILLER_CAP_THREAD_MAJOR = 24.0
+FILLER_D = 14.0                      # the neck's 30 mm bore must also pass the float switch and the dip tube
+FILLER_CAP_THREAD_MAJOR = 22.0       # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 Z_FILLER = 150.0
 DRAIN_ARCHES = 4
