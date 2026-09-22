@@ -3446,6 +3446,48 @@ git commit -m "feat(app): wire the runtime together and honour DwarfCore's contr
 
 ---
 
+**Post-review addendum (applied in commit `54e1d70`):** the plan's test compared a
+`TimeInterval?` against a `Double` with an accuracy, which `XCTAssertEqual` has no overload
+for — the same mistake this project's previous plan made in its Task 6, made again knowing
+about it. `try XCTUnwrap` rather than a sentinel, because nil genuinely means "no answer has
+ever landed". The implementation itself was correct as written.
+
+The review then found memory corruption.
+
+1. **Runtime's read surface was not thread-safe.** Six `public private(set)` fields were read
+   from whatever queue a status screen lives on while the capture queue wrote them.
+   ThreadSanitizer found real races, and an uninstrumented build of the same scenario
+   segfaulted inside ARC — a reader holding a half-assigned `CycleOutput` while its arrays
+   were released underneath it. Writing some of them under the lock was worth nothing while
+   the reader never took it. They are now one `RuntimeSnapshot`, copied out under the lock in
+   a single read. `update(mode:)` and `update(calibration:)` had the same problem against
+   `Cycle` and `Store`; locking those would have deadlocked against `askDetector`, so the
+   changes queue and apply at the top of the next cycle. Verified with the scenario that used
+   to crash: 1200 cycles against 458 million concurrent reads and 2000 mode changes, clean.
+2. **A detector 4.5x slower than the cycle stops a still cat ever being fired at.** Measured,
+   not argued: at 10 fps against a 0.45 s detector, only 28 of 140 cycles reached the model,
+   while `Scheduler`'s round-robin advanced on all 140 — so most of the sweep's rotation was
+   discarded. The effective revisit of the tile containing the animal stretched past
+   `stillWindow`, so its samples aged out between hits and `isStill` never became true. A
+   perfectly stationary, correctly detected cat produced zero shots over the whole run.
+   Neither package is misbehaving; it is an emergent interaction, and M0's number decides
+   whether it bites. `droppedRequests` now counts it so it is visible rather than inferred.
+3. **Sends were swallowed.** `try?` at every call site meant a shot the policy authorised
+   that never left the phone left no trace. Counted now.
+4. **A hung CoreML call cannot be timed out or cancelled**, and would stop all detection for
+   good with no symptom but tracks ageing out. `detectorBusySince` makes that visible.
+
+Confirmed clean, each by direct evidence rather than reading: the original `CVPixelBuffer` is
+never retained past the call, proven by overwriting it immediately and seeing the model still
+receive the original content 50 ms later; `.wouldShoot` has no code path to the transport at
+all and `.shoot` is structurally impossible outside live mode; `clock.uptime` is read exactly
+once per cycle; and a non-monotonic `capturedAt` cannot reach the tracker, guarded
+independently by `SteadyClock`, by the single-in-flight invariant, and by `Cycle.accepted`.
+
+The suite is 78 tests after this task.
+
+---
+
 ## Task 13: The camera and the screen
 
 **Files:**

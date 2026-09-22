@@ -67,8 +67,15 @@ persisting the new JSON.
 nowhere. A calibration that fits badly at the near edge is exactly how a cat closer than 2 m
 gets a fitted range just over 2 m.
 
-**Call `process` at a rate the configs were tuned for.** `MotionConfig.alpha` is per frame,
-and the tracker's windows are counted in detector answers.
+**Call `process` at a rate the configs were tuned for**, and keep the detector's rate within
+sight of it. `MotionConfig.alpha` is per frame, and the tracker's windows are counted in
+detector answers. This one has a measured failure mode rather than a theoretical one: at
+10 fps against a detector taking 0.45 s, only a fifth of cycles reach the model while the
+sweep's round-robin advances on all of them, so the tile holding the animal is revisited
+about once a second. `TrackerConfig.stillWindow` is also one second, so each sample ages out
+before the next arrives, `isStill` never becomes true, and a perfectly stationary, correctly
+detected cat is never fired at. Nothing reports this; the symptom is a gnome that tracks
+beautifully and never shoots. `Runtime.snapshot.droppedRequests` is the number to watch.
 
 ## Running the tests
 
