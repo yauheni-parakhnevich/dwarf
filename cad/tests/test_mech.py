@@ -234,3 +234,13 @@ def test_lower_belt_flange_follows_the_bases_flare(parts):
         r_max = max(math.hypot(v.X, v.Y) for v in band.vertices())
         assert r_max > P.ring_r_out(P.BASE_PROFILE, z, z) - 0.5, (z, r_max)   # out at the wall here
         assert r_max < P.shell_r(P.BASE_PROFILE, z) + 0.1, (z, r_max)         # never through the skin
+
+
+def test_fan_frame_follows_the_barrel(parts):
+    """Clipped to the wall: it reaches the wall at every height and stands proud of the skin nowhere."""
+    frame = parts["fan_frame"]
+    for z in (P.Z_FAN - P.FAN / 2 - 5, P.Z_FAN, P.Z_FAN + P.FAN / 2 + 5):
+        band = frame & box(-120, 120, -120, 120, z - 0.5, z + 0.5)
+        r_max = max(math.hypot(p.X, p.Y) for p in band.vertices())
+        assert r_max < P.shell_r(P.TORSO_PROFILE, z), (z, r_max)                       # inside the skin
+        assert r_max > P.shell_r(P.TORSO_PROFILE, z) - P.WALL - 0.5, (z, r_max)        # out at the wall

@@ -27,6 +27,18 @@ def _edeck_holes():
             for dx in (-1, 1) for dy in (-1, 1)]
 
 
+def _skin_solid(profile):
+    """The shell's wall pulled in by WALL - 1.2: the room an interface part has inside the skin.
+
+    Its radius at every height is ring_r_out at that height, so a part clipped to it is embedded
+    the usual 1.2 mm into the wall where it reaches that far and flush with the wall where it
+    does not, and can never stand proud of the skin.
+    """
+    pts = [(P.ring_r_out(profile, z, z), z) for _, z in profile]
+    section = Plane.XZ * Polygon((0.0, profile[0][1]), *pts, (0.0, profile[-1][1]))
+    return revolve(section, axis=Axis.Z)
+
+
 def _sled_feet():
     """Plan positions of the phone sled's two feet, shared with the chassis."""
     return [(P.PHONE_FRONT_X - P.SLED_WALL - 4, P.PHONE_Y_OFFSET + dy)
@@ -162,13 +174,26 @@ def electronics_deck():
 
 @part("fan_frame", section="torso")
 def fan_frame():
-    """Ring of four insert bosses inside the torso's back wall around the exhaust; the fan screws to it."""
+    """Four insert bosses inside the torso's back wall around the exhaust; the fan screws to them.
+
+    The frame is a flat slab clipped to the wall, so it follows the barrel rather than standing
+    proud where the shoulders draw in: over its fifty millimetres the torso narrows by six, and
+    an unclipped slab left its top corner 1.8 mm outside the skin. What the clip takes away is
+    the material the upper two screws would have gone into, so the inserts do not sit in the slab
+    at all. They sit in four bosses on the inner face, four millimetres proud of it, which is
+    also what the fan lands on.
+    """
     z = P.Z_FAN
     x_wall = -(P.shell_r(P.TORSO_PROFILE, z) - P.WALL)
     half = P.FAN / 2 + 5
+    x_boss = x_wall + 10                                                   # the face the fan bolts to
     frame = box(x_wall - 1.2, x_wall + 6, -half, half, z - half, z + half)
     frame = frame - cyl_x(P.FAN / 2 - 2, x_wall - 2, x_wall + 7, 0.0, z)   # the exhaust, round: the
     for dy in (-1, 1):                                                     # screw bosses are corners
         for dz in (-1, 1):
-            frame = frame - cyl_x(P.INSERT_D / 2, x_wall + 6 - P.INSERT_DEPTH, x_wall + 7, dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
+            frame = frame + cyl_x(4.0, x_wall + 4, x_boss, dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
+    frame = frame & _skin_solid(P.TORSO_PROFILE)                           # never proud of the back
+    for dy in (-1, 1):
+        for dz in (-1, 1):
+            frame = frame - cyl_x(P.INSERT_D / 2, x_boss - P.INSERT_DEPTH, x_boss + 1, dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
     return frame
