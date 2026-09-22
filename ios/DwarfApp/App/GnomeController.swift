@@ -31,7 +31,7 @@ final class GnomeController: ObservableObject {
     /// For the preview layer.
     var session: AVCaptureSession { source.session }
     /// Quarter turns the frame is rotated by, so the preview can be turned to match.
-    let quarterTurns: Int
+    @Published private(set) var quarterTurns: Int
     /// The upright frame's aspect ratio, so the picture and the overlay share one box.
     var frameAspect: CGFloat { quarterTurns % 2 == 0 ? 1920.0 / 1080.0 : 1080.0 / 1920.0 }
     private let store: Store
@@ -44,6 +44,9 @@ final class GnomeController: ObservableObject {
     /// Building the runtime loads and compiles the CoreML model, which is real blocking
     /// work. It happens on this queue, not on the main actor during a first `body`.
     private let setup = DispatchQueue(label: "garden.dwarf.setup")
+    /// One clock for the link and every runtime built over the life of the app: two would
+    /// be the defect the review of Task 8 found, where a rewind withheld every status.
+    private let clock = SteadyClock(wrapping: SystemClock())
     /// One refresh in flight at a time. Frames arrive ten times a second and the main actor
     /// has no equivalent of the detector's busy flag, so unstructured tasks would otherwise
     /// pile up uncapped the moment the main thread fell behind.
@@ -56,7 +59,7 @@ final class GnomeController: ObservableObject {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let store = Store(directory: directory)
-        let clock = SteadyClock(wrapping: SystemClock())
+        let clock = self.clock
         // The real radio. CoreBluetooth behind `Transport`; see `BluetoothTransport` for why
         // it is thin and where the pairing-state logic it drives actually lives.
         let transport = BluetoothTransport()
@@ -71,6 +74,11 @@ final class GnomeController: ObservableObject {
         self.calibrationPoints = store.calibration.points.count
         self.noFireZones = store.masks.noFireZones.count
 
+        rebuildRuntime()
+    }
+
+    private func rebuildRuntime() {
+        let store = self.store
         setup.async { [weak self] in
             guard let self else { return }
             // A missing model must be visible, not papered over: the fallback detector never
@@ -92,7 +100,7 @@ final class GnomeController: ObservableObject {
                 geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080),
                                         quarterTurns: store.settings.quarterTurns),
                 power: PowerManager(battery: DeviceBattery()),
-                clock: clock)
+                clock: self.clock)
             self.runtime = runtime
             DispatchQueue.main.async { self.modelMissing = missing }
         }
@@ -108,6 +116,20 @@ final class GnomeController: ObservableObject {
             self.scheduleRefresh()
         }
         source.start()
+    }
+
+    /// Turns the frame a further quarter and rebuilds around it.
+    ///
+    /// This is the mount's only real calibration, and it cannot be guessed from software:
+    /// only someone looking at the screen knows which way up the gnome will sit. Get it
+    /// wrong and the ground point lands on the animal's back, every aim is computed from
+    /// the wrong place, and nothing else in the system ever objects.
+    func rotate() {
+        let turns = (quarterTurns + 1) % 4
+        quarterTurns = turns
+        store.settings.quarterTurns = turns
+        try? store.save()
+        rebuildRuntime()
     }
 
     func set(mode: Mode) {

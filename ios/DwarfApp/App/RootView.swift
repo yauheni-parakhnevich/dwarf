@@ -30,6 +30,7 @@ struct RootView: View {
                         panel("GNOME", device)
                         panel("SETUP", setup)
                     }
+                    mountControl
                     modePicker
                 }
                 .padding(12)
@@ -57,9 +58,14 @@ struct RootView: View {
                 // than an aspect-preserving gravity: the container is already the frame's
                 // own aspect ratio, so normalised coordinates map straight to it and a box
                 // lands exactly where the pipeline thinks the animal is.
+                // Sized to the frame's own shape *before* the turn, so a quarter turn puts
+                // a 16:9 picture into a 9:16 box rather than squashing it into one.
                 CameraPreview(session: gnome.session)
+                    .frame(width: gnome.quarterTurns % 2 == 0 ? w : h,
+                           height: gnome.quarterTurns % 2 == 0 ? h : w)
                     .rotationEffect(.degrees(Double(gnome.quarterTurns) * 90))
                     .frame(width: w, height: h)
+                    .clipped()
 
                 ForEach(Array(gnome.snapshot.blobs.enumerated()), id: \.offset) { _, blob in
                     box(blob.boundingBox, w, h).stroke(Color.gray.opacity(0.6), lineWidth: 1)
@@ -215,6 +221,21 @@ struct RootView: View {
                 }
                 .font(.caption.monospaced())
             }
+        }
+    }
+
+    /// The mount's orientation, which only a person looking at the screen can settle.
+    private var mountControl: some View {
+        HStack {
+            Text("mount").font(.caption2.bold()).foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                gnome.rotate()
+            } label: {
+                Label("\(gnome.quarterTurns * 90)°", systemImage: "rotate.right")
+                    .font(.caption.monospaced())
+            }
+            .buttonStyle(.bordered)
         }
     }
 
