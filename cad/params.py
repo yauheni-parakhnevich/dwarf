@@ -111,7 +111,7 @@ Z_CHASSIS = Z_BASE_TOP + RING_T   # 226, sits on the torso flange
 HATCH_Z = (Z_BASE_TOP + 6.0, 398.0)          # 244 .. 398; the sled (250 .. 372) and the phone pass
 HATCH_HALF_ANGLE = 33.0                      # degrees either side of +X; 110 mm wide at the belly
 HATCH_LIP_W = 6.0                            # lip inside the opening the panel rests on, all round
-HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -26.0), (HATCH_Z[0] + 10.0, 26.0), (HATCH_Z[1] - 10.0, -26.0), (HATCH_Z[1] - 10.0, 26.0)]   # (z, angle deg)
+HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -30.0), (HATCH_Z[0] + 10.0, 30.0), (HATCH_Z[1] - 10.0, -30.0), (HATCH_Z[1] - 10.0, 30.0)]   # (z, angle deg); at 30 deg the lower screw clears the window by 7.5 mm
 
 # --- phone and window ---------------------------------------------------------------------
 PHONE_L, PHONE_W, PHONE_T = 138.3, 67.1, 7.1
@@ -122,7 +122,7 @@ LENS_CLIP_W = 28.0             # the clip's width across the phone; measure the 
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 48.0
-WINDOW_Z_BIAS = 6.0            # window centre above the lens: the view needed is mostly above horizontal, and the belt joint is just below
+WINDOW_Z_BIAS = 10.0           # window centre above the lens: the view needed is mostly above horizontal, and the hatch's lip is just below
 HOOD_DEPTH = 15.0
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
@@ -145,17 +145,18 @@ XL4015_HOLE_D = 3.2
 MOSFET = (34.0, 27.0)
 EDECK_L, EDECK_W, EDECK_T = 110.0, 90.0, 4.0
 EDECK_POS = (-30.0, 0.0)       # centre, x-y; it stands on the chassis
-EDECK_STANDOFF_INSET = (14.0, 5.0)
 # board footprints on the deck, (x0, y0, x1, y1) relative to EDECK_POS: two columns, A at the back
 EDECK_LAYOUT = {
-    "xl4015_a": (-55.0, -45.0, -1.0, -22.0),
-    "xl4015_b": (-55.0, -20.0, -1.0, 3.0),
-    "fuse": (-55.0, 5.0, -25.0, 15.0),
-    "mosfet_c": (-55.0, 17.0, -21.0, 44.0),
-    "esp32": (0.0, 16.0, 55.0, 44.0),
-    "mosfet_a": (0.0, -45.0, 34.0, -18.0),
-    "mosfet_b": (0.0, -16.0, 34.0, 11.0),
+    "xl4015_a": (-50.0, -43.0, 4.0, -20.0),
+    "xl4015_b": (-50.0, -17.0, 4.0, 6.0),
+    "fuse": (-50.0, 7.0, -20.0, 17.0),
+    "mosfet_c": (-50.0, 18.0, -16.0, 45.0),
+    "esp32": (-8.0, 16.0, 47.0, 44.0),
+    "mosfet_a": (6.0, -45.0, 40.0, -18.0),
+    "mosfet_b": (6.0, -16.0, 40.0, 11.0),
 }
+# deck screws, relative to EDECK_POS: the four corners the layout leaves free
+EDECK_HOLES = [(-54.0, -44.0), (-54.0, 44.0), (52.0, -44.0), (52.0, 13.0)]
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival
 ESP32_HOLES = None                # devkit boards vary; it sits in a printed cradle (two rails + tie slots)
 EDECK_STANDOFF = 8.0
@@ -171,7 +172,7 @@ BEARING_T = 6.0
 BEARING_OPEN = 32.0
 BEARING_PITCH = 48.0
 BEARING_HOLE = 3.4
-SHAFT_OD, SHAFT_ID = 20.0, 12.0
+SHAFT_OD, SHAFT_ID = 21.0, 13.0   # bore: tube + three wires + 2 mm, spec section 6
 DECK_R = 84.0                  # the wall's inner radius here is about 87
 RING_R_IN = 50.0
 RING_R_OUT = 66.0              # the ring is a narrow annulus; four webs reach the wall
