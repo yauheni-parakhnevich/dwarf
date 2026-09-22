@@ -1,5 +1,5 @@
 from pathlib import Path
-from build123d import (Box, Cylinder, Pos, Rot, Part, export_step, export_stl, Align)
+from build123d import Box, Cylinder, Pos, Rot, Part, export_step, export_stl
 import params as P
 
 OUT = Path(__file__).resolve().parents[1] / "out"
@@ -10,8 +10,11 @@ STL = OUT / "stl"
 def export(part: Part, name: str) -> None:
     STEP.mkdir(parents=True, exist_ok=True)
     STL.mkdir(parents=True, exist_ok=True)
-    export_step(part, str(STEP / f"{name}.step"))
-    export_stl(part, str(STL / f"{name}.stl"), tolerance=0.05, angular_tolerance=0.1)
+    if not export_step(part, str(STEP / f"{name}.step")):
+        raise RuntimeError(f"STEP export failed: {name}")
+    # 0.05 mm chordal tolerance: coarser than build123d's default, fine for a 0.6 mm nozzle
+    if not export_stl(part, str(STL / f"{name}.stl"), tolerance=0.05, angular_tolerance=0.1):
+        raise RuntimeError(f"STL export failed: {name}")
 
 
 def cyl_z(r, z0, z1, x=0.0, y=0.0):
@@ -31,13 +34,13 @@ def box(x0, x1, y0, y1, z0, z1):
     return Pos((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2) * Box(x1 - x0, y1 - y0, z1 - z0)
 
 
-def servo_body(spec, shaft_xyz, axis="z", length_dir=(0, -1, 0)):
+def servo_body(spec, shaft_xyz, axis="z"):
     """A servo as a solid, for clearance checks and cutters.
 
-    `shaft_xyz` is where the output shaft leaves the body; `axis` is the shaft direction;
-    `length_dir` is the direction the body's length runs away from the shaft end. Only the
-    two orientations this design uses are supported: shaft up with the length along -Y
-    (pan), and shaft along +Y with the length along -Z (tilt).
+    `shaft_xyz` is where the output shaft leaves the body and `axis` is the shaft direction.
+    Only the two orientations this design uses exist: "z" is shaft up with the body's length
+    running along -Y from the shaft end (pan); "y" is shaft along +Y with the length running
+    along -Z (tilt).
     """
     L, W, H = spec["body"]
     off = spec["shaft_off"]

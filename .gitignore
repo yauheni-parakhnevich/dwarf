@@ -10,3 +10,5 @@ ios/DwarfApp/DwarfApp.xcodeproj/
 yolo11n.pt
 cad/out/
 .venv-cad/
+__pycache__/
+*.pyc

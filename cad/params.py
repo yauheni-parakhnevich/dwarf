@@ -6,8 +6,6 @@ Both build123d and Blender import this module, so it must stay plain Python.
 Bought parts that have not been measured yet carry listing-typical defaults; the README
 lists which ones to re-measure on arrival.
 """
-import math
-
 # --- printer and fits ------------------------------------------------------------------
 BED = 256.0
 WALL = 2.4                 # shell wall, two 0.6 mm perimeters
@@ -41,7 +39,8 @@ BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (108.0, 170.0), (95.0, Z_BELT), (95
 BASE_FLOOR_R = 108.0
 # broad shoulders up to 365 so the phone's top corners clear the wall; the beard collar hides them
 TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 260.0), (105.0, 300.0), (100.0, 340.0),
-                 (96.0, 373.0), (80.0, 388.0), (66.0, Z_TORSO_TOP)]
+                 (96.0, 373.0), (84.0, 388.0), (76.0, Z_TORSO_TOP)]
+TORSO_R_TOP = 76.0            # neck opening; the pan linkage sweeps inside it
 HAT_BRIM_R = 70.0
 HAT_BRIM_T = 8.0
 HAT_CONE_R = 50.0
@@ -51,6 +50,8 @@ BEARD_TOP_Z = 423.0
 BEARD_BOTTOM_FRONT_Z = 330.0
 BEARD_BOTTOM_BACK_Z = 383.0
 BEARD_T = 3.0
+BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
+BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
 
 SECTION_Z = {
     "base": (0.0, Z_BASE_TOP),
@@ -63,21 +64,28 @@ SECTION_Z = {
 
 
 def shell_r(profile, z):
-    """Outer radius of a revolved profile at height z, linear between points."""
+    """Outer radius of a revolved profile at height z, linear between points.
+
+    Where the profile steps (two points at one z) the larger radius wins, so a ring sized
+    from it never lands inside a step.
+    """
     pts = sorted(profile, key=lambda p: p[1])
     if z <= pts[0][1]:
         return pts[0][0]
+    if z >= pts[-1][1]:
+        return pts[-1][0]
+    found = []
     for (r0, z0), (r1, z1) in zip(pts, pts[1:]):
         if z0 <= z <= z1:
-            if z1 == z0:
-                return max(r0, r1)
-            return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
-    return pts[-1][0]
+            found.append(max(r0, r1) if z1 == z0 else r0 + (r1 - r0) * (z - z0) / (z1 - z0))
+    return max(found)
 
 
-def ring_r_out(profile, z):
-    """Outer radius for an interface ring: embedded 1.2 mm into the wall, never through it."""
-    return shell_r(profile, z) - WALL + 1.2
+def ring_r_out(profile, z0, z1=None):
+    """Outer radius for an interface ring spanning z0..z1: embedded 1.2 mm into the wall at the
+    ring's narrowest height, so it never breaks through the skin where the wall tapers."""
+    zs = (z0,) if z1 is None else (z0, z1)
+    return min(shell_r(profile, z) for z in zs) - WALL + 1.2
 
 
 # --- belt joint ---------------------------------------------------------------------------
@@ -100,7 +108,8 @@ PHONE_CAM_FROM_SIDE = 11.0     # ... and from its side
 LENS_CLIP_T = 12.0             # clip-on lens in front of the back glass
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
-WINDOW_W, WINDOW_H = 40.0, 60.0
+WINDOW_W, WINDOW_H = 40.0, 48.0
+WINDOW_Z_BIAS = 6.0            # window centre above the lens: the view needed is mostly above horizontal, and the belt joint is just below
 HOOD_DEPTH = 15.0
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
@@ -117,6 +126,7 @@ SLED_WALL = 3.0
 ESP32 = (55.0, 28.0)
 XL4015 = (54.0, 23.0)
 XL4015_HOLES = (43.0, 15.0)
+XL4015_HOLE_D = 3.2
 MOSFET = (34.0, 27.0)
 EDECK_L, EDECK_W, EDECK_T = 110.0, 90.0, 4.0
 EDECK_POS = (-30.0, 0.0)       # centre, x-y; it stands on the chassis
@@ -125,7 +135,7 @@ FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
 Z_FAN = 363.0
-VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 232.0
+VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 245.0   # above the torso flange (226)
 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
@@ -134,12 +144,12 @@ BEARING_OPEN = 32.0
 BEARING_PITCH = 48.0
 BEARING_HOLE = 3.4
 SHAFT_OD, SHAFT_ID = 20.0, 12.0
-DECK_R = 63.6                  # inside the shoulders' inner wall
+DECK_R = 70.0                  # the wall's inner radius here is about 87
 RING_R_IN = 50.0
 RING_R_OUT = 66.0              # the ring is a narrow annulus; four webs reach the wall
 RING_WEB_W = 8.0
 DECK_SCREW_R = 58.0
-DECK_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
+DECK_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]   # off the pan servo's tab screws
 PLATE_R = 50.0
 PLATE_T = 5.0
 Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 391
@@ -172,6 +182,10 @@ PAN_SERVO_XY = (-PAN_OFFSET, 0.0)
 PAN_SERVO_BODY_Z0 = Z_DECK - DS3218["tab_z"]         # 352
 PAN_NOTCH = ((-PAN_OFFSET - DS3218["body"][1] / 2 - 0.5, -DS3218["body"][0] + DS3218["shaft_off"] - 0.5),
              (-PAN_OFFSET + DS3218["body"][1] / 2 + 0.5, DS3218["shaft_off"] + 0.5))   # (x0,y0),(x1,y1)
+# the deck ring is cut wider than the notch so the tab screws and their nuts pass too
+PAN_RING_CUT = ((PAN_NOTCH[0][0] - 1.0, PAN_NOTCH[0][1] - (DS3218["tab_span"] - DS3218["body"][0]) / 2 - 2.0),
+                (PAN_NOTCH[1][0] + 1.0, PAN_NOTCH[1][1] + (DS3218["tab_span"] - DS3218["body"][0]) / 2 + 2.0))
+LINK_EYE_R = M3_CLEAR / 2 + 3.0
 
 # --- head, ears, tilt ---------------------------------------------------------------------
 EAR_R = 9.0

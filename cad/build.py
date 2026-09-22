@@ -43,5 +43,8 @@ STAGES = {"mech": mech, "shell": shell, "assemble": assemble, "preview": preview
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(STAGES)
+    unknown = [n for n in names if n not in STAGES]
+    if unknown:
+        sys.exit(f"unknown stage {unknown}; stages are {', '.join(STAGES)}")
     for n in names:
         STAGES[n]()
