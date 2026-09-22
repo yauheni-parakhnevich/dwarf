@@ -54,6 +54,9 @@ def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
     b = below.bounding_box()
     assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot down here
     assert abs(b.min.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6 and abs(b.max.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6
+    pin, _ = crank_pins(0)                                              # the foot's pin insert is blind
+    probe = cyl_z(P.INSERT_D / 2, P.Z_CRANK_BOTTOM - 1, P.Z_CRANK_TOP, pin[0], pin[1])
+    assert (probe & plate).volume > 1e-3
 
 
 def crank_pins(deg):
@@ -71,6 +74,12 @@ def test_link_eyes_are_a_centre_distance_apart(parts):
         probe = cyl_z(P.M3_CLEAR / 2 - 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
         assert (probe & link).volume < 1e-6, (x, y)                     # a bore at each pin
     assert math.isclose(bb.max.X - bb.min.X, abs(a[0] - b[0]) + 2 * P.LINK_EYE_R, abs_tol=0.01)
+
+
+def test_the_cranks_pin_insert_is_blind(parts):
+    _, pin = crank_pins(0)
+    probe = cyl_z(P.INSERT_D / 2, P.Z_CRANK_BOTTOM - 1, P.Z_CRANK_TOP, pin[0], pin[1])
+    assert (probe & parts["servo_crank"]).volume > 1e-3
 
 
 def test_link_and_crank_live_below_the_deck_ring(parts):
@@ -121,6 +130,17 @@ def test_tilt_servo_fits_inside_the_head_and_on_the_bulkhead():
         r = math.sqrt(v.X ** 2 + v.Y ** 2 + (v.Z - P.Z_HEAD) ** 2)
         assert r < P.HEAD_R - P.WALL, (v, r)
     assert math.isclose(body.bounding_box().min.Y + P.MG996R["tab_z"], P.BULKHEAD_Y, abs_tol=1e-6)
+
+
+def test_the_bulkhead_takes_the_servo_without_touching_its_body(parts):
+    body = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
+    assert (parts["tilt_bulkhead"] & body).volume < 1e-6      # the body hangs through the window
+    along, across = P.MG996R["holes"]
+    zc = P.Z_HEAD + P.MG996R["shaft_off"] - P.MG996R["body"][0] / 2
+    y_tip = P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0
+    for dz in (-along / 2, along / 2):                        # the bosses stay inside the head's wall
+        r = math.sqrt((across / 2 + P.BULKHEAD_BOSS_D / 2) ** 2 + y_tip ** 2 + (zc + dz - P.Z_HEAD) ** 2)
+        assert r < P.HEAD_R - P.WALL, (dz, r)
 
 
 def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):

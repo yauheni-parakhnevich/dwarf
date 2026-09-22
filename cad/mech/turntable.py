@@ -105,7 +105,7 @@ def plate():
     p = p + box(r_in, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, z0 + 0.01)
     p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
     px, py = _crank_pin()
-    p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM)], direction="up")
+    p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM)], depth=P.INSERT_DEPTH_SHORT, direction="up")   # blind in a 5 mm bar
     p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES], depth=P.PLATE_T - 1)
     return p
 
@@ -134,7 +134,7 @@ def servo_crank():
         hx, hy, _ = _polar(P.HORN_SCREW_R, a, 0)
         arm = arm - cyl_z(P.M2_5_CLEAR / 2, z0 - 1, z1 + 1, sx + hx, sy + hy)
     arm = arm - cyl_z(2.5, z0 - 1, z1 + 1, sx, sy)                                     # horn's centre screw
-    return insert_holes(arm, [(px, py, z0)], direction="up")
+    return insert_holes(arm, [(px, py, z0)], depth=P.INSERT_DEPTH_SHORT, direction="up")   # blind in a 5 mm crank
 
 
 @part("pan_link")
@@ -219,7 +219,13 @@ def coupler():
 
 @part("tilt_bulkhead", section="head_back")
 def tilt_bulkhead():
-    """Chord plate inside the head the tilt servo's tabs screw to. Unioned into the back of the head."""
+    """Chord plate inside the head the tilt servo's tabs screw to. Unioned into the back of the head.
+
+    The MG996R's flange is 28 mm up its 42.9 mm body, so 28 mm of body hangs through a window
+    in the plate and only the tabs land on its +Y face. The inserts therefore sit in bosses on
+    the plate's -Y side, where the servo is not: they open at the +Y face, six millimetres deep,
+    and stop a millimetre short of the boss's end.
+    """
     y1 = P.BULKHEAD_Y
     y0 = y1 - P.BULKHEAD_T
     L, W, H = P.MG996R["body"]
@@ -229,9 +235,15 @@ def tilt_bulkhead():
     plate = box(-P.HEAD_R + 2, P.FACE_SPLIT_X - 1, y0, y1, zc - along / 2 - 8, zc + along / 2 + 8)
     with SkipClean():                      # tidying a sphere's boolean result corrupts it
         plate = plate & (Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.0))
-    for dx in (-across / 2, across / 2):
-        for dz in (-along / 2, along / 2):
-            plate = plate - cyl_y(P.INSERT_D / 2, y1 - P.INSERT_DEPTH, y1 + 1, dx, zc + dz)
+    y_boss = y1 - P.INSERT_DEPTH - 1.0                                   # the insert's blind end
+    holes = [(dx, zc + dz) for dx in (-across / 2, across / 2) for dz in (-along / 2, along / 2)]
+    for hx, hz in holes:
+        plate = plate + cyl_y(P.BULKHEAD_BOSS_D / 2, y_boss, y0 + 0.01, hx, hz)
+    # the body drops through this window; it also trims the bosses, which reach 0.9 mm past its ends
+    plate = plate - box(-W / 2 - P.CLEAR, W / 2 + P.CLEAR, y_boss - 1, y1 + 1,
+                        P.Z_HEAD - (L - P.MG996R["shaft_off"]) - P.CLEAR, z_top + P.CLEAR)
+    for hx, hz in holes:
+        plate = plate - cyl_y(P.INSERT_D / 2, y1 - P.INSERT_DEPTH, y1 + 1, hx, hz)
     return plate
 
 
