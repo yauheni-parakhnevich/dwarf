@@ -26,12 +26,6 @@ SLED_KEY_OVERRUN = 6.0       # the key finger runs this far past the flipped cam
 SLED_LIP_TOP = 30.0          # the back lip stops this far above the phone's bottom
 BOSS_R = 5.5                 # the chassis's bosses round a blind M3 insert
 STANDOFF_R = 4.0
-# The electronics deck's screws, relative to EDECK_POS. P.EDECK_HOLES puts two of the four at
-# the deck's back corners, r 94.83 from the axis: the chassis stops at CHASSIS_R 90 and the
-# torso's wall is at 97.24 by z 250, so no standoff can stand there. Three screws it is - a
-# plate on three points cannot rock - with the back end carried on two plain posts instead.
-EDECK_HOLES = [(51.0, -41.0), (51.0, 41.0), (-17.0, 12.0)]
-EDECK_POSTS = [(-80.0, -28.0), (-80.0, 28.0)]   # absolute; they only hold the deck's back up
 ESP32_RAIL_T = 2.4           # the cradle's rails either side of the devkit
 ESP32_RAIL_H = 4.0
 TIE_SLOT_W = 3.0             # cable-tie slots
@@ -43,10 +37,13 @@ def _wedge(half_deg, z0, z1, r=220.0):
     return ahead & ahead.rotate(Axis.Z, half_deg - 90) & ahead.rotate(Axis.Z, 90 - half_deg)
 
 
-def _edeck_holes():
-    """Plan positions of the electronics deck's screws, shared with the chassis."""
+def _edeck(points):
+    """EDECK_HOLES or EDECK_POSTS in absolute x-y: the deck and the chassis both want them.
+
+    Three screws and two posts, not four screws: see the note on EDECK_HOLES in params.
+    """
     ex, ey = P.EDECK_POS
-    return [(ex + x, ey + y) for x, y in EDECK_HOLES]
+    return [(ex + x, ey + y) for x, y in points]
 
 
 def _window_prism():
@@ -170,10 +167,10 @@ def chassis():
         rib = box(SLED_LOCK_X, P.CHASSIS_R, min(y_rib, y_rib + sy * 3.0), max(y_rib, y_rib + sy * 3.0),
                   z1, z1 + P.SLED_GUIDE_H)
         c = c + (rib & cyl_z(P.CHASSIS_R, z1, z1 + P.SLED_GUIDE_H))
-    for x, y in _edeck_holes():                                      # electronics deck standoffs
+    for x, y in _edeck(P.EDECK_HOLES):                               # electronics deck standoffs
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
         c = insert_holes(c, [(x, y, z1 + P.EDECK_STANDOFF)])
-    for x, y in EDECK_POSTS:                                         # ... and two posts under its back
+    for x, y in _edeck(P.EDECK_POSTS):                               # ... and two posts under its back
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
     return c
 
@@ -238,7 +235,7 @@ def electronics_deck():
     z1 = z0 + P.EDECK_T
     zc0, zc1 = z0 - 1, z1 + 1
     d = box(ex - P.EDECK_L / 2, ex + P.EDECK_L / 2, ey - P.EDECK_W / 2, ey + P.EDECK_W / 2, z0, z1)
-    for x, y in _edeck_holes():
+    for x, y in _edeck(P.EDECK_HOLES):
         d = d - cyl_z(P.M3_CLEAR / 2, zc0, zc1, x, y)
     for name in ("xl4015_a", "xl4015_b"):
         cx, cy = _rect_centre(name)

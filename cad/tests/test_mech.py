@@ -293,7 +293,7 @@ def test_divider_fills_the_base_cup(parts):
 
 def test_the_boards_fit_the_deck_as_laid_out():
     """Every rectangle is on the deck, none overlaps another, and none covers a screw or driver."""
-    from mech.torso import _edeck_holes, _rect
+    from mech.torso import _edeck, _rect
     ex, ey = P.EDECK_POS
     for name in P.EDECK_LAYOUT:
         x0, y0, x1, y1 = _rect(P.EDECK_LAYOUT[name])
@@ -303,7 +303,7 @@ def test_the_boards_fit_the_deck_as_laid_out():
         ax0, ay0, ax1, ay1 = _rect(P.EDECK_LAYOUT[a])
         bx0, by0, bx1, by1 = _rect(P.EDECK_LAYOUT[b])
         assert ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0, (a, b)
-    for x, y in _edeck_holes():                              # head and driver, r 3
+    for x, y in _edeck(P.EDECK_HOLES):                       # head and driver, r 3
         for name in P.EDECK_LAYOUT:
             x0, y0, x1, y1 = _rect(P.EDECK_LAYOUT[name])
             assert not (x0 - 3 < x < x1 + 3 and y0 - 3 < y < y1 + 3), (name, x, y)
@@ -423,13 +423,13 @@ def test_belt_screw_length(parts):
 def test_chassis_and_deck_screws_have_driver_paths(parts):
     """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else."""
     from mech.common import phone_body
-    from mech.torso import _edeck_holes
+    from mech.torso import _edeck
     obstacles = dict(parts)
     obstacles["phone"] = phone_body()
     z_chassis = P.Z_CHASSIS + P.CHASSIS_T
     heads = [(polar(P.CHASSIS_SCREW_R, a), z_chassis) for a in P.CHASSIS_SCREW_ANGLES]
     z_deck = z_chassis + P.EDECK_STANDOFF + P.EDECK_T
-    heads += [((x, y), z_deck) for x, y in _edeck_holes()]
+    heads += [((x, y), z_deck) for x, y in _edeck(P.EDECK_HOLES)]
     for (x, y), z in heads:
         driver = cyl_z(3.0, z, z + 30.0, x, y)
         for name, other in obstacles.items():
