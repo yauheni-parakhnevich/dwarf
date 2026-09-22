@@ -7,7 +7,20 @@ public struct Settings: Codable, Equatable, Sendable {
     /// in `live`.
     public var mode: Mode = .dryRun
     /// Quarter turns clockwise to stand the camera buffer upright; see `FrameGeometry`.
-    public var quarterTurns = 0
+    ///
+    /// One, measured rather than assumed: with the phone held upright, the ground point
+    /// lands on a cat's feet at 90 degrees and on its flank at 0. This is the only setting
+    /// in the system that cannot be checked by software — nothing else ever objects if it
+    /// is wrong, the tracking looks flawless, and every shot goes a metre wide. It is
+    /// persisted, so changing it on the screen sticks; this default only decides where a
+    /// fresh install starts.
+    ///
+    /// It is also not yet the final answer. This is the orientation of a phone held in the
+    /// hand. The gnome's printed sled decides the real one, and the trade runs the other
+    /// way: landscape gives a wider horizontal view of the garden and costs no per-frame
+    /// rotation at all, which on an A9 is heat worth saving, but it needs about 145 mm of
+    /// clear width inside the torso to take the phone lying flat.
+    public var quarterTurns = 1
     /// The model's input side. M0 decides this: measured on the gnome's own iPhone 6s on
     /// 2026-09-22, YOLO11n at 640 sustained 3.33 inferences a second for ten minutes
     /// without the phone leaving nominal thermal state, so 640 stays and the fallbacks to

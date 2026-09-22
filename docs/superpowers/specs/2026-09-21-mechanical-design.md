@@ -92,7 +92,14 @@ hold things, they never contain pressure.*
 ## 4. Torso — the dry zone
 
 **Phone sled.** The phone rides on a slide-out sled with a three-point locating feature and a
-witness mark, and it must only fit one way. This is the subtle requirement in the whole build:
+witness mark, and it must only fit one way. **Which way is still open, and it is a real
+trade.** `DwarfCore` reads an animal's ground point as the bottom edge of its box, so the
+frame handed to it must have gravity pointing down; the app corrects for the mount with
+`Settings.quarterTurns`, verified on hardware by watching where the ground point lands on a
+cat figurine. Landscape needs no correction at all and gives the wider horizontal view of the
+garden, but wants about 145 mm of clear width inside the torso for a phone lying flat.
+Portrait fits a narrower body and costs a rotation of every frame, which on an A9 is heat
+that buys nothing. Decide it when the torso is printed, set one number, and recalibrate. This is the subtle requirement in the whole build:
 the Aimer's calibration assumes the camera pose never changes, so a phone returned a few
 millimetres rotated invalidates every stored calibration point. Repeatable reinstallation
 makes a reboot a non-event; if the sled is ever disturbed, recalibration is the remedy.

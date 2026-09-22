@@ -26,6 +26,7 @@ that misbehaves dry will misbehave wet at four bar.
 | 0d | Serial cannot mask a silent phone | Connect over BLE, send any command, then let BLE go quiet while flooding `{"c":"hb"}` over serial | The gnome goes safe about 3 s after BLE's last command. Serial must not keep it alive | |
 | 0e | Disconnect is immediate | Arm, turn the fan on over BLE, then disconnect the central | Fan off in well under a second, not after 3 s | |
 | 0f | The phone is bonded | Pair once from the phone, entering the passkey the gnome prints over serial, then disconnect and reconnect | The second connection asks for nothing and the board logs `"encrypted":true,"authenticated":true,"bonded":true` | **PASSED 2026-09-22** |
+| 0g | The ground point is on the feet | Put a cat figurine in view and tap `mount` until the red dot sits at its feet, not its flank | The dot tracks the feet as the figurine moves | **PASSED 2026-09-22 at 90°** |
 
 ## With water
 
