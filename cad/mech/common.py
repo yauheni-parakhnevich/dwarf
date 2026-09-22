@@ -72,13 +72,8 @@ def pump_body():
     return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H)
 
 
-# The valve stands on the floor behind the canister's neck, on the centreline, two millimetres
-# clear of the tank cradle's back saddle: its short side runs across X, its long side along Y,
-# which is the only attitude that keeps it inside the base's wall out there. That puts it
-# between the pump at +Y and the tube's run up through the divider's glands.
-
-
 def valve_body():
+    """Beside the pump on the pump mount's plate, at the back of the base."""
     L, W, H = P.VALVE
     cx, cy = P.VALVE_XY
     return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H)

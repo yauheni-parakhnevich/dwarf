@@ -1,7 +1,7 @@
 import itertools
 import math
 import pytest
-from build123d import Axis, Location, Pos, Sphere, Vertex
+from build123d import Axis, Location, Plane, Polygon, Pos, Sphere, Vertex, revolve
 import params as P
 from mech.common import box, cyl_x, cyl_z, cyl_y, servo_body
 
@@ -362,7 +362,7 @@ def test_tank_head_thread_matches_the_canister(parts):
 
 
 def test_tank_head_thread_sits_wholly_inside_its_bore(parts):
-    from mech.base import BORE_R, TANK_HEAD_R, can_thread
+    from mech.base import BORE_R, TANK_HEAD_AT, TANK_HEAD_R, can_thread
     thread = can_thread()
     assert thread.volume > 1e-3
     bb = thread.bounding_box()
@@ -375,16 +375,16 @@ def test_tank_head_thread_sits_wholly_inside_its_bore(parts):
     # ... and nothing narrower than the thread's own crest is left standing in the bore
     free = cyl_x(P.CAN_THREAD_MAJOR / 2 - 1.25 * P.CAN_THREAD_PITCH * math.sqrt(3) / 2 - 0.05,
                  -1, P.CAN_THREAD_LEN)
-    assert (free & parts["tank_head"]).volume < 1e-6
+    assert (TANK_HEAD_AT * free & parts["tank_head"]).volume < 1e-6
 
 
 def test_tank_head_ports_pass_the_canisters_neck(parts):
     """Every port opens inside the neck bore with a millimetre of rim, and none runs into another."""
-    from mech.base import PORTS, TANK_HEAD_L
+    from mech.base import PORTS, TANK_HEAD_AT, TANK_HEAD_L
     for name, (y, z, r) in PORTS.items():
         assert math.hypot(y, z) + r <= P.CAN_NECK_ID / 2 - 1.0, name
         probe = cyl_x(r - 0.05, P.CAN_THREAD_LEN, TANK_HEAD_L - 0.05, y, z)
-        assert (probe & parts["tank_head"]).volume < 1e-6, name        # drilled through the end wall
+        assert (TANK_HEAD_AT * probe & parts["tank_head"]).volume < 1e-6, name   # drilled through
     for a, b in itertools.combinations(PORTS, 2):
         ya, za, ra = PORTS[a]
         yb, zb, rb = PORTS[b]
@@ -392,12 +392,15 @@ def test_tank_head_ports_pass_the_canisters_neck(parts):
 
 
 def test_filler_cap_screws_onto_a_filler_neck(parts):
-    """The cap's thread takes an M24 neck whose crests stand at the FILLER_D + 4 stub's face."""
+    """The cap takes a neck whose crests stand at FILLER_CAP_THREAD_MAJOR over a FILLER_D bore."""
     from mech.base import CAP_THREAD_LEN, CAP_THREAD_X, filler_neck
     cap = parts["filler_cap"]
-    assert math.isclose(P.FILLER_CAP_THREAD_MAJOR, P.FILLER_D + 4, abs_tol=1e-9)
-    assert (filler_neck() & cap).volume < 1e-3                         # it screws on, it does not jam
-    assert filler_neck().volume > 1e-3
+    neck = filler_neck()
+    assert neck.volume > 1e-3
+    bb = neck.bounding_box()
+    assert math.isclose(bb.max.Y - bb.min.Y, P.FILLER_CAP_THREAD_MAJOR, abs_tol=0.01)   # crests at the major
+    assert (cyl_x(P.FILLER_D / 2 - 0.05, bb.min.X - 1, bb.max.X + 1) & neck).volume < 1e-6   # FILLER_D bore
+    assert (neck & cap).volume < 1e-3                                  # it screws on, it does not jam
     # ... and it grips: the cap's crests stand inside the neck's major diameter
     grip = cyl_x(P.FILLER_CAP_THREAD_MAJOR / 2 - 0.05, CAP_THREAD_X, CAP_THREAD_X + CAP_THREAD_LEN)
     assert (grip & cap).volume > 1e-3
@@ -410,30 +413,35 @@ def test_wet_zone_parts_stand_on_the_floor_under_the_belt(parts):
         assert bb.max.Z < P.Z_BELT - 2 * P.RING_T, name
 
 
-def test_the_valve_stands_clear_in_the_base(parts):
-    """Where the valve goes: on the floor behind the canister's neck, on the centreline."""
-    from mech.common import valve_body
-    valve = valve_body()
-    assert (valve & parts["tank_cradle"]).volume < 1e-6
-    assert (valve & parts["pump_mount"]).volume < 1e-6
-    for v in valve.vertices():
-        assert math.hypot(v.X, v.Y) < P.shell_r(P.BASE_PROFILE, v.Z) - P.WALL, (v.X, v.Y, v.Z)
-        assert v.Z < P.Z_BELT - 2 * P.RING_T, v.Z
+def _base_inner():
+    """The base's cavity with a millimetre to spare: shell_r - WALL - 1 at every height."""
+    pts = [(P.shell_r(P.BASE_PROFILE, z) - P.WALL - 1.0, z) for _, z in P.BASE_PROFILE]
+    z0, z1 = P.BASE_PROFILE[0][1], P.BASE_PROFILE[-1][1]
+    return revolve(Plane.XZ * Polygon((0.0, z0), *pts, (0.0, z1)), axis=Axis.Z)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "the wet zone's bought-part defaults do not close. The canister's corner at "
-    "CANISTER_XY (10, -20) lands at r 150.0 where the base allows 110.6; even centred, a "
-    "220 x 140 box needs r 130.4 and the base never offers more than 121.6. PUMP_XY (0, 65) "
-    "puts the pump's corner at r 140.1 against 113.8, the two envelopes overlap by 364 cm3, "
-    "and the cradle and the pump mount that follow them overlap by 2.7 cm3. Re-measure the "
-    "canister and the pump, place them, then delete this mark."))
 def test_canister_and_pump_fit_inside_the_base(parts):
-    from mech.common import canister_body, pump_body
-    for body in (canister_body(), pump_body()):
-        for v in body.vertices():
-            r = math.hypot(v.X, v.Y)
-            assert r < P.shell_r(P.BASE_PROFILE, v.Z) - P.WALL - 1.0, (v, r)
-            assert v.Z < P.Z_BELT - 2 * P.RING_T
-    assert (canister_body() & pump_body()).volume < 1e-6
-    assert (parts["tank_cradle"] & parts["pump_mount"]).volume < 1e-6
+    """The whole wet zone: nothing overlaps, nothing reaches the wall, nothing reaches the belt."""
+    from mech.common import canister_body, pump_body, valve_body
+    inner = _base_inner()
+    bodies = {"canister": canister_body(), "pump": pump_body(), "valve": valve_body(),
+              "pump_mount": parts["pump_mount"], "tank_cradle": parts["tank_cradle"],
+              "tank_head": parts["tank_head"]}
+    for name, body in bodies.items():
+        assert (body - inner).volume < 1e-6, name                      # inside the wall with a millimetre
+        assert body.bounding_box().max.Z < P.Z_BELT - 2 * P.RING_T, name
+    for a, b in itertools.combinations(bodies, 2):
+        assert (bodies[a] & bodies[b]).volume < 1e-6, (a, b)
+
+
+def test_the_pump_mount_bridges_the_canister(parts):
+    """It stands off the canister by a millimetre and reaches the floor on its four legs."""
+    from mech.common import canister_body
+    mount = parts["pump_mount"]
+    grown = canister_body()
+    bb = grown.bounding_box()
+    grown = box(bb.min.X - 1, bb.max.X + 1, bb.min.Y - 1, bb.max.Y + 1, bb.min.Z - 1, bb.max.Z + 1)
+    assert (mount & grown).volume < 1e-6
+    assert (mount & parts["tank_cradle"]).volume < 1e-6
+    feet = mount & box(-200, 200, -200, 200, P.Z_FLOOR - 1, P.Z_FLOOR + 1)
+    assert len(feet.solids()) == 4                                     # four legs, nothing else, on the floor
