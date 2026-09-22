@@ -1,6 +1,6 @@
 """The neck: what the head stands on and what turns it."""
 import math
-from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, extrude, Axis
+from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, Location, extrude, Axis
 import params as P
 from mech import part
 from mech.common import cyl_z, cyl_y, box, insert_holes, servo_body
@@ -10,17 +10,21 @@ def _polar(r, deg, z):
     return (r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg)), z)
 
 
-def _notch(z0, z1):
-    (x0, y0), (x1, y1) = P.PAN_NOTCH
-    return box(x0, x1, y0, y1, z0, z1)
+def _crank_pin():
+    """The plate's pin, relative to the pan axis; the servo's pin is the same vector from its axis."""
+    a = math.radians(P.CRANK_REST_DEG)
+    return P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a)
 
 
-def _servo_tab_holes():
-    L, W, H = P.DS3218["body"]
-    along, across = P.DS3218["holes"]
-    sx, sy = P.PAN_SERVO_XY
-    cy = sy + P.DS3218["shaft_off"] - L / 2      # body centre along Y
-    return [(sx + dx, cy + dy) for dx in (-across / 2, across / 2) for dy in (-along / 2, along / 2)]
+def _column_slot(z0, z1):
+    """The arc the plate's hanging column swings in: the annulus r0..r1 within +/-half of +X.
+
+    The deck and the ring below it are both in the column's way, so both are cut with this.
+    """
+    r0, r1, half = P.DECK_SLOT
+    band = cyl_z(r1, z0, z1) - cyl_z(r0, z0 - 1, z1 + 1)
+    ahead = box(0, r1 + 5, -(r1 + 5), r1 + 5, z0 - 1, z1 + 1)          # every point with x >= 0
+    return band & ahead & ahead.rotate(Axis.Z, half - 90) & ahead.rotate(Axis.Z, 90 - half)
 
 
 @part("deck_ring", section="torso")
@@ -28,7 +32,8 @@ def deck_ring():
     """Narrow annulus the deck bolts to, joined to the shoulders' wall by four webs. Unioned into the torso.
 
     Narrow on purpose: the phone's top passes outside it (PHONE_FRONT_X > RING_R_OUT). Cut
-    away around the pan servo, whose body hangs through it with its tab screws and nuts.
+    away around the pan servo hanging beneath it, and along the arc the plate's column swings
+    in: the column reaches r 52.15, past the ring's own bore at RING_R_IN.
     """
     z1 = P.Z_DECK - P.DECK_T
     z0 = z1 - P.RING_T
@@ -38,12 +43,17 @@ def deck_ring():
         ring = ring + box(P.RING_R_OUT - 2, r_wall, -P.RING_WEB_W / 2, P.RING_WEB_W / 2, z0, z1).rotate(Axis.Z, a)
     (x0, y0), (x1, y1) = P.PAN_RING_CUT
     ring = ring - box(x0, x1, y0, y1, z0 - 1, z1 + 1)
+    ring = ring - _column_slot(z0 - 1, z1 + 1)          # RING_R_IN is 50; the column reaches r 52.15
     return insert_holes(ring, [_polar(P.DECK_SCREW_R, a, z1) for a in P.DECK_SCREW_ANGLES], depth=P.RING_T - 1)
 
 
 @part("deck")
 def deck():
-    """Carries the bearing's fixed ring, the pan servo and the pan hard stops."""
+    """Carries the bearing's fixed ring, the pan servo hanging beneath it, and the pan hard stops.
+
+    The servo is wholly below the deck now, so there is no notch: only the arc slot the
+    plate's column swings in and four columns the servo's tabs screw up into.
+    """
     z1, z0 = P.Z_DECK, P.Z_DECK - P.DECK_T
     d = cyl_z(P.DECK_R, z0, z1)
     d = d - cyl_z(P.SHAFT_OD / 2 + P.CLEAR + 1.0, z0 - 1, z1 + 1)          # shaft passes with room
@@ -53,10 +63,18 @@ def deck():
     for a in P.DECK_SCREW_ANGLES:                                          # down into the ring
         x, y, _ = _polar(P.DECK_SCREW_R, a, 0)
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
-    d = d - _notch(z0 - 1, z1 + 1)                                         # pan servo body
-    for x, y in _servo_tab_holes():                                        # tab screws, nut below
-        d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
-        d = d - Pos(x, y, z0 + P.NUT_M3_T / 2 - 0.01) * extrude(RegularPolygon(P.NUT_M3_AF / math.sqrt(3), 6), P.NUT_M3_T)
+    d = d - _column_slot(z0 - 1, z1 + 1)                                   # the plate's hanging column
+    # hangers for the pan servo, down from the underside to the tabs' upper face
+    z_tab = P.Z_PAN_SHAFT_FACE + (P.DS3218["body"][2] - P.DS3218["tab_z"]) + P.DS3218["tab_t"]
+    for hx, hy in P.pan_hangers():
+        d = d + box(hx - P.PAN_HANGER / 2, hx + P.PAN_HANGER / 2, hy - P.PAN_HANGER / 2, hy + P.PAN_HANGER / 2, z_tab, z0 + 0.01)
+        d = insert_holes(d, [(hx, hy, z_tab)], direction="up")
+    # the tab holes sit only 4.75 mm outside the body's end faces, so a 10 mm hanger overhangs
+    # them by 0.25; trim every hanger back to a clearance around the servo
+    L, W, H = P.DS3218["body"]
+    off, (sx, sy) = P.DS3218["shaft_off"], P.PAN_SERVO_XY
+    d = d - box(sx - off - P.CLEAR, sx + (L - off) + P.CLEAR, sy - W / 2 - P.CLEAR, sy + W / 2 + P.CLEAR,
+                P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.CLEAR)
     # hard-stop posts either side of the plate's front tab. They stop a hair below the plate's
     # top face, because the yoke's ring stands on that face and its feet sweep over them.
     half_tab = math.degrees(math.atan2(P.STOP_TAB_W / 2, P.PLATE_R))
@@ -70,9 +88,9 @@ def deck():
 def plate():
     """The head's foundation: sits on the bearing, carries the shaft and the pan hard-stop tab.
 
-    It also carries the pan linkage's near pin post, which rises from the disc to
-    Z_CRANK_TOP with an insert in its top, and the four inserts the yoke's ring screws
-    down into. The yoke's arm feet themselves are part of the yoke, not of this disc.
+    Nothing of the drive is above it any more. Under the stop tab a column hangs down
+    through the deck's arc slot to a foot bar below the deck, and the foot carries the
+    plate's half of the parallelogram. The disc's top face has only the yoke's inserts.
     """
     z0 = P.Z_DECK + P.BEARING_T
     z1 = P.Z_PLATE_TOP
@@ -82,10 +100,12 @@ def plate():
         x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
         p = p - cyl_z(P.BEARING_HOLE / 2, z0 - 1, z1 + 1, x, y)
     p = p + box(P.PLATE_R - 1, P.STOP_POST_R + P.STOP_POST_D / 2 + 1, -P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, z0, z1)  # stop tab, front
-    # crank pin post, in the band above the plate; the yoke's ring screws
-    px, py = P.CRANK_L * math.cos(math.radians(P.CRANK_REST_DEG)), P.CRANK_L * math.sin(math.radians(P.CRANK_REST_DEG))
-    p = p + cyl_z(P.PIN_POST_D / 2, z1 - 0.01, P.Z_CRANK_TOP, px, py)
-    p = insert_holes(p, [(px, py, P.Z_CRANK_TOP)])
+    # column from the stop tab's underside through the deck's slot, and the foot bar to the pin
+    r_in, r_out, w = P.PAN_COLUMN
+    p = p + box(r_in, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, z0 + 0.01)
+    p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
+    px, py = _crank_pin()
+    p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM)], direction="up")
     p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES], depth=P.PLATE_T - 1)
     return p
 
@@ -100,35 +120,31 @@ def shaft():
     return s + flare
 
 
-def _crank_pin():
-    a = math.radians(P.CRANK_REST_DEG)
-    return P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a)
-
-
 @part("servo_crank")
 def servo_crank():
-    """Bolts to the pan servo's round horn; carries the far pin of the parallelogram."""
-    z0, z1 = P.Z_SERVO_HORN_TOP, P.Z_CRANK_TOP
+    """Hangs on the pan servo's horn, pocketed from above; carries the far pin of the parallelogram below."""
+    z0, z1 = P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP
     sx, sy = P.PAN_SERVO_XY
     dx, dy = _crank_pin()
     px, py = sx + dx, sy + dy
     arm = box(min(sx, px) - 4, max(sx, px) + 4, min(sy, py) - 4, max(sy, py) + 4, z0, z1)
     arm = arm + cyl_z(P.HORN_D / 2 + 3, z0, z1, sx, sy) + cyl_z(4, z0, z1, px, py)
-    arm = arm - cyl_z(P.HORN_D / 2 + P.CLEAR / 2, z0 - 1, z0 + P.HORN_T, sx, sy)      # horn pocket from below
+    arm = arm - cyl_z(P.HORN_D / 2 + P.CLEAR / 2, z1 - P.HORN_T, z1 + 1, sx, sy)      # horn pocket from above
     for a in (0, 90, 180, 270):
         hx, hy, _ = _polar(P.HORN_SCREW_R, a, 0)
         arm = arm - cyl_z(P.M2_5_CLEAR / 2, z0 - 1, z1 + 1, sx + hx, sy + hy)
     arm = arm - cyl_z(2.5, z0 - 1, z1 + 1, sx, sy)                                     # horn's centre screw
-    return insert_holes(arm, [(px, py, z1)])
+    return insert_holes(arm, [(px, py, z0)], direction="up")
 
 
 @part("pan_link")
 def pan_link():
-    """Joins the plate's pin to the servo crank's pin. Eye-to-eye length is the centre distance."""
-    z0, z1 = P.Z_CRANK_TOP, P.Z_LINK_TOP
-    ax, ay = _crank_pin()
-    bx, by = ax - P.PAN_OFFSET, ay
-    bar = box(bx, ax, ay - 3.0, ay + 3.0, z0, z1)
+    """Joins the plate's pin to the servo crank's pin, below both. Eye-to-eye is the servo offset."""
+    z0, z1 = P.Z_LINK_BOTTOM, P.Z_LINK_TOP
+    (ax, ay), (bx, by) = _crank_pin(), (P.PAN_SERVO_XY[0] + _crank_pin()[0], P.PAN_SERVO_XY[1] + _crank_pin()[1])
+    length = math.hypot(bx - ax, by - ay)
+    ang = math.degrees(math.atan2(by - ay, bx - ax))
+    bar = box(0, length, -3.0, 3.0, z0, z1).rotate(Axis.Z, ang).moved(Location((ax, ay, 0)))
     link = bar + cyl_z(P.LINK_EYE_R, z0, z1, ax, ay) + cyl_z(P.LINK_EYE_R, z0, z1, bx, by)
     return link - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, ax, ay) - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, bx, by)
 

@@ -2,7 +2,7 @@ import math
 import pytest
 from build123d import Axis
 import params as P
-from mech.common import box
+from mech.common import box, cyl_z, servo_body
 
 
 @pytest.fixture(scope="session")
@@ -30,15 +30,13 @@ def test_every_part_fits_the_bed(parts):
 
 
 def test_deck_ring_is_cut_around_the_pan_servo(parts):
-    from mech.common import servo_body
-    body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.PAN_SERVO_BODY_Z0 + P.DS3218["body"][2]), axis="z")
+    body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
     assert (body & parts["deck_ring"]).volume < 1e-6
 
 
 def test_deck_bore_clears_the_shaft(parts):
     deck = parts["deck"]
     # a probe cylinder of the shaft's radius plus clearance passes through the deck untouched
-    from mech.common import cyl_z
     probe = cyl_z(P.SHAFT_OD / 2 + P.CLEAR, P.Z_DECK - P.DECK_T - 1, P.Z_DECK + 1)
     assert (deck & probe).volume < 1e-6
 
@@ -47,56 +45,66 @@ def test_shaft_bore_takes_tube_and_wires():
     assert P.SHAFT_ID >= 6.0 + 3 * 1.5 + 1.5
 
 
-def test_plate_sits_on_the_bearing_and_carries_the_crank_post(parts):
+def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
     plate = parts["plate"]
     bb = plate.bounding_box()
-    assert math.isclose(bb.min.Z, P.Z_DECK + P.BEARING_T, abs_tol=1e-6)
-    assert math.isclose(bb.max.Z, P.Z_CRANK_TOP, abs_tol=1e-6)          # the pin post
-    disc = plate & box(-60, 60, -60, 60, P.Z_DECK + P.BEARING_T - 1, P.Z_PLATE_TOP + 0.5)
-    assert math.isclose(disc.bounding_box().max.Z, P.Z_PLATE_TOP, abs_tol=1e-6)
+    assert math.isclose(bb.max.Z, P.Z_PLATE_TOP, abs_tol=1e-6)          # nothing above the disc
+    assert math.isclose(bb.min.Z, P.Z_CRANK_BOTTOM, abs_tol=1e-6)       # the foot bar's underside
+    below = plate & box(-80, 80, -80, 80, P.Z_CRANK_BOTTOM - 1, P.Z_DECK + P.BEARING_T - 0.01)
+    b = below.bounding_box()
+    assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot down here
+    assert abs(b.min.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6 and abs(b.max.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6
 
 
 def crank_pins(deg):
     a = math.radians(P.CRANK_REST_DEG + deg)
     v = (P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a))
-    return v, (-P.PAN_OFFSET + v[0], v[1])
+    return v, (P.PAN_SERVO_XY[0] + v[0], P.PAN_SERVO_XY[1] + v[1])
 
 
 def test_link_eyes_are_a_centre_distance_apart(parts):
-    s = _bb(parts["pan_link"])
-    assert math.isclose(s.X, P.PAN_OFFSET + 2 * P.LINK_EYE_R, abs_tol=0.01)
-    assert math.isclose(s.Y, 2 * P.LINK_EYE_R, abs_tol=0.01)
+    link = parts["pan_link"]
+    bb = link.bounding_box()
+    assert math.isclose(bb.max.Z, P.Z_LINK_TOP, abs_tol=1e-6) and math.isclose(bb.min.Z, P.Z_LINK_BOTTOM, abs_tol=1e-6)
+    a, b = crank_pins(0)
+    for x, y in (a, b):
+        probe = cyl_z(P.M3_CLEAR / 2 - 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
+        assert (probe & link).volume < 1e-6, (x, y)                     # a bore at each pin
+    assert math.isclose(bb.max.X - bb.min.X, abs(a[0] - b[0]) + 2 * P.LINK_EYE_R, abs_tol=0.01)
 
 
-def test_link_and_cranks_stay_below_the_head(parts):
+def test_link_and_crank_live_below_the_deck_ring(parts):
+    ring_bottom = P.Z_DECK - P.DECK_T - P.RING_T
     for name in ("pan_link", "servo_crank"):
-        top = parts[name].bounding_box().max.Z
-        assert top <= P.Z_LINK_TOP + 1e-6, name
+        assert parts[name].bounding_box().max.Z < ring_bottom, name
 
 
-def test_linkage_sweeps_without_touching_anything_fixed(parts):
-    """Rotate the plate about the pan axis and the servo crank about the servo axis; translate the link."""
+def test_linkage_sweeps_without_touching_anything(parts):
+    """Plate (with its column) about the pan axis, servo crank about the servo axis, link translated."""
     from build123d import Axis, Location
-    servo_axis = Axis((-P.PAN_OFFSET, 0, 0), (0, 0, 1))
+    servo_axis = Axis((P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], 0), (0, 0, 1))
     rest_plate, _ = crank_pins(0)
-    fixed = parts["deck"] + parts["deck_ring"]
+    servo = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
+    fixed = parts["deck"] + parts["deck_ring"] + servo
     for deg in range(-int(P.PAN_STOP_DEG) + 1, int(P.PAN_STOP_DEG), 8):
         plate = (parts["plate"] + parts["yoke"]).rotate(Axis.Z, deg)
         crank = parts["servo_crank"].rotate(servo_axis, deg)
         pin, _ = crank_pins(deg)
         link = parts["pan_link"].moved(Location((pin[0] - rest_plate[0], pin[1] - rest_plate[1], 0)))
-        for a, b, what in ((plate, crank, "plate/crank"), (plate, fixed, "plate/deck"), (crank, fixed, "crank/deck"),
-                           (link, plate, "link/plate"), (link, crank, "link/crank"), (link, fixed, "link/deck")):
+        for a, b, what in ((plate, crank, "plate/crank"), (plate, fixed, "plate/fixed"), (crank, fixed, "crank/fixed"),
+                           (link, plate, "link/plate"), (link, crank, "link/crank"), (link, fixed, "link/fixed")):
             v = (a & b).volume
             assert v < 1e-3, (deg, what, v)
 
 
-def test_pan_servo_does_not_hit_the_bearing_deck_or_ring(parts):
-    from mech.common import servo_body, box
-    body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.PAN_SERVO_BODY_Z0 + P.DS3218["body"][2]), axis="z")
+def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
+    body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
     bearing = box(-P.BEARING_SQ / 2, P.BEARING_SQ / 2, -P.BEARING_SQ / 2, P.BEARING_SQ / 2, P.Z_DECK, P.Z_DECK + P.BEARING_T)
-    for other in (bearing, parts["deck"], parts["deck_ring"], parts["plate"], parts["yoke"]):
+    for other in (bearing, parts["deck"], parts["deck_ring"], parts["plate"], parts["yoke"], parts["shaft"]):
         assert (body & other).volume < 1e-6
+    # the hangers meet the tabs: a hanger's bottom face is at the tabs' upper face
+    hangers = parts["deck"] & box(-80, 80, -80, 80, P.Z_DECK - P.DECK_T - 30, P.Z_DECK - P.DECK_T - 0.01)
+    assert math.isclose(hangers.bounding_box().min.Z, P.Z_PAN_SHAFT_FACE + (P.DS3218["body"][2] - P.DS3218["tab_z"]) + P.DS3218["tab_t"], abs_tol=1e-6)
 
 
 def test_yoke_clears_the_pan_stop_posts_through_the_sweep(parts):
