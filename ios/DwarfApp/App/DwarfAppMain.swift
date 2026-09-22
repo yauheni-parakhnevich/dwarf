@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 @main
 struct DwarfAppMain: App {
@@ -7,6 +8,7 @@ struct DwarfAppMain: App {
         // a gnome that has stopped watching. Every other power decision is in
         // PowerManager; this one has to happen before anything else starts.
         UIApplication.shared.isIdleTimerDisabled = true
+        AVCaptureDevice.requestAccess(for: .video) { _ in }
     }
 
     var body: some Scene {
