@@ -36,14 +36,36 @@ public enum BoxDecoder {
     /// COCO's class order: person 0, …, bird 14, cat 15, dog 16.
     public static let catClassIndex = 15
 
+    /// Throws `DetectorError.unexpectedOutputs` when the tensors are not the shape or
+    /// layout this decoder can read. That is deliberately different from returning an empty
+    /// array: "I could not read the model's answer" and "the model looked and saw no cats"
+    /// have opposite meanings to the tracker, and a decoder that quietly returned the
+    /// second when it meant the first would leave a gnome that watches an empty garden
+    /// forever with every test still green.
     public static func decode(confidence: MLMultiArray, coordinates: MLMultiArray,
-                              minConfidence: Double) -> [RawBox] {
-        guard confidence.shape.count == 2, coordinates.shape.count == 2 else { return [] }
+                              minConfidence: Double) throws -> [RawBox] {
+        guard confidence.shape.count == 2, coordinates.shape.count == 2 else {
+            throw DetectorError.unexpectedOutputs
+        }
         let rows = confidence.shape[0].intValue
         let classes = confidence.shape[1].intValue
         guard coordinates.shape[0].intValue == rows,
               coordinates.shape[1].intValue == 4,
-              classes > catClassIndex else { return [] }
+              classes > catClassIndex else {
+            throw DetectorError.unexpectedOutputs
+        }
+
+        // Both tensors are read with a flat index, which is only the element the row and
+        // column name if the array is contiguous and row-major. It is, for this export --
+        // strides come back as [80, 1] and [4, 1] -- but that is a property of one export
+        // rather than a promise CoreML makes. A re-export with padded rows would otherwise
+        // read a neighbouring class's score and the gnome would spray whatever it thought
+        // was a cat.
+        guard confidence.strides.count == 2, coordinates.strides.count == 2,
+              confidence.strides[0].intValue == classes, confidence.strides[1].intValue == 1,
+              coordinates.strides[0].intValue == 4, coordinates.strides[1].intValue == 1 else {
+            throw DetectorError.unexpectedOutputs
+        }
 
         var boxes: [RawBox] = []
         boxes.reserveCapacity(rows)

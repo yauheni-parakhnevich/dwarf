@@ -55,7 +55,7 @@ public final class CoreMLDetector: Detector {
               let coordinates = output.featureValue(for: "coordinates")?.multiArrayValue else {
             throw DetectorError.unexpectedOutputs
         }
-        return BoxDecoder.decode(confidence: confidence, coordinates: coordinates,
-                                 minConfidence: minConfidence)
+        return try BoxDecoder.decode(confidence: confidence, coordinates: coordinates,
+                                     minConfidence: minConfidence)
     }
 }
