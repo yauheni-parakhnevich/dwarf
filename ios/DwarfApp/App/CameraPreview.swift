@@ -17,7 +17,14 @@ struct CameraPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.backgroundColor = .black
-        view.layer.videoGravity = .resize
+        // Never stretch. `.resize` fills the layer regardless of the video's own shape, so
+        // any error in the box it is given comes out as a distorted picture -- which is
+        // worse than useless here, because a stretched frame moves every overlay box and
+        // ground point away from the thing it is meant to sit on, and this view exists to
+        // make exactly that kind of mistake visible. `.resizeAspect` keeps the picture
+        // honest: when the box is right it fills it exactly and nothing is letterboxed, and
+        // when it is wrong the bars say so instead of the animal changing shape.
+        view.layer.videoGravity = .resizeAspect
         view.layer.session = session
         // The sensor's own landscape orientation, which is the one the pixel buffer arrives
         // in and therefore the one FrameGeometry's quarter turns are measured from.

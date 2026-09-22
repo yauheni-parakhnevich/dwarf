@@ -196,7 +196,8 @@ struct RootView: View {
             ("model fails", "\(s.detectorFailures)"),
             ("detector", s.detectorBusySince.map { String(format: "busy since %.1f", $0) } ?? "idle"),
             ("rate", s.cycleDivisor > 1 ? "halved (heat)" : "full"),
-            ("clock", s.clockAnomalies == 0 ? "steady" : "\(s.clockAnomalies) jumps")
+            ("clock", s.clockAnomalies == 0 ? "steady" : "\(s.clockAnomalies) jumps"),
+            ("frame", String(format: "%.2f : 1 at %d°", gnome.frameAspect, gnome.quarterTurns * 90))
         ]
     }
 
