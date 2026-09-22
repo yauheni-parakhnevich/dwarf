@@ -110,7 +110,17 @@ public final class Runtime {
         let decision = power.evaluate(thermal: thermal, meanLuma: gray.meanLuma,
                                       ambientC: status?.temp, uptime: uptime)
         apply(decision, at: uptime)
+        mutate {
+            $0.paused = decision.pauseDetection
+            $0.cycleDivisor = decision.cycleDivisor
+            $0.lumaUnusable = decision.lumaUnusable
+            $0.meanLuma = gray.meanLuma
+            $0.status = status
+        }
 
+        // Paused is a state worth seeing, so it is recorded above before returning. The
+        // decision and tracks deliberately keep their last values rather than being
+        // cleared: what the gnome was doing when it stopped is the useful part.
         if decision.pauseDetection { return }
         cycleCounter += 1
         if decision.cycleDivisor > 1, cycleCounter % decision.cycleDivisor != 0 { return }
@@ -124,8 +134,20 @@ public final class Runtime {
                                    status: status,
                                    now: clock.now,
                                    uptime: uptime)
-        mutate { $0.decision = output.decision; $0.tracks = output.tracks
-                 $0.cropRequests = output.cropRequests; $0.meanLuma = output.meanLuma }
+        recordCycleRate(at: uptime)
+        mutate {
+            $0.decision = output.decision
+            $0.refusal = output.refusal
+            $0.tracks = output.tracks
+            $0.solutions = output.solutions
+            $0.cropRequests = output.cropRequests
+            $0.blobs = output.blobs
+            $0.meanLuma = output.meanLuma
+            $0.shotsThisHour = output.shotsThisHour
+            $0.status = status
+            $0.deviceRefusals = self.link.refusals
+            $0.clockAnomalies = (self.clock as? SteadyClock)?.anomalies ?? 0
+        }
         carryOut(output.decision)
         askDetector(about: output.cropRequests, from: pixelBuffer, capturedAt: uptime)
     }
@@ -151,6 +173,23 @@ public final class Runtime {
         lock.unlock()
     }
 
+    private var frameTimes: [TimeInterval] = []
+    private var answerTimes: [TimeInterval] = []
+
+    /// Rates measured over a rolling ten seconds. Configured numbers describe intent;
+    /// these describe what the phone is actually managing, which after a thermal backoff
+    /// or under a slow model is a different thing entirely.
+    private func recordCycleRate(at uptime: TimeInterval) {
+        frameTimes.append(uptime)
+        frameTimes.removeAll { uptime - $0 > 10 }
+        let frames = Double(frameTimes.count)
+        let answers = Double(answerTimes.count)
+        mutate {
+            $0.framesPerSecond = frames / 10
+            $0.answersPerSecond = answers / 10
+        }
+    }
+
     private func applyPendingUpdates() {
         lock.lock()
         let mode = pendingMode
@@ -166,6 +205,16 @@ public final class Runtime {
         if let calibration {
             store.calibration = calibration
             cycle.update(calibration: calibration)
+        }
+
+        // Persisted here, on the capture queue, immediately after the change lands. Saving
+        // from wherever the setting was changed instead read `store` from another queue
+        // while this method wrote it, and — because the write happens a frame later — wrote
+        // the *previous* mode to disk. A gnome switched to live and restarted within the
+        // same tenth of a second came back in dry-run, which is exactly what
+        // `Settings.mode` promises will not happen.
+        if mode != nil || calibration != nil {
+            try? store.save()
         }
     }
 
@@ -239,6 +288,8 @@ public final class Runtime {
             // the next cycle reports pending.
             if !failed {
                 self.pendingAnswer = (detections, capturedAt)
+                self.answerTimes.append(capturedAt)
+                self.answerTimes.removeAll { capturedAt - $0 > 10 }
             }
             self.detectorBusy = false
             self.state.detectorBusySince = nil
@@ -318,9 +369,31 @@ public final class Runtime {
 /// other — or, as it was before, a `CycleOutput` being released underneath it mid-assignment.
 public struct RuntimeSnapshot: Sendable {
     public var decision: FireDecision = .none
+    /// Why the best candidate was not fired at. The question an owner actually asks.
+    public var refusal: FireRefusal?
     public var tracks: [Track] = []
+    /// The aim computed for each track, so a screen can show where the gnome believes an
+    /// animal is standing and how far away, not merely that it sees one.
+    public var solutions: [Int: AimSolution] = [:]
     public var cropRequests: [CropRequest] = []
+    public var blobs: [Blob] = []
     public var meanLuma: Double = 0
+    public var lumaUnusable = false
+    public var shotsThisHour = 0
+    /// What the gnome last said about itself, or nil when nothing fresh has arrived.
+    public var status: DeviceStatus?
+    /// Measured, not configured: how many frames a second are really being processed, and
+    /// how many detector answers a second are really landing. The second number is the one
+    /// the tracker's windows have to be sized against.
+    public var framesPerSecond: Double = 0
+    public var answersPerSecond: Double = 0
+    /// Detection paused, and the cycle rate halved, by heat or darkness.
+    public var paused = false
+    public var cycleDivisor = 1
+    /// Times the monotonic clock misbehaved. A phone whose clock jumps has a bigger problem.
+    public var clockAnomalies = 0
+    /// Commands the gnome itself refused, by reason, from its acks.
+    public var deviceRefusals: [String: Int] = [:]
     /// Capture time of the newest detector answer the tracker has been given, or nil when
     /// none has ever landed.
     public var lastAnswerCapturedAt: TimeInterval?

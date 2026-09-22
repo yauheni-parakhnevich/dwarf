@@ -9,6 +9,11 @@ public struct CycleOutput: Sendable {
     public let solutions: [Int: AimSolution]
     public let blobs: [Blob]
     public let meanLuma: Double
+    /// Why the best candidate was not fired at, or nil when it was, or when there was
+    /// nothing to consider. See `FireRefusal`.
+    public let refusal: FireRefusal?
+    /// Shots still counted against the hourly ceiling.
+    public let shotsThisHour: Int
 }
 
 /// Runs a frame through the whole pipeline.
@@ -87,7 +92,9 @@ public final class Cycle {
         ))
 
         return CycleOutput(decision: decision, cropRequests: requests, tracks: tracks,
-                           solutions: solutions, blobs: blobs, meanLuma: frame.meanLuma)
+                           solutions: solutions, blobs: blobs, meanLuma: frame.meanLuma,
+                           refusal: policy.lastRefusal,
+                           shotsThisHour: policy.shotsInLastHour(asOf: uptime))
     }
 
     /// Detector answers can overtake each other whenever the app keeps more than one

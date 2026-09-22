@@ -239,5 +239,49 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(rig.runtime.trackerConfig.confirmWindow, 4,
                        "three oscillates against the sweep's alternating hit and miss")
     }
+
+    func testAModeChangeIsPersistedOnceItHasActuallyLanded() throws {
+        // update(mode:) only queues; the change lands on the next frame, on the capture
+        // queue. Saving from the caller instead wrote whatever store.settings held at that
+        // moment, which was the *previous* mode — so a gnome switched to live and restarted
+        // within a tenth of a second came back in dry-run, defeating the one thing
+        // Settings.mode promises. It also read Store from one queue while the capture queue
+        // wrote it.
+        let rig = try makeRig(mode: .dryRun)
+        rig.runtime.update(mode: .live)
+
+        rig.clock.uptime = 1
+        rig.runtime.handle(frame: brightBuffer())
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(reopened.settings.mode, .live)
+    }
+
+    func testTheSnapshotSaysWhyItDidNotFire() throws {
+        // The question an owner actually asks. A cat that has not been looked at twice yet
+        // is not confirmed, and the screen should say so rather than showing nothing.
+        let rig = try makeRig()
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.62, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        rig.clock.uptime = 0
+        healthyStatus(in: rig)
+        rig.runtime.handle(frame: brightBuffer())
+        rig.runtime.waitForDetector()
+        rig.clock.uptime = 0.1
+        rig.runtime.handle(frame: brightBuffer())
+
+        XCTAssertEqual(rig.runtime.snapshot.refusal, .notConfirmed)
+    }
+
+    func testTheSnapshotMeasuresTheRatesRatherThanAssumingThem() throws {
+        let rig = try makeRig()
+        for i in 0..<20 {
+            rig.clock.uptime = Double(i) * 0.1
+            rig.runtime.handle(frame: brightBuffer())
+        }
+        XCTAssertGreaterThan(rig.runtime.snapshot.framesPerSecond, 0,
+                             "a configured rate describes intent; this has to describe reality")
+    }
 }
 
