@@ -201,21 +201,23 @@ def yoke():
     y0, y1 = _arm_y(1)
     hexagon = Pos(0, (y0 + y1) / 2, P.Z_HEAD) * Rot(90, 0, 0) * extrude(RegularPolygon(P.COUPLER_HEX_AF / math.sqrt(3) + P.CLEAR / 2, 6), P.YOKE_ARM_T + 2, both=True)
     y = y - hexagon
-    # the cross screw threads into an insert in the arm's top and its tip enters the coupler's hole
+    # the cross screw threads into an insert in the arm's top and its tip enters the coupler's
+    # hole. A short insert: a six would break into the hex pocket, whose top is 1.35 mm below it.
     cy, top = (y0 + y1) / 2, P.Z_HEAD + P.YOKE_ARM_W / 2
-    y = insert_holes(y, [(0, cy, top)])
-    y = y - cyl_z(P.M3_CLEAR / 2, P.Z_HEAD - 1, top - P.INSERT_DEPTH + 0.01, 0, cy)
+    y = insert_holes(y, [(0, cy, top)], depth=P.INSERT_DEPTH_SHORT)
+    y = y - cyl_z(P.M3_CLEAR / 2, P.Z_HEAD - 1, top - P.INSERT_DEPTH_SHORT + 0.01, 0, cy)
     # -Y: the M4 bolt's clearance hole, which is the tilt bearing, and two stop pegs
     y0, y1 = _arm_y(-1)
     y = y - cyl_y(P.M4_PIN / 2 + 0.1, y0 - 1, y1 + 1, 0, P.Z_HEAD)
     peg_r = 2.5
-    half = math.degrees(math.asin((P.STOP_TAB_W / 2) / P.TILT_STOP_TAB_R))
-    peg_half = math.degrees(math.asin(peg_r / P.TILT_STOP_TAB_R))
+    # the peg's centre must clear the tab's flank by its own radius, so at TILT_STOP_TAB_R it sits
+    # asin((half the tab + the peg) / r) round from the tab's centre line: tangent at the stop
+    offset = math.degrees(math.asin((P.STOP_TAB_W / 2 + peg_r) / P.TILT_STOP_TAB_R))
     for deg in P.TILT_STOP:
         # the tab hangs straight down (270 deg) at tilt 0. Positive tilt is nose up, which carries
         # a point at angle phi to phi + deg, so the peg sits beyond the tab's rotated centre in the
-        # direction it travels, by its own half-angle plus the tab's.
-        a = 270.0 + deg + math.copysign(half + peg_half, deg)
+        # direction it travels.
+        a = 270.0 + deg + math.copysign(offset, deg)
         px = P.TILT_STOP_TAB_R * math.cos(math.radians(a))
         pz = P.Z_HEAD + P.TILT_STOP_TAB_R * math.sin(math.radians(a))
         y = y + cyl_y(peg_r, y1 - 0.01, -(P.HEAD_R + 1.0), px, pz)   # inward from the arm's inner face

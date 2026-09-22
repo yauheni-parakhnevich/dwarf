@@ -164,6 +164,9 @@ def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
     wall = cyl_y(P.HEAD_R, P.HEAD_R - P.WALL, P.HEAD_R, 0, P.Z_HEAD) - cyl_y(P.HEAD_BORE_D / 2, P.HEAD_R - P.WALL - 1, P.HEAD_R + 1, 0, P.Z_HEAD)
     assert (coupler & wall).volume < 1e-6                      # turns in the bore the assembler cuts
     assert (coupler & yoke).volume < 1e-3                      # hex sits in the hex pocket with clearance
+    top = P.Z_HEAD + P.YOKE_ARM_W / 2                          # the cross screw's insert stops short
+    probe = cyl_z(P.INSERT_D / 2, top - P.INSERT_DEPTH_SHORT - 0.5, top, 0, P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T / 2)
+    assert (probe & coupler).volume < 1e-6                     # ... of the pocket, so it cannot foul the hex
     assert coupler.bounding_box().max.Y >= P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T - 1e-6
 
 
