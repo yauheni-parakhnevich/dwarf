@@ -15,6 +15,24 @@ final class StoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    /// A calibration the Aimer can actually fit: a quadratic surface has six coefficients
+    /// including y squared, so the samples need at least three distinct rows as well as
+    /// three distinct columns. Two rows leave y and y squared linearly dependent and the
+    /// fit singular, however many points sit in them.
+    private func usableCalibration() -> Calibration {
+        var points: [CalibrationPoint] = []
+        for x in stride(from: 0.1, through: 0.9, by: 0.2) {
+            for y in stride(from: 0.55, through: 0.95, by: 0.1) {
+                points.append(CalibrationPoint(image: Point(x: x, y: y),
+                                               pan: (x - 0.5) * 100,
+                                               tilt: 30 - 34 * y,
+                                               rangeM: 8 - 6 * y))
+            }
+        }
+        return Calibration(points: points,
+                           heightOffsets: [HeightOffsetSample(rangeM: 3, deltaTiltDeg: 4)])
+    }
+
     func testAFreshStoreIsUsableAndSaysItIsUncalibrated() {
         let store = Store(directory: directory)
         XCTAssertEqual(store.settings.mode, .dryRun, "a gnome that has never been told otherwise does not fire")
@@ -35,16 +53,14 @@ final class StoreTests: XCTestCase {
 
     func testACalibrationSurvivesARestart() throws {
         let store = Store(directory: directory)
-        store.calibration = Calibration(
-            points: (0..<6).map {
-                CalibrationPoint(image: Point(x: 0.1 * Double($0), y: 0.6),
-                                 pan: Double($0), tilt: 1, rangeM: 4)
-            },
-            heightOffsets: [HeightOffsetSample(rangeM: 3, deltaTiltDeg: 4)])
+        // Spread over two rows, not one: six points along a single line satisfy the count
+        // and leave the fit singular, which is what testSixCollinearPointsAreNotACalibration
+        // is about.
+        store.calibration = usableCalibration()
         try store.save()
 
         let reopened = Store(directory: directory)
-        XCTAssertEqual(reopened.calibration.points.count, 6)
+        XCTAssertEqual(reopened.calibration.points.count, usableCalibration().points.count)
         XCTAssertTrue(reopened.isCalibrated)
     }
 
@@ -102,5 +118,47 @@ final class StoreTests: XCTestCase {
         let reopened = Store(directory: directory)
         XCTAssertEqual(reopened.settings.mode, .dryRun)
         XCTAssertEqual(reopened.loadFailures, ["settings.json"])
+    }
+
+    func testSixCollinearPointsAreNotACalibration() {
+        // Enough points, and useless: six samples along one line leave the quadratic fit
+        // singular, so Aimer refuses to build. Counting points reported a calibrated gnome
+        // that could never aim, and an owner walking one straight path while recording is
+        // a realistic way to produce exactly that.
+        let store = Store(directory: directory)
+        store.calibration = Calibration(
+            points: (0..<6).map {
+                CalibrationPoint(image: Point(x: 0.1 * Double($0) + 0.1, y: 0.5),
+                                 pan: Double($0) * 10, tilt: 5, rangeM: 4)
+            },
+            heightOffsets: [HeightOffsetSample(rangeM: 3, deltaTiltDeg: 4)])
+
+        XCTAssertEqual(store.calibration.points.count, 6)
+        XCTAssertNil(Aimer(calibration: store.calibration), "the fit really is singular")
+        XCTAssertFalse(store.isCalibrated, "so the gnome must not claim it is calibrated")
+    }
+
+    func testAUsableCalibrationIsRecognised() {
+        let store = Store(directory: directory)
+        store.calibration = usableCalibration()
+        XCTAssertTrue(store.isCalibrated)
+    }
+
+    func testAFutureFormatIsRefusedForEveryFileNotJustSettings() throws {
+        // Calibrations and masks carry a version now too. A range recorded in centimetres
+        // where it used to be metres would decode perfectly and be a hundred times wrong.
+        let store = Store(directory: directory)
+        try store.save()
+
+        for name in ["calibration.json", "masks.json"] {
+            let path = directory.appendingPathComponent(name)
+            var object = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as! [String: Any]
+            object["formatVersion"] = DwarfAdapters.formatVersion + 1
+            try JSONSerialization.data(withJSONObject: object).write(to: path)
+        }
+
+        let reopened = Store(directory: directory)
+        XCTAssertEqual(Set(reopened.loadFailures), ["calibration.json", "masks.json"])
+        XCTAssertTrue(reopened.calibration.points.isEmpty)
     }
 }

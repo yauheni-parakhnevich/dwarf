@@ -3,7 +3,6 @@ import DwarfCore
 
 /// Everything the owner can change that is not a calibration or a mask.
 public struct Settings: Codable, Equatable, Sendable {
-    public var formatVersion = DwarfAdapters.formatVersion
     /// Persisted across restarts, as the spec requires. A gnome left in `live` comes back
     /// in `live`.
     public var mode: Mode = .dryRun
@@ -16,6 +15,18 @@ public struct Settings: Codable, Equatable, Sendable {
     public init() {}
 }
 
+/// What every file on disk is wrapped in.
+///
+/// The version used to sit inside `Settings` alone, which left calibrations and masks with
+/// no way to say which build wrote them. A future change that stays type-compatible — a
+/// range recorded in centimetres where it used to be metres, say — would decode perfectly
+/// and be silently a hundred times wrong, with nothing in `loadFailures` to show for it.
+/// A wrapper costs one line per file and closes that for all three.
+private struct Versioned<Value: Codable>: Codable {
+    var formatVersion: Int
+    var value: Value
+}
+
 /// Mode, calibration and masks on disk.
 ///
 /// Reading is forgiving and writing is atomic. A file that will not parse is reported and
@@ -24,15 +35,21 @@ public struct Settings: Codable, Equatable, Sendable {
 /// cannot fire at all, so failing this way is safe as well as convenient.
 public final class Store {
     public var settings: Settings
-    public var calibration: Calibration
+    public var calibration: Calibration {
+        didSet { isCalibrated = Store.canAim(calibration) }
+    }
     public var masks: MaskSet
 
     /// Files that could not be read this launch, for the status screen.
     public private(set) var loadFailures: [String] = []
 
-    /// True when there is enough calibration for `Aimer` to fit at all. Below this the
-    /// gnome tracks and shows a live view but has no route to a shot.
-    public var isCalibrated: Bool { calibration.points.count >= 6 }
+    /// Whether this calibration can actually produce an aim, which is not the same as
+    /// having enough points. `Aimer` needs six, and it needs them not to be degenerate:
+    /// six points along a single line satisfy the count and leave the fit singular, so a
+    /// naive `points.count >= 6` reported a calibrated gnome that could never aim. An owner
+    /// walking one straight path while recording is a realistic way to produce exactly
+    /// that. Asking `Aimer` is the only answer that cannot drift from the truth.
+    public private(set) var isCalibrated: Bool
 
     private let directory: URL
 
@@ -40,47 +57,66 @@ public final class Store {
         self.directory = directory
 
         var failures: [String] = []
-        func load<T: Decodable>(_ name: String, _ fallback: T) -> T {
+        func load<T: Codable>(_ name: String, _ fallback: T) -> T {
             let url = directory.appendingPathComponent(name)
             guard FileManager.default.fileExists(atPath: url.path) else { return fallback }
             do {
-                return try JSONDecoder().decode(T.self, from: Data(contentsOf: url))
+                let wrapper = try JSONDecoder().decode(Versioned<T>.self, from: Data(contentsOf: url))
+                guard wrapper.formatVersion <= DwarfAdapters.formatVersion else {
+                    // Written by a newer build. Guessing at a shape this one does not
+                    // understand is how a no-fire zone silently goes missing.
+                    failures.append(name)
+                    return fallback
+                }
+                return wrapper.value
             } catch {
                 failures.append(name)
                 return fallback
             }
         }
 
-        var loaded: Settings = load("settings.json", Settings())
-        if loaded.formatVersion > DwarfAdapters.formatVersion {
-            // Written by a newer build. Guessing at fields this one does not understand is
-            // how a setting silently reverts.
-            failures.append("settings.json")
-            loaded = Settings()
-        }
-        self.settings = loaded
-        self.calibration = load("calibration.json", .empty)
+        self.settings = load("settings.json", Settings())
+        let calibration: Calibration = load("calibration.json", .empty)
+        self.calibration = calibration
+        self.isCalibrated = Store.canAim(calibration)
         self.masks = load("masks.json", .empty)
         self.loadFailures = failures
     }
 
+    /// Encodes all three, then swaps all three into place.
+    ///
+    /// Each file lands atomically, but the three together do not, and they are related:
+    /// losing power between the calibration and the masks leaves a gnome aiming with one
+    /// and excluding with the other's predecessor, both files individually valid and
+    /// nothing in `loadFailures` to say so. Writing every temporary file before renaming
+    /// any of them shrinks that window from three encode-and-writes to three renames.
     public func save() throws {
-        settings.formatVersion = DwarfAdapters.formatVersion
-        try write(settings, to: "settings.json")
-        try write(calibration, to: "calibration.json")
-        try write(masks, to: "masks.json")
+        let pending: [(name: String, data: Data)] = [
+            ("settings.json", try encode(settings)),
+            ("calibration.json", try encode(calibration)),
+            ("masks.json", try encode(masks))
+        ]
+
+        for file in pending {
+            try file.data.write(to: temporaryURL(file.name), options: .atomic)
+        }
+        for file in pending {
+            _ = try FileManager.default.replaceItemAt(url(file.name),
+                                                      withItemAt: temporaryURL(file.name))
+        }
     }
 
-    /// Written beside the real file and moved into place, so a power cut mid-write leaves
-    /// the previous version rather than half of the new one.
-    private func write<T: Encodable>(_ value: T, to name: String) throws {
+    private static func canAim(_ calibration: Calibration) -> Bool {
+        Aimer(calibration: calibration) != nil
+    }
+
+    private func encode<T: Encodable & Decodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(value)
-
-        let target = directory.appendingPathComponent(name)
-        let temporary = directory.appendingPathComponent(name + ".tmp")
-        try data.write(to: temporary, options: .atomic)
-        _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
+        return try encoder.encode(Versioned(formatVersion: DwarfAdapters.formatVersion,
+                                            value: value))
     }
+
+    private func url(_ name: String) -> URL { directory.appendingPathComponent(name) }
+    private func temporaryURL(_ name: String) -> URL { url(name + ".tmp") }
 }
