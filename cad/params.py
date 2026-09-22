@@ -9,7 +9,8 @@ lists which ones to re-measure on arrival.
 # --- printer and fits ------------------------------------------------------------------
 BED = 256.0
 WALL = 2.4                 # shell wall, two 0.6 mm perimeters
-CLEAR = 0.3                # sliding fit
+CLEAR = 0.3                # sliding fit, machined-scale parts
+CLEAR_SHELL = 0.5          # shell-to-shell shingles: a voxel-remeshed skin is not a machined bore
 INSERT_D = 4.0             # M3 heat-set insert bore
 INSERT_DEPTH = 6.0
 INSERT_DEPTH_SHORT = 4.0       # for 5 mm parts: a short M3 insert, still blind
@@ -39,7 +40,7 @@ Z_LENS = 265.0
 BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (112.0, 180.0), (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
 BASE_FLOOR_R = 108.0
 # broad shoulders up to 365 so the phone's top corners clear the wall; the beard collar hides them
-TORSO_PROFILE = [(97.7, Z_BELT), (97.7, Z_BASE_TOP), (104.0, 280.0), (105.0, 320.0), (100.0, 360.0),
+TORSO_PROFILE = [(95.0 + CLEAR_SHELL + WALL, Z_BELT), (95.0 + CLEAR_SHELL + WALL, Z_BASE_TOP), (104.0, 280.0), (105.0, 320.0), (100.0, 360.0),
                  (96.0, 393.0), (84.0, 408.0), (76.0, Z_TORSO_TOP)]
 TORSO_R_TOP = 76.0            # neck opening; the pan linkage sweeps inside it
 HAT_BRIM_R = 70.0
@@ -49,7 +50,7 @@ HAT_TIP_R = 4.0
 HAT_BEND = 15.0            # how far the tip leans forward
 BEARD_TOP_Z = 443.0
 BEARD_BOTTOM_FRONT_Z = 350.0
-BEARD_BOTTOM_BACK_Z = 403.0
+BEARD_BOTTOM_BACK_Z = 340.0    # the collar's back hangs over the exhaust fan (348..388) as the spec asks
 BEARD_T = 3.0
 BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
 BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
@@ -94,13 +95,23 @@ FLANGE_R_IN = 80.0
 FLANGE_SCREW_R = 86.0
 FLANGE_SCREWS = 4
 FLANGE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
-CHASSIS_SCREW_ANGLES = [0.0, 90.0, 180.0, 270.0]
-DIVIDER_T = 8.0            # fills the base's top cup, flush with Z_BASE_TOP
-GLAND_D = 12.0
+DIVIDER_PROUD = 0.3        # the divider stands this much above the base's rim so the belt screws load the PU bead, not the rim
+GLAND_D = 12.5             # an M12 cable gland's thread, with clearance
 GLAND_POS = [(-40.0, 30.0), (-40.0, -30.0)]
 CHASSIS_T = 4.0
-CHASSIS_R = 88.0
+CHASSIS_R = 90.0
+CHASSIS_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]   # off the belt screws, the sled and the electronics deck
+CHASSIS_SCREW_R = FLANGE_SCREW_R - 2.0
 Z_CHASSIS = Z_BASE_TOP + RING_T   # 226, sits on the torso flange
+
+# --- belly hatch: the coat's front between the belt and the shoulders is a screwed-on panel that
+#     carries the window and the hood. The phone sled slides out forward through it, and every
+#     screw in the dry zone is driven through it. The panel is cut from the torso's raw mesh by the
+#     assembler; four bosses and a lip around the opening are interface parts on the torso.
+HATCH_Z = (Z_BASE_TOP + 6.0, 398.0)          # 244 .. 398; the sled (250 .. 372) and the phone pass
+HATCH_HALF_ANGLE = 33.0                      # degrees either side of +X; 110 mm wide at the belly
+HATCH_LIP_W = 6.0                            # lip inside the opening the panel rests on, all round
+HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -26.0), (HATCH_Z[0] + 10.0, 26.0), (HATCH_Z[1] - 10.0, -26.0), (HATCH_Z[1] - 10.0, 26.0)]   # (z, angle deg)
 
 # --- phone and window ---------------------------------------------------------------------
 PHONE_L, PHONE_W, PHONE_T = 138.3, 67.1, 7.1
@@ -123,6 +134,8 @@ LENS_FRONT_X = shell_r(TORSO_PROFILE, Z_LENS) - WALL - ACRYLIC_T - LENS_GAP
 PHONE_BACK_X = LENS_FRONT_X - LENS_CLIP_T              # back glass
 PHONE_FRONT_X = PHONE_BACK_X - PHONE_T                 # screen
 SLED_WALL = 3.0
+SLED_FOOT_H = 5.0              # the feet are runners on the chassis; one screw from above locks the sled at home
+SLED_GUIDE_H = 3.0             # ribs on the chassis either side of the feet
 
 # --- electronics --------------------------------------------------------------------------
 ESP32 = (55.0, 28.0)
@@ -132,6 +145,19 @@ XL4015_HOLE_D = 3.2
 MOSFET = (34.0, 27.0)
 EDECK_L, EDECK_W, EDECK_T = 110.0, 90.0, 4.0
 EDECK_POS = (-30.0, 0.0)       # centre, x-y; it stands on the chassis
+EDECK_STANDOFF_INSET = (14.0, 5.0)
+# board footprints on the deck, (x0, y0, x1, y1) relative to EDECK_POS: two columns, A at the back
+EDECK_LAYOUT = {
+    "xl4015_a": (-55.0, -45.0, -1.0, -22.0),
+    "xl4015_b": (-55.0, -20.0, -1.0, 3.0),
+    "fuse": (-55.0, 5.0, -25.0, 15.0),
+    "mosfet_c": (-55.0, 17.0, -21.0, 44.0),
+    "esp32": (0.0, 16.0, 55.0, 44.0),
+    "mosfet_a": (0.0, -45.0, 34.0, -18.0),
+    "mosfet_b": (0.0, -16.0, 34.0, 11.0),
+}
+MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival
+ESP32_HOLES = None                # devkit boards vary; it sits in a printed cradle (two rails + tie slots)
 EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
@@ -246,11 +272,13 @@ FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
 FACE_LIP_L = 5.0
 Z_MOUTH = Z_HEAD - 22.0        # 436
-MOUTH_D = 12.0
 NOZZLE_D = 8.0
+MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
 NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
 NOZZLE_HOLDER_X = (15.0, 28.0)
 TILT_STOP_TAB_R = 15.0
+TUBE_OD = 6.0
+TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's barb faces -X so one such bend reaches the axis
 
 # --- base, wet zone -----------------------------------------------------------------------
 CANISTER = (160.0, 120.0, 105.0)     # lying flat, long axis X, neck towards -X. 2.0 L gross: the base's circle takes no more
@@ -268,9 +296,12 @@ PUMP_LEG = 10.0
 PUMP_LEG_XY = (CANISTER[0] / 2 + 10.0, 45.0)   # legs stand beside the canister's ends
 VALVE = (45.0, 25.0, 55.0)
 VALVE_XY = (0.0, 65.0)               # beside the pump, on the pump mount's plate
+VALVE_STRAP = (12.0, 3.0)            # a bar across the valve's body, two M3s into the plate's inserts
+PUMP_TIE_SLOTS = True                # cable-tie slots beside each grommet pocket hold the pump down
 FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                      # the neck's 30 mm bore must also pass the float switch and the dip tube
+FILLER_STUB_DIR = "+z"               # the stub rises from the tank head's shoulder: a hose can climb to the back wall from there
 FILLER_CAP_THREAD_MAJOR = 22.0       # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 Z_FILLER = 150.0
