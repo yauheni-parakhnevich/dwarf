@@ -3031,7 +3031,11 @@ final class RuntimeTests: XCTestCase {
 
         let transport = FakeTransport()
         transport.isConnected = true
-        let link = ActuatorLink(transport: transport)
+        // One clock for the whole rig. The link stamps arriving statuses with it and the
+        // runtime asks about uptimes from it; two clocks is exactly the defect the review
+        // of Task 8 found, where a single rewind withheld every status forever.
+        let steady = SteadyClock(wrapping: clock)
+        let link = ActuatorLink(transport: transport, clock: steady)
         let detector = FakeDetector()
         let battery = FakeBattery()
 
@@ -3041,7 +3045,7 @@ final class RuntimeTests: XCTestCase {
             detector: detector,
             geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080), quarterTurns: 0),
             power: PowerManager(battery: battery),
-            clock: SteadyClock(wrapping: clock))
+            clock: steady)
 
         return Rig(runtime: runtime, detector: detector, transport: transport, link: link,
                    clock: clock, battery: battery, store: store)
@@ -3065,11 +3069,13 @@ final class RuntimeTests: XCTestCase {
         return pixels
     }
 
-    private func healthyStatus(at uptime: TimeInterval, in rig: Rig) {
+    /// The link timestamps this from the clock, so the caller sets `rig.clock.uptime`
+    /// first, exactly as the real transport's callback would arrive mid-cycle.
+    private func healthyStatus(in rig: Rig) {
         rig.transport.deliver(Data("""
         {"armed":true,"pan":0,"tilt":0,"tank":"ok","pump":true,"charge":false,\
         "fan":false,"temp":22,"fault":null,"shots":0}\n
-        """.utf8), at: uptime)
+        """.utf8))
     }
 
     func testACycleWithNoAnswerYetIsPendingNotAnEmptyAnswer() throws {
@@ -3108,7 +3114,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<120 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
             if i % 3 == 0 { rig.runtime.waitForDetector() }
         }
@@ -3124,7 +3130,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<120 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
             if i % 3 == 0 { rig.runtime.waitForDetector() }
         }
@@ -3153,7 +3159,7 @@ final class RuntimeTests: XCTestCase {
         let rig = try makeRig()
         rig.runtime.thermalOverride = .critical
         rig.clock.uptime = 1
-        healthyStatus(at: 1, in: rig)
+        healthyStatus(in: rig)
         rig.runtime.handle(frame: brightBuffer())
 
         XCTAssertTrue(rig.transport.sentStrings.contains { $0.contains("\"arm\"") && $0.contains("false") })
@@ -3166,7 +3172,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<30 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
         }
 
@@ -3587,8 +3593,9 @@ final class GnomeController: ObservableObject {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let store = Store(directory: directory)
+        let clock = SteadyClock(wrapping: SystemClock())
         let transport = BluetoothTransport()
-        let link = ActuatorLink(transport: transport)
+        let link = ActuatorLink(transport: transport, clock: clock)
         // A missing or unreadable model must be visible, not papered over: the fallback
         // detector never finds anything, so the gnome would sit there looking healthy and
         // watching nothing.
@@ -3610,7 +3617,7 @@ final class GnomeController: ObservableObject {
             geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080),
                                     quarterTurns: store.settings.quarterTurns),
             power: PowerManager(battery: DeviceBattery()),
-            clock: SteadyClock(wrapping: SystemClock()))
+            clock: clock)
         self.mode = store.settings.mode
         self.modelMissing = missing
     }
