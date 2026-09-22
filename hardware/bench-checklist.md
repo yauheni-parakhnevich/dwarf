@@ -24,8 +24,8 @@ that misbehaves dry will misbehave wet at four bar.
 | 0b | Dead probe refuses to arm | Unplug the DS18B20, then `{"c":"arm","v":true}` | `"temp":-127`, `"fault":"TEMP_SENSOR"`, arming refused | |
 | 0c | Probe restored | Plug it back in | Fault clears within ~5 s, arming works | |
 | 0d | Serial cannot mask a silent phone | Connect over BLE, send any command, then let BLE go quiet while flooding `{"c":"hb"}` over serial | The gnome goes safe about 3 s after BLE's last command. Serial must not keep it alive | |
-| 0f | The phone is bonded | Pair once from the phone, entering the passkey the gnome prints over serial, then disconnect and reconnect | The second connection asks for nothing and the board logs `"encrypted":true,"authenticated":true,"bonded":true` | **PASSED 2026-09-22** |
 | 0e | Disconnect is immediate | Arm, turn the fan on over BLE, then disconnect the central | Fan off in well under a second, not after 3 s | |
+| 0f | The phone is bonded | Pair once from the phone, entering the passkey the gnome prints over serial, then disconnect and reconnect | The second connection asks for nothing and the board logs `"encrypted":true,"authenticated":true,"bonded":true` | **PASSED 2026-09-22** |
 
 ## With water
 
