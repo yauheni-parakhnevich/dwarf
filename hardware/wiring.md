@@ -76,7 +76,7 @@ prevent a specific, repeatable failure.
 | 10 kΩ resistor | 4 | Gate to GND on GPIO 25, 26, 27, 14 | Between power-on and `setup()`, the GPIOs float. A floating logic-level gate half-opens its MOSFET. **The valve opens every time the gnome reboots** |
 | 10 kΩ resistor | 1 | GPIO 34 to 3V3 | The float switch reads as noise, and the tank looks empty or full at random |
 | 10 kΩ resistor | 1 | GPIO 33 to 3V3 | The pairing button's pin floats low, which reads as a button held down. Firmware refuses to act on a press it never saw released, so the failure is a button that does nothing rather than a gnome that forgets its phone — but the resistor is what makes the button work at all |
-| Momentary switch | 1 | GPIO 33 to GND, on the electronics deck | No button, no laptop-free recovery of a broken pairing |
+| Momentary switch | 1 | GPIO 33 to GND, on the electronics deck | No button, no laptop-free recovery of a broken pairing. **Set `PAIR_BUTTON_FITTED` to true in `pins.h` once the switch and its pull-up are in place** — the firmware ignores the pin until then, because a floating input reads as a button held down and the button's whole job is to discard a working bond |
 | 4.7 kΩ resistor | 1 | GPIO 4 to 3V3 | The 1-Wire bus never idles high; the DS18B20 is simply never found |
 | 1N5819 or 1N4007 | 2 | Across the solenoid and across the pump, **cathode to +12 V** | Both are inductive. Switching them off without a path for the collapsing field puts hundreds of volts across the MOSFET, which fails **on** — a valve stuck open with no way to close it |
 | 1000 µF ≥ 25 V electrolytic | 1 | Across the 12 V rail at the pump MOSFET | Pump inrush resets the ESP32 mid-burst |

@@ -481,6 +481,7 @@ void closePairingWindow() {
 // for kPairingHoldMs before anything happens, and has to be released before it
 // can fire again.
 void pollPairingButton(Millis now) {
+    if (!PAIR_BUTTON_FITTED) return;
     const bool down = digitalRead(PIN_PAIR_BUTTON) == LOW;
 
     if (!down) {
