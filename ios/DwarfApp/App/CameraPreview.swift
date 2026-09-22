@@ -26,9 +26,6 @@ struct CameraPreview: UIViewRepresentable {
         // when it is wrong the bars say so instead of the animal changing shape.
         view.layer.videoGravity = .resizeAspect
         view.layer.session = session
-        // The sensor's own landscape orientation, which is the one the pixel buffer arrives
-        // in and therefore the one FrameGeometry's quarter turns are measured from.
-        view.layer.connection?.videoOrientation = .landscapeRight
         return view
     }
 
@@ -38,5 +35,20 @@ struct CameraPreview: UIViewRepresentable {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         // swiftlint:disable:next force_cast
         override var layer: AVCaptureVideoPreviewLayer { super.layer as! AVCaptureVideoPreviewLayer }
+
+        /// Forced here rather than once at construction, because at construction the layer
+        /// has no connection yet — the session has only just been handed over — so setting
+        /// it there silently did nothing and the layer kept its portrait default. The data
+        /// output delivers the sensor's native 1920x1080, so the preview has to be told to
+        /// present the same way or the picture is turned a quarter relative to every box
+        /// drawn over it: the video ends up pillarboxed in a narrow strip while the overlay
+        /// spans the full width, and a track lands nowhere near the animal.
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let connection = layer.connection,
+                  connection.isVideoOrientationSupported,
+                  connection.videoOrientation != .landscapeRight else { return }
+            connection.videoOrientation = .landscapeRight
+        }
     }
 }
