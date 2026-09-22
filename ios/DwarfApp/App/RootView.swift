@@ -31,7 +31,6 @@ struct RootView: View {
     @ViewBuilder private var pane: some View {
         Group {
             preview
-                .aspectRatio(gnome.frameAspect, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
 
@@ -60,9 +59,26 @@ struct RootView: View {
     /// Blobs, crops and tracks drawn in normalised frame coordinates. This one view exposes
     /// what no counter can: whether the image is the right way up, whether crops are being
     /// cut where the motion actually is, and whether a box sits on the animal or beside it.
+    /// The largest box of the frame's own shape that fits the space offered.
+    ///
+    /// Computed here rather than left to `.aspectRatio`, which was applied outside a
+    /// `GeometryReader` and stopped constraining anything once the layout learned to stack
+    /// for a portrait screen. The preview layer uses `.resize`, so it fills whatever box it
+    /// is given without regard to the video's own shape — hand it a box of the wrong
+    /// proportions and the picture is simply squashed, which is what happened. The overlay
+    /// shares the same box, so normalised coordinates still land where the pipeline says.
+    private func fitted(_ available: CGSize) -> CGSize {
+        let aspect = gnome.frameAspect
+        guard available.width > 0, available.height > 0, aspect > 0 else { return .zero }
+        return available.width / available.height > aspect
+            ? CGSize(width: available.height * aspect, height: available.height)
+            : CGSize(width: available.width, height: available.width / aspect)
+    }
+
     private var preview: some View {
         GeometryReader { geometry in
-            let w = geometry.size.width, h = geometry.size.height
+            let picture = fitted(geometry.size)
+            let w = picture.width, h = picture.height
             ZStack(alignment: .topLeading) {
                 Color.black
 
@@ -106,6 +122,8 @@ struct RootView: View {
                     Text("PAUSED").font(.caption.bold()).foregroundStyle(.orange).padding(6)
                 }
             }
+            .frame(width: w, height: h)
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
 
