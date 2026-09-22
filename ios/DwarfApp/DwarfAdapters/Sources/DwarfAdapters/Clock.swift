@@ -37,6 +37,12 @@ public final class SteadyClock: Clock {
     private var offset: TimeInterval = 0
     private var lastRaw: TimeInterval?
     private var lastReported: TimeInterval = 0
+    /// Reading this clock mutates it, and the app has at least two queues that want the
+    /// time: the camera's and the radio's. ThreadSanitizer found twenty-one races here
+    /// under eight threads, and the visible damage was worse than torn reads — racing
+    /// readers mistake each other's progress for a rewind, so the anomaly counter climbs
+    /// and the offset inflates for no reason at all.
+    private let lock = NSLock()
 
     /// How many times the underlying clock misbehaved. Surfaced in the status screen,
     /// because a phone whose clock jumps is a phone with a bigger problem.
@@ -49,6 +55,8 @@ public final class SteadyClock: Clock {
     }
 
     public var uptime: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
         let raw = wrapped.uptime
 
         guard raw.isFinite else {

@@ -26,6 +26,9 @@ public final class ActuatorLink {
 
     public let config: LinkConfig
     private let transport: Transport
+    private let clock: Clock
+    /// True while the tail of an over-long message is still being discarded.
+    private var resynchronising = false
 
     private var buffer = Data()
     private var latestStatus: DeviceStatus?
@@ -38,8 +41,18 @@ public final class ActuatorLink {
     public var bufferedBytes: Int { buffer.count }
     public var isConnected: Bool { transport.isConnected }
 
-    public init(transport: Transport, config: LinkConfig = LinkConfig()) {
+    /// - Parameter clock: the same clock everything else in the app runs on. This class
+    ///   used to read `ProcessInfo.systemUptime` directly when stamping an arriving status,
+    ///   while `status(asOf:)` was asked about an uptime that came from `SteadyClock`. The
+    ///   two agree right up until the moment `SteadyClock` compensates for a rewind, and
+    ///   then they never agree again: every status, however fresh, reads as older than
+    ///   `maxStatusAge` and is withheld forever. One clock glitch anywhere in the process's
+    ///   life and the gnome silently stops being able to fire, with nothing logged and
+    ///   every test still green. Measured: five out of five statuses rejected, each of them
+    ///   zero seconds old.
+    public init(transport: Transport, clock: Clock, config: LinkConfig = LinkConfig()) {
         self.transport = transport
+        self.clock = clock
         self.config = config
 
         transport.onReceive = { [weak self] data in
@@ -52,6 +65,7 @@ public final class ActuatorLink {
                 self.latestStatus = nil
                 self.latestStatusAt = nil
                 self.buffer.removeAll(keepingCapacity: true)
+                self.resynchronising = false
             }
             self.lastHeartbeat = nil
         }
@@ -83,18 +97,38 @@ public final class ActuatorLink {
     }
 
     private func absorb(_ data: Data) {
+        // Bytes arriving while the transport says it is down are not evidence of anything.
+        // `status(asOf:)` re-checks the flag, but only the current one, so a transport that
+        // forgot to announce a reconnection could otherwise make a status from a previous
+        // session look live.
+        guard transport.isConnected else {
+            buffer.removeAll(keepingCapacity: true)
+            return
+        }
+
         buffer.append(data)
 
         while let newline = buffer.firstIndex(of: 0x0A) {
             let line = buffer[buffer.startIndex..<newline]
             buffer = buffer[buffer.index(after: newline)...]
+
+            if resynchronising {
+                // That newline ended the over-long message, not a real one.
+                resynchronising = false
+                continue
+            }
             handle(Data(line))
         }
 
         if buffer.count > ActuatorLink.maxMessageBytes {
-            // No terminator in a message this long means the stream is out of step. Keeping
-            // the tail gives the next real message a chance to start cleanly.
-            buffer = Data(buffer.suffix(ActuatorLink.maxMessageBytes))
+            // No terminator in a message this long means the stream is out of step. The
+            // buffer used to keep its tail, on the theory that it gave the next real
+            // message a clean start; measured, it did the opposite — the tail merged with
+            // the next message and swallowed that one too, so a single overrun cost two
+            // messages rather than one. Everything up to the next newline is discarded
+            // instead.
+            buffer.removeAll(keepingCapacity: true)
+            resynchronising = true
             malformedMessages += 1
         }
     }
@@ -109,18 +143,12 @@ public final class ActuatorLink {
         switch message {
         case .status(let status):
             latestStatus = status
-            latestStatusAt = receivedAt()
+            latestStatusAt = clock.uptime
         case .ack(let ack):
             lastAck = ack
             if !ack.ok, let why = ack.why {
                 refusals[why, default: 0] += 1
             }
         }
-    }
-
-    /// The uptime a delivery should be recorded against. The transport knows, because it is
-    /// the thing being called back.
-    private func receivedAt() -> TimeInterval {
-        (transport as? FakeTransport)?.receivedAt ?? ProcessInfo.processInfo.systemUptime
     }
 }

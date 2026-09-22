@@ -47,10 +47,9 @@ public final class FakeTransport: Transport {
         sent.append(data)
     }
 
-    /// Hand bytes to the link as if the radio had delivered them. `at` is the uptime the
-    /// link should record them against.
-    public func deliver<C: DataProtocol>(_ bytes: C, at uptime: TimeInterval) {
-        receivedAt = uptime
+    /// Hand bytes to the link as if the radio had delivered them. The link timestamps
+    /// them from its own clock, so a test sets that clock first.
+    public func deliver<C: DataProtocol>(_ bytes: C) {
         onReceive?(Data(bytes))
     }
 
@@ -58,8 +57,4 @@ public final class FakeTransport: Transport {
         isConnected = connected
         onConnectionChange?(connected)
     }
-
-    /// Read by `ActuatorLink` in tests so a delivery can be given a timestamp without the
-    /// production API growing one it does not need.
-    public var receivedAt: TimeInterval = 0
 }
