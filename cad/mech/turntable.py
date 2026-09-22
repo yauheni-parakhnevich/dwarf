@@ -3,7 +3,7 @@ import math
 from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, Location, extrude, Axis
 import params as P
 from mech import part
-from mech.common import cyl_z, cyl_y, box, insert_holes, servo_body
+from mech.common import cyl_z, cyl_y, box, insert_holes
 
 
 def _polar(r, deg, z):
@@ -16,6 +16,29 @@ def _crank_pin():
     return P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a)
 
 
+def _bearing_holes(part, z0, z1):
+    """The lazy susan's four screws, on the diagonal of its bolt square."""
+    for a in (45, 135, 225, 315):
+        x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
+        part = part - cyl_z(P.BEARING_HOLE / 2, z0, z1, x, y)
+    return part
+
+
+PIN_BOSS_D = 8.0        # no parameter for it: inside the link eye's 9.2 face, outside its 3.2 bore
+
+
+def _stop_pin_deg():
+    """Where a stop pin's centre sits: the plate's tab and the pin both subtend at STOP_POST_R."""
+    tab = math.degrees(math.asin((P.STOP_TAB_W / 2) / P.STOP_POST_R))
+    pin = math.degrees(math.asin((P.STOP_POST_D / 2) / P.STOP_POST_R))
+    return P.PAN_STOP_DEG + tab + pin
+
+
+def _in_wall():
+    """Interface parts are clipped to this: 1.2 mm into the head's wall, never through it."""
+    return Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.2)
+
+
 def _column_slot(z0, z1):
     """The arc the plate's hanging column swings in: the annulus r0..r1 within +/-half of +X.
 
@@ -24,7 +47,7 @@ def _column_slot(z0, z1):
     r0, r1, half = P.DECK_SLOT
     band = cyl_z(r1, z0, z1) - cyl_z(r0, z0 - 1, z1 + 1)
     ahead = box(0, r1 + 5, -(r1 + 5), r1 + 5, z0 - 1, z1 + 1)          # every point with x >= 0
-    return band & ahead & ahead.rotate(Axis.Z, half - 90) & ahead.rotate(Axis.Z, 90 - half)
+    return band & ahead.rotate(Axis.Z, half - 90) & ahead.rotate(Axis.Z, 90 - half)
 
 
 @part("deck_ring", section="torso")
@@ -57,9 +80,7 @@ def deck():
     z1, z0 = P.Z_DECK, P.Z_DECK - P.DECK_T
     d = cyl_z(P.DECK_R, z0, z1)
     d = d - cyl_z(P.SHAFT_OD / 2 + P.CLEAR + 1.0, z0 - 1, z1 + 1)          # shaft passes with room
-    for a in (45, 135, 225, 315):                                          # bearing screws
-        x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
-        d = d - cyl_z(P.BEARING_HOLE / 2, z0 - 1, z1 + 1, x, y)
+    d = _bearing_holes(d, z0 - 1, z1 + 1)
     for a in P.DECK_SCREW_ANGLES:                                          # down into the ring
         x, y, _ = _polar(P.DECK_SCREW_R, a, 0)
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
@@ -73,15 +94,22 @@ def deck():
     # them by 0.25; trim every hanger back to a clearance around the servo
     L, W, H = P.DS3218["body"]
     off, (sx, sy) = P.DS3218["shaft_off"], P.PAN_SERVO_XY
-    d = d - box(sx - off - P.CLEAR, sx + (L - off) + P.CLEAR, sy - W / 2 - P.CLEAR, sy + W / 2 + P.CLEAR,
-                P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.CLEAR)
-    # hard-stop posts either side of the plate's front tab. They stop a hair below the plate's
-    # top face, because the yoke's ring stands on that face and its feet sweep over them.
-    half_tab = math.degrees(math.atan2(P.STOP_TAB_W / 2, P.PLATE_R))
+    d = d - box(sx - off - P.PAN_SERVO_FIT, sx + (L - off) + P.PAN_SERVO_FIT,
+                sy - W / 2 - P.PAN_SERVO_FIT, sy + W / 2 + P.PAN_SERVO_FIT,
+                P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.PAN_SERVO_FIT)
+    # seats for the two hard-stop pins, drilled from the top face. They are separate parts, so
+    # nothing stands proud of the deck and it prints flat, hangers up.
     for sign in (1, -1):
-        x, y, _ = _polar(P.STOP_POST_R, sign * (P.PAN_STOP_DEG + half_tab + math.degrees(math.atan2(P.STOP_POST_D / 2, P.STOP_POST_R))), 0)
-        d = d + cyl_z(P.STOP_POST_D / 2, z1 - 0.01, P.Z_PLATE_TOP - P.CLEAR, x, y)
+        x, y, _ = _polar(P.STOP_POST_R, sign * _stop_pin_deg(), 0)
+        d = d - cyl_z((P.STOP_POST_D + 0.1) / 2, z1 - P.STOP_PIN_DEPTH, z1 + 0.01, x, y)
     return d
+
+
+@part("stop_pin")
+def stop_pin():
+    """Glued into the deck; the plate's tab runs into it at the pan stop. Print two."""
+    x, y, _ = _polar(P.STOP_POST_R, _stop_pin_deg(), 0)
+    return cyl_z(P.STOP_POST_D / 2, P.Z_DECK - P.STOP_PIN_DEPTH, P.STOP_PIN_TOP, x, y)
 
 
 @part("plate")
@@ -96,16 +124,17 @@ def plate():
     z1 = P.Z_PLATE_TOP
     p = cyl_z(P.PLATE_R, z0, z1)
     p = p - cyl_z(P.SHAFT_OD / 2 + 0.1, z0 - 1, z1 + 1)                    # shaft bonds in here
-    for a in (45, 135, 225, 315):                                          # bearing's top ring
-        x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
-        p = p - cyl_z(P.BEARING_HOLE / 2, z0 - 1, z1 + 1, x, y)
+    p = _bearing_holes(p, z0 - 1, z1 + 1)                                  # bearing's top ring
     p = p + box(P.PLATE_R - 1, P.STOP_POST_R + P.STOP_POST_D / 2 + 1, -P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, z0, z1)  # stop tab, front
     # column from the stop tab's underside through the deck's slot, and the foot bar to the pin
     r_in, r_out, w = P.PAN_COLUMN
     p = p + box(r_in, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, z0 + 0.01)
     p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
     px, py = _crank_pin()
-    p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM)], depth=P.INSERT_DEPTH_SHORT, direction="up")   # blind in a 5 mm bar
+    # the pin's boss: the screw clamps this half-millimetre, so the link is free to turn on it
+    p = p + cyl_z(PIN_BOSS_D / 2, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H, P.Z_CRANK_BOTTOM, px, py)
+    p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H)],
+                     depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm bar
     p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES], depth=P.PLATE_T - 1)
     return p
 
@@ -114,7 +143,7 @@ def plate():
 def shaft():
     """Hollow, passive: bonded into the plate, turns inside the bearing's opening."""
     z1 = P.Z_PLATE_TOP + 6.0                 # proud of the plate for a flared lip
-    z0 = P.Z_DECK - P.DECK_T - 40.0          # well below the deck so the tube's bend stays gentle
+    z0 = P.SHAFT_BOTTOM                      # below the link's plane, so the tube leaves clear of the sweep
     s = cyl_z(P.SHAFT_OD / 2, z0, z1) - cyl_z(P.SHAFT_ID / 2, z0 - 1, z1 + 1)
     flare = cyl_z(P.SHAFT_OD / 2 + 3, z1 - 3, z1) - cyl_z(P.SHAFT_ID / 2, z1 - 4, z1 + 1)
     return s + flare
@@ -134,7 +163,9 @@ def servo_crank():
         hx, hy, _ = _polar(P.HORN_SCREW_R, a, 0)
         arm = arm - cyl_z(P.M2_5_CLEAR / 2, z0 - 1, z1 + 1, sx + hx, sy + hy)
     arm = arm - cyl_z(2.5, z0 - 1, z1 + 1, sx, sy)                                     # horn's centre screw
-    return insert_holes(arm, [(px, py, z0)], depth=P.INSERT_DEPTH_SHORT, direction="up")   # blind in a 5 mm crank
+    arm = arm + cyl_z(PIN_BOSS_D / 2, z0 - P.PIN_BOSS_H, z0, px, py)                 # the link turns on this
+    return insert_holes(arm, [(px, py, z0 - P.PIN_BOSS_H)],
+                        depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm crank
 
 
 @part("pan_link")
@@ -146,7 +177,7 @@ def pan_link():
     ang = math.degrees(math.atan2(by - ay, bx - ax))
     bar = box(0, length, -3.0, 3.0, z0, z1).rotate(Axis.Z, ang).moved(Location((ax, ay, 0)))
     link = bar + cyl_z(P.LINK_EYE_R, z0, z1, ax, ay) + cyl_z(P.LINK_EYE_R, z0, z1, bx, by)
-    return link - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, ax, ay) - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, bx, by)
+    return link - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, ax, ay) - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, bx, by)
 
 
 def _arm_y(sy):
@@ -173,18 +204,21 @@ def yoke():
     y0, y1 = _arm_y(1)
     hexagon = Pos(0, (y0 + y1) / 2, P.Z_HEAD) * Rot(90, 0, 0) * extrude(RegularPolygon(P.COUPLER_HEX_AF / math.sqrt(3) + P.CLEAR / 2, 6), P.YOKE_ARM_T + 2, both=True)
     y = y - hexagon
-    y = y - cyl_z(P.M3_CLEAR / 2, P.Z_HEAD - 1, P.Z_HEAD + P.YOKE_ARM_W / 2 + 1, 0, (y0 + y1) / 2)
-    # -Y: pin bore and two stop pegs reaching inward to the ear's tab
+    # the cross screw threads into an insert in the arm's top and its tip enters the coupler's hole
+    cy, top = (y0 + y1) / 2, P.Z_HEAD + P.YOKE_ARM_W / 2
+    y = insert_holes(y, [(0, cy, top)])
+    y = y - cyl_z(P.M3_CLEAR / 2, P.Z_HEAD - 1, top - P.INSERT_DEPTH + 0.01, 0, cy)
+    # -Y: the M4 bolt's clearance hole, which is the tilt bearing, and two stop pegs
     y0, y1 = _arm_y(-1)
-    y = y - cyl_y(P.M4_PIN / 2 + 0.05, y0 - 1, y1 + 1, 0, P.Z_HEAD)
+    y = y - cyl_y(P.M4_PIN / 2 + 0.1, y0 - 1, y1 + 1, 0, P.Z_HEAD)
     peg_r = 2.5
-    half = math.degrees(math.atan2(P.STOP_TAB_W / 2, P.TILT_STOP_TAB_R))
-    peg_half = math.degrees(math.atan2(peg_r, P.TILT_STOP_TAB_R))
+    half = math.degrees(math.asin((P.STOP_TAB_W / 2) / P.TILT_STOP_TAB_R))
+    peg_half = math.degrees(math.asin(peg_r / P.TILT_STOP_TAB_R))
     for deg in P.TILT_STOP:
-        # the tab hangs straight down (270°) at tilt 0; turning the head by +deg about +Y carries
-        # it to 270 - deg. The peg's flank, not its centre, is what the tab lands on, so it sits
-        # its own half-angle plus the tab's beyond the tab's rotated centre.
-        a = 270.0 - deg - math.copysign(half + peg_half, deg)
+        # the tab hangs straight down (270 deg) at tilt 0. Positive tilt is nose up, which carries
+        # a point at angle phi to phi + deg, so the peg sits beyond the tab's rotated centre in the
+        # direction it travels, by its own half-angle plus the tab's.
+        a = 270.0 + deg + math.copysign(half + peg_half, deg)
         px = P.TILT_STOP_TAB_R * math.cos(math.radians(a))
         pz = P.Z_HEAD + P.TILT_STOP_TAB_R * math.sin(math.radians(a))
         y = y + cyl_y(peg_r, y1 - 0.01, -(P.HEAD_R + 1.0), px, pz)   # inward from the arm's inner face
@@ -193,65 +227,134 @@ def yoke():
 
 @part("ear_boss", section="head_back")
 def ear_boss():
-    """-Y ear: fixed to the head, bored for the M4 pin, with the tilt stop tab. Unioned into the head."""
+    """-Y ear: fixed to the head, with an M4 insert the tilt bolt threads into, and the stop tab.
+
+    The bolt comes from outside through the arm's clearance hole, which is the bearing, and
+    threads into the insert here; its head stays outside the arm where a driver can reach it.
+    """
     y_out, y_in = -P.EAR_OUT_Y, -(P.HEAD_R - 10.0)
-    boss = cyl_y(P.EAR_R, y_out, y_in, 0, P.Z_HEAD) - cyl_y(P.M4_PIN / 2 + 0.1, y_out - 1, y_in + 1, 0, P.Z_HEAD)
+    boss = cyl_y(P.EAR_R, y_out, y_in, 0, P.Z_HEAD)
+    boss = boss - cyl_y(P.INSERT_M4_D / 2, y_out - 1, y_out + P.INSERT_M4_DEPTH, 0, P.Z_HEAD)
     tab = box(-P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, y_out + 1, y_out + 5, P.Z_HEAD - P.TILT_STOP_TAB_R - 2, P.Z_HEAD)
     return boss + tab
 
 
 @part("coupler")
 def coupler():
-    """+Y ear: the tilt servo's horn on the inside, a hex in the yoke arm on the outside."""
-    y_horn = P.TILT_SERVO_SHAFT_Y
+    """+Y ear: a plain shaft on the servo's horn inside, a hex in the yoke's arm outside.
+
+    No boss and no horn pocket, so nothing on it is wider than the wall bore. Its inner face
+    lands on the horn's outer face; the two horn screws drop down counterbores that a driver
+    reaches from the hex end, and a recess clears the horn's own centre screw.
+    """
+    y_in = P.TILT_SERVO_SHAFT_Y + P.HORN_T                     # the horn's outer face
     y_arm0, y_arm1 = _arm_y(1)
-    c = cyl_y(P.COUPLER_D / 2, y_horn, P.EAR_OUT_Y, 0, P.Z_HEAD)
-    c = c + cyl_y(P.HORN_D / 2 + 3, y_horn, y_horn + P.HORN_T + 3, 0, P.Z_HEAD)   # boss around the horn pocket
-    hexagon = Pos(0, (P.EAR_OUT_Y + y_arm1) / 2, P.Z_HEAD) * Rot(90, 0, 0) * extrude(RegularPolygon(P.COUPLER_HEX_AF / math.sqrt(3), 6), (y_arm1 - P.EAR_OUT_Y) / 2, both=True)
-    c = c + hexagon
-    c = c - cyl_y(P.HORN_D / 2 + P.CLEAR / 2, y_horn - 1, y_horn + P.HORN_T, 0, P.Z_HEAD)          # horn pocket
-    for a in (0, 90, 180, 270):
+    c = cyl_y(P.COUPLER_D / 2, y_in, P.EAR_OUT_Y, 0, P.Z_HEAD)
+    c = c + Pos(0, (P.EAR_OUT_Y + y_arm1) / 2, P.Z_HEAD) * Rot(90, 0, 0) * extrude(
+        RegularPolygon(P.COUPLER_HEX_AF / math.sqrt(3), 6), (y_arm1 - P.EAR_OUT_Y) / 2, both=True)
+    c = c - cyl_y(5.0 / 2, y_in - 0.01, y_in + 1.5, 0, P.Z_HEAD)          # the horn's centre screw head
+    for a in P.HORN_SCREWS_USED:
         hx, hz, _ = _polar(P.HORN_SCREW_R, a, 0)
-        c = c - cyl_y(P.M2_5_CLEAR / 2, y_horn - 1, y_horn + P.HORN_T + 8, hx, P.Z_HEAD + hz)
+        c = c - cyl_y(P.HORN_ACCESS_D / 2, y_in + 2.0, y_arm1 + 1, hx, P.Z_HEAD + hz)   # driver bore
+        c = c - cyl_y(P.M2_5_CLEAR / 2, y_in - 1, y_in + 2.01, hx, P.Z_HEAD + hz)       # the screw itself
     c = c - cyl_z(P.M3_CLEAR / 2, P.Z_HEAD - 1, P.Z_HEAD + P.YOKE_ARM_W / 2 + 1, 0, (y_arm0 + y_arm1) / 2)  # cross screw
     return c
 
 
-@part("tilt_bulkhead", section="head_back")
-def tilt_bulkhead():
-    """Chord plate inside the head the tilt servo's tabs screw to. Unioned into the back of the head.
+def _tab_holes():
+    """The tilt servo's four tab holes, as (x, z), and the body's centre along its length."""
+    along, across = P.MG996R["holes"]
+    zc = P.Z_HEAD + P.MG996R["shaft_off"] - P.MG996R["body"][0] / 2
+    return [(dx, zc + dz) for dx in (-across / 2, across / 2) for dz in (-along / 2, along / 2)]
+
+
+def _cradle_channel():
+    """The slot the cradle plate slides in: its y faces with CLEAR either side."""
+    return P.BULKHEAD_Y - P.BULKHEAD_T - P.CLEAR, P.BULKHEAD_Y + P.CLEAR
+
+
+def _lower_boss_sweep():
+    """Where the cradle's two lower bosses travel, hanging below its bottom edge.
+
+    The lower tab holes sit below CRADLE_Z[0], so their bosses overhang the plate; they sweep
+    this band every millimetre of the way in, and the lower rail is relieved along it.
+    """
+    _, across = P.MG996R["holes"]
+    hz = min(z for _, z in _tab_holes())
+    r = P.BULKHEAD_BOSS_D / 2
+    return box(-across / 2 - r - P.CLEAR, P.HEAD_R + 40.0,
+               P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0 - P.CLEAR, P.BULKHEAD_Y - P.BULKHEAD_T + 0.05,
+               hz - r - P.CLEAR, hz + r + P.CLEAR)
+
+
+@part("tilt_cradle")
+def tilt_cradle():
+    """The tilt servo's plate, assembled with it on the bench and slid into the head's rails.
 
     The MG996R's flange is 28 mm up its 42.9 mm body, so 28 mm of body hangs through a window
-    in the plate and only the tabs land on its +Y face. The inserts therefore sit in bosses on
-    the plate's -Y side, where the servo is not: they open at the +Y face, six millimetres deep,
-    and stop a millimetre short of the boss's end.
+    and only the tabs land on the +Y face. The inserts are in bosses on the -Y side, where the
+    servo is not: they open at the +Y face, six millimetres deep, and stop a millimetre short.
+    A plain rectangle - it is a loose part, not part of the shell.
     """
     y1 = P.BULKHEAD_Y
     y0 = y1 - P.BULKHEAD_T
     L, W, H = P.MG996R["body"]
-    along, across = P.MG996R["holes"]
-    z_top = P.Z_HEAD + P.MG996R["shaft_off"]
-    zc = z_top - L / 2
-    plate = box(-P.HEAD_R + 2, P.FACE_SPLIT_X - 1, y0, y1, zc - along / 2 - 8, zc + along / 2 + 8)
-    with SkipClean():                      # tidying a sphere's boolean result corrupts it
-        plate = plate & (Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.0))
+    plate = box(P.CRADLE_X[0], P.CRADLE_X[1], y0, y1, P.CRADLE_Z[0], P.CRADLE_Z[1])
     y_boss = y1 - P.INSERT_DEPTH - 1.0                                   # the insert's blind end
-    holes = [(dx, zc + dz) for dx in (-across / 2, across / 2) for dz in (-along / 2, along / 2)]
-    for hx, hz in holes:
+    for hx, hz in _tab_holes():
         plate = plate + cyl_y(P.BULKHEAD_BOSS_D / 2, y_boss, y0 + 0.01, hx, hz)
-    # the body drops through this window; it also trims the bosses, which reach 0.9 mm past its ends
+    # the body drops through this window; it also trims the bosses, which reach past its ends
     plate = plate - box(-W / 2 - P.CLEAR, W / 2 + P.CLEAR, y_boss - 1, y1 + 1,
-                        P.Z_HEAD - (L - P.MG996R["shaft_off"]) - P.CLEAR, z_top + P.CLEAR)
-    for hx, hz in holes:
+                        P.Z_HEAD - (L - P.MG996R["shaft_off"]) - P.CLEAR,
+                        P.Z_HEAD + P.MG996R["shaft_off"] + P.CLEAR)
+    for hx, hz in _tab_holes():
         plate = plate - cyl_y(P.INSERT_D / 2, y1 - P.INSERT_DEPTH, y1 + 1, hx, hz)
     return plate
+
+
+@part("cradle_rails", section="head_back")
+def cradle_rails():
+    """Two channels along X on the back of the head that the tilt cradle slides into.
+
+    The plate goes in bottom edge first behind the lower rail's front lip, then swings up into
+    the upper rail, which is two millimetres deeper than it needs so it can. A back wall stops
+    it at home and ties the two rails into one piece. Everything is clipped into the wall.
+    """
+    c0, c1 = _cradle_channel()
+    lo, hi = c0 - P.RAIL_T, c1 + P.RAIL_T
+    x_back, x_front = -(P.HEAD_R + 20.0), P.CRADLE_X[1]      # the sphere clips the back
+    zb, zt = P.CRADLE_Z
+    r = box(x_back, x_front, lo, c0, zb - P.RAIL_H, zb + 3.0)            # lower -Y lip
+    r = r + box(x_back, x_front, c1, hi, zb - P.RAIL_H, zb + 3.0)        # lower +Y lip
+    r = r + box(x_back, x_front, lo, hi, zb - P.RAIL_H, zb)              # floor, under the bottom edge
+    r = r + box(x_front, x_front + P.RAIL_LIP_L, lo, hi, zb - P.RAIL_H, zb + 3.0)   # front lip
+    r = r + box(x_back, x_front, lo, c0, zt - 3.0, zt + P.RAIL_H)        # upper -Y lip
+    r = r + box(x_back, x_front, c1, hi, zt - 3.0, zt + P.RAIL_H)        # upper +Y lip
+    r = r + box(x_back, x_front, lo, hi, zt + 2.0, zt + P.RAIL_H)        # ceiling, 2 mm of swing room
+    r = r + box(x_back, P.CRADLE_X[0], lo, hi, zb - P.RAIL_H, zt + P.RAIL_H)        # back wall
+    r = r - _lower_boss_sweep()
+    return r & _in_wall()
+
+
+def _lip_band(grow=0.0):
+    """The spherical band the face cap seats on; `grow` inflates it into a clearance cutter."""
+    r_out = P.HEAD_R - P.WALL - P.CLEAR + grow
+    band = box(P.FACE_SPLIT_X - P.FACE_LIP_L - grow, P.FACE_SPLIT_X + P.FACE_LIP_L + grow,
+               -P.HEAD_R, P.HEAD_R, P.Z_HEAD - P.HEAD_R, P.Z_HEAD + P.HEAD_R)
+    with SkipClean():                      # build123d corrupts a sphere's boolean when it tidies it
+        shell = (Pos(0, 0, P.Z_HEAD) * Sphere(r_out)) - (Pos(0, 0, P.Z_HEAD) * Sphere(r_out - P.FACE_LIP_T - 2 * grow))
+        return shell & band
+
+
+@part("face_stop", section="face")
+def face_stop():
+    """Block on the face cap that bears on the cradle's front edge and boxes it in."""
+    b = box(P.CRADLE_X[1] + P.CLEAR, P.HEAD_R, P.BULKHEAD_Y - P.BULKHEAD_T - 2.0, P.BULKHEAD_Y + 2.0,
+            P.FACE_STOP_Z[0], P.FACE_STOP_Z[1])
+    return (b & _in_wall()) - _lip_band(P.CLEAR)         # the lip is on the back half; keep clear of it
 
 
 @part("head_lip", section="head_back")
 def head_lip():
     """Ring inside the back of the head at the face split: the face cap seats on it."""
-    r_out = P.HEAD_R - P.WALL - P.CLEAR
-    band = box(P.FACE_SPLIT_X - P.FACE_LIP_L, P.FACE_SPLIT_X + P.FACE_LIP_L, -P.HEAD_R, P.HEAD_R, P.Z_HEAD - P.HEAD_R, P.Z_HEAD + P.HEAD_R)
-    with SkipClean():                      # tidying a sphere's boolean result corrupts it
-        shell = (Pos(0, 0, P.Z_HEAD) * Sphere(r_out)) - (Pos(0, 0, P.Z_HEAD) * Sphere(r_out - P.FACE_LIP_T))
-        return shell & band
+    return _lip_band()

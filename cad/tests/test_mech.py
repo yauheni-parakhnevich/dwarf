@@ -1,8 +1,8 @@
 import math
 import pytest
-from build123d import Axis
+from build123d import Axis, Location, Vertex
 import params as P
-from mech.common import box, cyl_z, servo_body
+from mech.common import box, cyl_z, cyl_y, servo_body
 
 
 @pytest.fixture(scope="session")
@@ -49,7 +49,7 @@ def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
     plate = parts["plate"]
     bb = plate.bounding_box()
     assert math.isclose(bb.max.Z, P.Z_PLATE_TOP, abs_tol=1e-6)          # nothing above the disc
-    assert math.isclose(bb.min.Z, P.Z_CRANK_BOTTOM, abs_tol=1e-6)       # the foot bar's underside
+    assert math.isclose(bb.min.Z, P.Z_LINK_TOP, abs_tol=1e-6)           # the pin boss under the foot bar
     below = plate & box(-80, 80, -80, 80, P.Z_CRANK_BOTTOM - 1, P.Z_DECK + P.BEARING_T - 0.01)
     b = below.bounding_box()
     assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot down here
@@ -70,9 +70,12 @@ def test_link_eyes_are_a_centre_distance_apart(parts):
     bb = link.bounding_box()
     assert math.isclose(bb.max.Z, P.Z_LINK_TOP, abs_tol=1e-6) and math.isclose(bb.min.Z, P.Z_LINK_BOTTOM, abs_tol=1e-6)
     a, b = crank_pins(0)
+    assert math.isclose(math.hypot(b[0] - a[0], b[1] - a[1]), P.PAN_OFFSET, abs_tol=1e-6)
     for x, y in (a, b):
-        probe = cyl_z(P.M3_CLEAR / 2 - 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
-        assert (probe & link).volume < 1e-6, (x, y)                     # a bore at each pin
+        clear = cyl_z(P.PIN_BORE / 2 - 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
+        assert (clear & link).volume < 1e-6, (x, y)                     # the bore is at least PIN_BORE
+        wider = cyl_z(P.PIN_BORE / 2 + 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
+        assert (wider & link).volume > 1e-3, (x, y)                     # ... and no wider
     assert math.isclose(bb.max.X - bb.min.X, abs(a[0] - b[0]) + 2 * P.LINK_EYE_R, abs_tol=0.01)
 
 
@@ -90,7 +93,6 @@ def test_link_and_crank_live_below_the_deck_ring(parts):
 
 def test_linkage_sweeps_without_touching_anything(parts):
     """Plate (with its column) about the pan axis, servo crank about the servo axis, link translated."""
-    from build123d import Axis, Location
     servo_axis = Axis((P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], 0), (0, 0, 1))
     rest_plate, _ = crank_pins(0)
     servo = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
@@ -116,15 +118,27 @@ def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
     assert math.isclose(hangers.bounding_box().min.Z, P.Z_PAN_SHAFT_FACE + (P.DS3218["body"][2] - P.DS3218["tab_z"]) + P.DS3218["tab_t"], abs_tol=1e-6)
 
 
+def _stop_pin_deg():
+    return (P.PAN_STOP_DEG + math.degrees(math.asin((P.STOP_TAB_W / 2) / P.STOP_POST_R))
+            + math.degrees(math.asin((P.STOP_POST_D / 2) / P.STOP_POST_R)))
+
+
 def test_yoke_clears_the_pan_stop_posts_through_the_sweep(parts):
-    from build123d import Axis
-    posts = parts["deck"] & box(-80, 80, -80, 80, P.Z_DECK + 0.1, P.Z_PLATE_TOP + 2)
-    for deg in (-P.PAN_STOP_DEG + 1, 0, P.PAN_STOP_DEG - 1):
-        assert (parts["yoke"].rotate(Axis.Z, deg) & posts).volume < 1e-6, deg
+    pins = parts["stop_pin"] + parts["stop_pin"].rotate(Axis.Z, -2 * _stop_pin_deg())
+    feet = parts["yoke"] & box(-80, 80, -80, 80, P.Z_PLATE_TOP - 1, P.Z_PLATE_TOP + P.YOKE_RING_T + 1)
+    assert feet.bounding_box().min.Z >= P.STOP_PIN_TOP + 1.0             # a millimetre of daylight
+    for deg in range(-64, 65, 5):
+        assert (parts["yoke"].rotate(Axis.Z, deg) & pins).volume == 0, deg
+
+
+def test_stop_pins_seat_in_the_deck(parts):
+    pin = parts["stop_pin"]
+    assert math.isclose(pin.bounding_box().max.Z, P.STOP_PIN_TOP, abs_tol=1e-6)
+    for p in (pin, pin.rotate(Axis.Z, -2 * _stop_pin_deg())):
+        assert (p & parts["deck"]).volume == 0                           # each sits in its own hole
 
 
 def test_tilt_servo_fits_inside_the_head_and_on_the_bulkhead():
-    from mech.common import servo_body
     body = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
     for v in body.vertices():
         r = math.sqrt(v.X ** 2 + v.Y ** 2 + (v.Z - P.Z_HEAD) ** 2)
@@ -132,9 +146,9 @@ def test_tilt_servo_fits_inside_the_head_and_on_the_bulkhead():
     assert math.isclose(body.bounding_box().min.Y + P.MG996R["tab_z"], P.BULKHEAD_Y, abs_tol=1e-6)
 
 
-def test_the_bulkhead_takes_the_servo_without_touching_its_body(parts):
+def test_the_cradle_takes_the_servo_without_touching_its_body(parts):
     body = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
-    assert (parts["tilt_bulkhead"] & body).volume < 1e-6      # the body hangs through the window
+    assert (parts["tilt_cradle"] & body).volume < 1e-6        # the body hangs through the window
     along, across = P.MG996R["holes"]
     zc = P.Z_HEAD + P.MG996R["shaft_off"] - P.MG996R["body"][0] / 2
     y_tip = P.BULKHEAD_Y - P.INSERT_DEPTH - 1.0
@@ -144,22 +158,60 @@ def test_the_bulkhead_takes_the_servo_without_touching_its_body(parts):
 
 
 def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
-    from mech.common import cyl_y
     coupler, yoke = parts["coupler"], parts["yoke"]
-    wall = cyl_y(P.HEAD_R, P.HEAD_R - P.WALL, P.HEAD_R, 0, P.Z_HEAD) - cyl_y(P.COUPLER_D / 2 + P.CLEAR, P.HEAD_R - P.WALL - 1, P.HEAD_R + 1, 0, P.Z_HEAD)
+    wall = cyl_y(P.HEAD_R, P.HEAD_R - P.WALL, P.HEAD_R, 0, P.Z_HEAD) - cyl_y(P.HEAD_BORE_D / 2, P.HEAD_R - P.WALL - 1, P.HEAD_R + 1, 0, P.Z_HEAD)
     assert (coupler & wall).volume < 1e-6                      # turns in the bore the assembler cuts
     assert (coupler & yoke).volume < 1e-3                      # hex sits in the hex pocket with clearance
     assert coupler.bounding_box().max.Y >= P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T - 1e-6
 
 
 def test_ear_tab_meets_the_pegs_only_at_the_stops(parts):
-    from build123d import Axis
+    """The stops must engage nose-up at TILT_STOP[1] and nose-down at TILT_STOP[0].
+
+    build123d's rotate about +Y LOWERS the nose for a positive angle, so the machine's
+    nose-up-positive tilt is -deg here. The marker proves it rather than trusting the sign.
+    """
     ear, yoke = parts["ear_boss"], parts["yoke"]
     tilt_axis = Axis((0, 0, P.Z_HEAD), (0, 1, 0))
+    nose = Vertex(P.HEAD_R, 0.0, P.Z_HEAD).rotate(tilt_axis, -P.TILT_STOP[1])
+    assert nose.Z > P.Z_HEAD, nose                                       # +TILT_STOP[1] is nose up
     for deg in (P.TILT_STOP[0] + 3, 0, P.TILT_STOP[1] - 3):
-        assert (ear.rotate(tilt_axis, deg) & yoke).volume < 1e-6, deg
+        assert (ear.rotate(tilt_axis, -deg) & yoke).volume < 1e-6, deg
     for deg in (P.TILT_STOP[0] - 3, P.TILT_STOP[1] + 3):
-        assert (ear.rotate(tilt_axis, deg) & yoke).volume > 1e-3, deg
+        assert (ear.rotate(tilt_axis, -deg) & yoke).volume > 1e-3, deg
+
+
+def test_tilt_cradle_slides_in_through_the_face(parts):
+    unit = parts["tilt_cradle"] + servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
+    inner = (P.HEAD_R - P.WALL) ** 2
+    for dx in range(0, 41, 5):
+        for v in unit.moved(Location((dx, 0, 0))).vertices():
+            r2 = v.X ** 2 + v.Y ** 2 + (v.Z - P.Z_HEAD) ** 2
+            assert r2 < inner or v.X > P.FACE_SPLIT_X, (dx, (v.X, v.Y, v.Z), math.sqrt(r2))
+    for other in ("cradle_rails", "head_lip", "face_stop"):
+        assert (unit & parts[other]).volume == 0, other
+    assert (unit.moved(Location((-1, 0, 0))) & parts["cradle_rails"]).volume > 0    # the back wall stops it
+
+
+def test_coupler_goes_in_from_outside(parts):
+    coupler, yoke = parts["coupler"], parts["yoke"]
+    body = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
+    for dy in (0, 10, 20, 30):
+        moved = coupler.moved(Location((0, dy, 0)))
+        assert (moved & body).volume == 0, dy
+        assert (moved & yoke).volume == 0, dy
+    assert coupler.moved(Location((0, 30, 0))).bounding_box().min.Y > P.HEAD_R
+
+
+def test_horn_screw_driver_path(parts):
+    coupler = parts["coupler"]
+    y_in = P.TILT_SERVO_SHAFT_Y + P.HORN_T
+    _, y_arm1 = P.EAR_OUT_Y + P.YOKE_GAP, P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T
+    for a in P.HORN_SCREWS_USED:
+        hx = P.HORN_SCREW_R * math.cos(math.radians(a))
+        hz = P.HORN_SCREW_R * math.sin(math.radians(a))
+        bore = cyl_y(P.HORN_ACCESS_D / 2 - 0.05, y_in + 2.0, y_arm1, hx, P.Z_HEAD + hz)
+        assert (bore & coupler).volume < 1e-6, a
 
 
 def test_phone_slot_fits_the_phone_with_clearance(parts):
