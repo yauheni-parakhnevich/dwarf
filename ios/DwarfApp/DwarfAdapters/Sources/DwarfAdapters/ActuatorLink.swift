@@ -106,6 +106,18 @@ public final class ActuatorLink {
             return
         }
 
+        // Framing cuts both ways, and for a long time this only honoured it outbound.
+        // A BLE notification is one whole message with no terminator, so splitting the
+        // stream on newlines found none, the buffer filled with perfectly good JSON that
+        // nothing ever parsed, and it was eventually thrown away as one over-long message.
+        // The gnome was connected and sending status once a second, and the app reported
+        // the link as up and silent -- each half internally consistent, disagreeing only at
+        // the seam.
+        if case .perWrite = transport.framing {
+            handle(trimmed(data))
+            return
+        }
+
         buffer.append(data)
 
         while let newline = buffer.firstIndex(of: 0x0A) {
@@ -131,6 +143,16 @@ public final class ActuatorLink {
             resynchronising = true
             malformedMessages += 1
         }
+    }
+
+    /// A per-write transport carries no terminator, but a peer that adds one anyway — or a
+    /// stack that pads — should not make the message unreadable.
+    private func trimmed(_ data: Data) -> Data {
+        var bytes = data
+        while let last = bytes.last, last == 0x0A || last == 0x0D || last == 0x00 {
+            bytes.removeLast()
+        }
+        return bytes
     }
 
     private func handle(_ line: Data) {

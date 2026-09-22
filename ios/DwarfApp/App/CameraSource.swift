@@ -28,7 +28,10 @@ public final class CameraSource: NSObject {
     /// silently rather than refused.
     public private(set) var actualFrameRate: Double = 0
 
-    private let session = AVCaptureSession()
+    /// Exposed so a preview layer can show what the pipeline is actually looking at.
+    /// Read-only by convention: configuration belongs to `configure()`, on the control
+    /// queue, and a preview layer only ever reads frames the session is already producing.
+    public let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
     private let frames = DispatchQueue(label: "garden.dwarf.capture")
     /// Configuration and start/stop, off the main thread. `startRunning()` blocks, and

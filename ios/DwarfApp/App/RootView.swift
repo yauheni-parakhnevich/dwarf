@@ -15,7 +15,8 @@ struct RootView: View {
     var body: some View {
         HStack(spacing: 0) {
             preview
-                .frame(maxWidth: .infinity)
+                .aspectRatio(gnome.frameAspect, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
 
             Divider().overlay(Color.white.opacity(0.2))
@@ -50,6 +51,15 @@ struct RootView: View {
             let w = geometry.size.width, h = geometry.size.height
             ZStack(alignment: .topLeading) {
                 Color.black
+
+                // The picture the overlay is drawn on, turned by the same quarter turns
+                // FrameGeometry applies so the two agree by construction. `.resize` rather
+                // than an aspect-preserving gravity: the container is already the frame's
+                // own aspect ratio, so normalised coordinates map straight to it and a box
+                // lands exactly where the pipeline thinks the animal is.
+                CameraPreview(session: gnome.session)
+                    .rotationEffect(.degrees(Double(gnome.quarterTurns) * 90))
+                    .frame(width: w, height: h)
 
                 ForEach(Array(gnome.snapshot.blobs.enumerated()), id: \.offset) { _, blob in
                     box(blob.boundingBox, w, h).stroke(Color.gray.opacity(0.6), lineWidth: 1)

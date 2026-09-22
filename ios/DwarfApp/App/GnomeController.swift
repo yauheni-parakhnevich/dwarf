@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import SwiftUI
 import DwarfCore
 import DwarfAdapters
@@ -27,6 +28,12 @@ final class GnomeController: ObservableObject {
     @Published private(set) var frameRate: Double = 0
 
     private let source = CameraSource()
+    /// For the preview layer.
+    var session: AVCaptureSession { source.session }
+    /// Quarter turns the frame is rotated by, so the preview can be turned to match.
+    let quarterTurns: Int
+    /// The upright frame's aspect ratio, so the picture and the overlay share one box.
+    var frameAspect: CGFloat { quarterTurns % 2 == 0 ? 1920.0 / 1080.0 : 1080.0 / 1920.0 }
     private let store: Store
     private let link: ActuatorLink
     /// Kept alongside `link` (which only sees it through the `Transport` protocol) so
@@ -57,6 +64,7 @@ final class GnomeController: ObservableObject {
         self.store = store
         self.transport = transport
         self.link = ActuatorLink(transport: transport, clock: clock)
+        self.quarterTurns = store.settings.quarterTurns
         self.mode = store.settings.mode
         self.loadFailures = store.loadFailures
         self.calibrated = store.isCalibrated

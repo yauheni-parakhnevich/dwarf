@@ -73,6 +73,9 @@ final class ActuatorLinkTests: XCTestCase {
 
     func testAMessageSplitAcrossTwoDeliveriesIsReassembled() throws {
         let (link, transport, clock) = makeLink()
+        // Reassembly is a property of a byte stream, so this is the serial console's framing.
+        // A BLE notification arrives whole or not at all.
+        transport.framing = .newlineTerminated
         transport.isConnected = true
         let whole = healthyStatus() + Data("\n".utf8)
         clock.uptime = 5
@@ -86,6 +89,9 @@ final class ActuatorLinkTests: XCTestCase {
 
     func testTwoMessagesInOneDeliveryBothArrive() throws {
         let (link, transport, clock) = makeLink()
+        // Two messages in one delivery only happens on a stream, where the reader has to find
+        // the boundary itself.
+        transport.framing = .newlineTerminated
         transport.isConnected = true
         let ack = Data("{\"ack\":\"park\",\"ok\":true}\n".utf8)
         clock.uptime = 5
@@ -204,6 +210,34 @@ final class ActuatorLinkTests: XCTestCase {
 
         transport.isConnected = true
         XCTAssertNil(link.status(asOf: 5.1), "a status from a dead session must not survive a silent reconnect")
+    }
+
+    func testAPerWriteTransportNeedsNoNewline() throws {
+        // A BLE notification is one whole message. The firmware sends the same JSON to
+        // serial with println and to the characteristic without, so a link that insisted on
+        // a terminator saw a connected gnome publishing status every second and reported it
+        // as silent -- which is exactly what the phone did the first time it met the radio.
+        let (link, transport, clock) = makeLink()
+        transport.framing = .perWrite
+        transport.isConnected = true
+        clock.uptime = 5
+
+        transport.deliver(healthyStatus())        // no trailing newline
+
+        XCTAssertNotNil(link.status(asOf: 5.1))
+        XCTAssertEqual(link.malformedMessages, 0)
+    }
+
+    func testAPerWriteTransportToleratesATerminatorAnyway() throws {
+        let (link, transport, clock) = makeLink()
+        transport.framing = .perWrite
+        transport.isConnected = true
+        clock.uptime = 5
+
+        transport.deliver(healthyStatus() + Data("\n".utf8))
+
+        XCTAssertNotNil(link.status(asOf: 5.1))
+        XCTAssertEqual(link.malformedMessages, 0)
     }
 }
 
