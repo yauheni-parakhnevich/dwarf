@@ -17,7 +17,7 @@ final class ActuatorLinkTests: XCTestCase {
     }
 
     func testTheHeartbeatGoesOutOnSchedule() {
-        let (link, transport, clock) = makeLink()
+        let (link, transport, _) = makeLink()
         transport.isConnected = true
 
         link.tick(uptime: 0)
@@ -31,7 +31,7 @@ final class ActuatorLinkTests: XCTestCase {
     func testNoHeartbeatGoesOutWhileDisconnected() {
         // Writing into a dead transport is how a queue backs up and then floods the moment
         // the link returns.
-        let (link, transport, clock) = makeLink()
+        let (link, transport, _) = makeLink()
         transport.isConnected = false
         link.tick(uptime: 0)
         XCTAssertTrue(transport.sentStrings.isEmpty)
@@ -134,7 +134,7 @@ final class ActuatorLinkTests: XCTestCase {
     }
 
     func testACommandThatCannotBeEncodedIsReportedNotSent() {
-        let (link, transport, clock) = makeLink()
+        let (link, transport, _) = makeLink()
         transport.isConnected = true
         XCTAssertThrowsError(try link.send(.aim(pan: .nan, tilt: 0)))
         XCTAssertTrue(transport.sentStrings.isEmpty)
@@ -144,7 +144,7 @@ final class ActuatorLinkTests: XCTestCase {
         // The serial console reads one JSON object per line; BLE carries one object per
         // write and needs no terminator at all, with 180 bytes to spend. The link must not
         // decide this for both of them.
-        let (link, transport, clock) = makeLink()
+        let (link, transport, _) = makeLink()
         transport.isConnected = true
         try link.send(.park)
         XCTAssertEqual(transport.sentStrings[0], "{\"c\":\"park\"}")

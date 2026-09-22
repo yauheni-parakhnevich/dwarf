@@ -156,6 +156,11 @@ struct RootView: View {
     private var device: [(String, String)] {
         let s = gnome.snapshot
         guard let status = s.status else {
+            if gnome.needsPairing {
+                // Distinct from "down" on purpose: the gnome is right there, refusing every
+                // command until the phone bonds with it. See BluetoothTransport.needsPairing.
+                return [("link", "needs pairing — enter the passkey from the gnome's serial console")]
+            }
             return [("link", gnome.linkUp ? "up, but silent" : "down")]
         }
         return [

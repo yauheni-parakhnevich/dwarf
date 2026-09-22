@@ -14,6 +14,9 @@ import DwarfAdapters
 final class GnomeController: ObservableObject {
     @Published private(set) var snapshot = RuntimeSnapshot()
     @Published private(set) var linkUp = false
+    /// True while the gnome is in range but refusing every command for want of a bond — a
+    /// different instruction to the owner than "no link". See `BluetoothTransport`.
+    @Published private(set) var needsPairing = false
     @Published private(set) var mode: Mode = .dryRun
     @Published private(set) var camera: CameraSource.Health = .stopped
     @Published private(set) var modelMissing = false
@@ -26,6 +29,10 @@ final class GnomeController: ObservableObject {
     private let source = CameraSource()
     private let store: Store
     private let link: ActuatorLink
+    /// Kept alongside `link` (which only sees it through the `Transport` protocol) so
+    /// `needsPairing` — not part of that protocol, since nothing else the app talks to over
+    /// it needs bonding — can be read for the UI.
+    private let transport: BluetoothTransport
     private var runtime: Runtime?
     /// Building the runtime loads and compiles the CoreML model, which is real blocking
     /// work. It happens on this queue, not on the main actor during a first `body`.
@@ -43,14 +50,12 @@ final class GnomeController: ObservableObject {
 
         let store = Store(directory: directory)
         let clock = SteadyClock(wrapping: SystemClock())
-        // TODO(Task 9): the real radio. BluetoothTransport does not exist yet because it
-        // needs firmware Task 11's BLE server to talk to. A transport that never connects
-        // means every status reads nil, which FirePolicy already treats correctly as "cannot
-        // vouch for anything" — so the gnome tracks and decides and never fires, which is
-        // the right behaviour until there is a gnome to talk to.
-        let transport = FakeTransport()
+        // The real radio. CoreBluetooth behind `Transport`; see `BluetoothTransport` for why
+        // it is thin and where the pairing-state logic it drives actually lives.
+        let transport = BluetoothTransport()
 
         self.store = store
+        self.transport = transport
         self.link = ActuatorLink(transport: transport, clock: clock)
         self.mode = store.settings.mode
         self.loadFailures = store.loadFailures
@@ -120,6 +125,7 @@ final class GnomeController: ObservableObject {
 
             self.snapshot = self.runtime?.snapshot ?? RuntimeSnapshot()
             self.linkUp = self.link.isConnected
+            self.needsPairing = self.transport.needsPairing
             self.frameRate = self.source.actualFrameRate
         }
     }
