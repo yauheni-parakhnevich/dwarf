@@ -179,15 +179,20 @@ def test_hat_brim_clears_the_yoke_arms_at_every_tilt():
 
 
 def test_tilt_servo_passes_the_face_opening():
-    """The cradle with the servo on it goes in through the face along -X; its far corner must fit the opening."""
+    """The cradle with the servo on it goes in through the face along -X. Everything on it must
+    fit the opening at x = FACE_SPLIT_X: distance from the tilt axis below the opening's radius."""
     L, W, H = P.MG996R["body"]
-    far = math.hypot(P.TILT_SERVO_SHAFT_Y, L - P.MG996R["shaft_off"])      # corner furthest from the tilt axis
     opening = math.sqrt((P.HEAD_R - P.WALL) ** 2 - P.FACE_SPLIT_X ** 2)
-    assert far < opening - 0.3, (far, opening)
-    for x in (P.CRADLE_X[0], P.CRADLE_X[1]):                                # the plate's top corners stay inside
-        for y in (P.BULKHEAD_Y - P.BULKHEAD_T, P.BULKHEAD_Y):
-            r = math.sqrt(x ** 2 + y ** 2 + (P.CRADLE_Z[1] - P.Z_HEAD) ** 2)
-            assert r < P.HEAD_R - P.WALL, (x, y, r)
+    top = P.Z_HEAD + (L - P.MG996R["shaft_off"])
+    needs = {
+        "servo +Y top corner": math.hypot(P.TILT_SERVO_SHAFT_Y, top - P.Z_HEAD),
+        "servo -Y top corner": math.hypot(H - P.TILT_SERVO_SHAFT_Y, top - P.Z_HEAD),
+        "cradle top front corner": math.hypot(P.BULKHEAD_Y, P.CRADLE_Z[1] - P.Z_HEAD),
+        "cradle top back corner": math.hypot(P.BULKHEAD_Y - P.BULKHEAD_T, P.CRADLE_Z[1] - P.Z_HEAD),
+        "upper boss tip": math.hypot(P.BULKHEAD_Y - P.BULKHEAD_T - P.INSERT_DEPTH - 1, P.CRADLE_Z[1] - 0.15 + P.BULKHEAD_BOSS_D / 2 - P.Z_HEAD),
+    }
+    for what, r in needs.items():
+        assert r < opening - 0.3, (what, r, opening)
 
 
 def test_coupler_hex_is_its_widest_section():
