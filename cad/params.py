@@ -58,7 +58,7 @@ BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
 SECTION_Z = {
     "base": (0.0, Z_BASE_TOP),
     "torso": (Z_BELT, Z_TORSO_TOP),
-    "beard": (BEARD_BOTTOM_FRONT_Z, BEARD_TOP_Z),
+    "beard": (BEARD_BOTTOM_BACK_Z, BEARD_TOP_Z),      # the cape at the back hangs lowest
     "head_back": (Z_HEAD - HEAD_R, Z_HEAD + HEAD_R),
     "face": (Z_HEAD - HEAD_R, Z_HEAD + HEAD_R),
     "hat": (Z_HAT, Z_TOP),
@@ -281,6 +281,14 @@ MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
 NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
 NOZZLE_HOLDER_X = (15.0, 28.0)
 TILT_STOP_TAB_R = 15.0
+# --- neck shroud: a body of revolution on the plate that turns with the head, hiding the yoke
+#     inside the collar and closing the gap around the head to a few millimetres
+SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
+SHROUD_R_OUT = 70.4                                  # over the arms' outer corners (65.5), inside the torso's neck (73.6)
+SHROUD_SKIRT_Z = SHROUD_BASE_Z + 8.0                 # where the cone from the base reaches SHROUD_R_OUT
+SHROUD_SHOULDER_Z = BEARD_TOP_Z + 2.0                # 445: above the collar's rim the shroud closes toward the head
+SHROUD_TOP_Z = Z_HEAD - 16.0                         # 462
+SHROUD_TOP_R = 50.0                                  # the head's sphere passes through at r 45.3
 TUBE_OD = 6.0
 TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's barb faces -X so one such bend reaches the axis
 
