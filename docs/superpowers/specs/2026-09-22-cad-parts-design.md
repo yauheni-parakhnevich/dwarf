@@ -35,8 +35,8 @@ section prints flat on the P1P's 256 mm bed.
 | 0–30 | Feet | Slotted floor on four raised feet; four stake holes in the flange |
 | 30–210 | Base: boots and coat hem, **wet zone** | 3 L canister lying flat in its cradle; pump on soft grommets; valve immediately after the pump; float switch in the tank head; filler neck from the tank head to a screw cap at the back |
 | 210 | **Belt split** | The divider deck is the base's lid: printed at 100 % infill, sealed to the shell with a polyurethane bead, four M3 heat-set inserts, two glands with drip loops for the tube and the wiring |
-| 210–385 | Upper torso: coat and belly, **dry zone** | Phone sled, upright, camera end down so the lens sits at about 235 mm behind the belly window with its 10° hood; electronics deck behind the phone; mesh intake low at the back; 40 mm fan exhausting high at the back under the beard collar |
-| 385–405 | Shoulders and neck | Turntable deck carrying the bearing, the hollow shaft, and the pan servo underneath |
+| 210–392 | Upper torso: coat and belly, **dry zone** | Phone sled, upright, camera end down so the lens sits at about 235 mm behind the belly window with its 10° hood; electronics deck behind the phone; mesh intake low at the back; 40 mm fan exhausting high at the back under the beard collar |
+| 372–405 | Shoulders and neck | Turntable deck at 372 carrying the bearing and the hollow shaft; the pan servo hangs in a notch at the deck's rear edge with its horn level with the plate, so the linkage lives in the 16 mm band between the plate and the head's underside — the only band that is neither inside the bearing's footprint nor inside the head |
 | 405–490 | Head | Nods in a yoke on the turntable plate. Axle through the ears. Nozzle rigid in the mouth. Nose, cheeks, brows and moustache belong to the head |
 | 470–550 | Hat | Bonded to the head and nods with it. A cone with a slight bend and a brim |
 
@@ -62,20 +62,20 @@ STEP and an STL through a shared `export(part, name)` helper. All dimensions com
 | Turntable deck | Torso interface; bearing's fixed ring; pan servo below | Bored for the hollow shaft with clearance; bosses for the bearing's screws; slot for the pan link; two printed hard stops at ±65° |
 | Turntable plate | Bearing's rotating ring; hollow shaft; yoke; tilt servo | The head's foundation. Carries the pan crank on its underside |
 | Hollow shaft | Bonded into the plate; passes through the bearing bore | OD 20 mm, ID 12 mm: room for 6 mm PU tube plus three servo wires with slack. Flared top so the tube's bend radius stays above 25 mm |
-| Pan crank, pan link, servo crank | DS3218 horn; turntable plate; M3 shoulder bolts as pins | Equal crank lengths, link length equal to the centre distance. The link is the only part that can bind, so it has 0.3 mm clearance at each pin and a printed stop on the deck limits the servo, not the link |
-| Yoke | Turntable plate; head ear bosses | Two arms; one carries the MG996R, the other a bore for an M4 pin. Hard stops at −25° and +45° |
+| Pan crank, pan link, servo crank | DS3218 horn; turntable plate; M3 screws into inserts as pins | Both cranks 20 mm, link 44 mm equal to the centre distance, all in the band above the plate. The link is the only part that can bind, so it has 0.3 mm clearance at each pin and a printed stop on the deck limits the servo, not the link |
+| Yoke | Turntable plate; head ear bosses | Two arms; one carries the MG996R, the other a bore for an M4 pin. Hard stops at −35° and +45°, outside the protocol fixture's `cfg` of −30° to +40° |
 | Ear bosses (×2, interface part) | Head shell; yoke | One has a hexagonal pocket for the servo horn adapter, the other a plain bore. Unioned into the head mesh |
 | Servo brackets | DS3218 under the deck; MG996R on the yoke | Metal screws through the horns; no printed splines |
 | Nozzle holder | Head mouth; brass nozzle; PU tube barb | Heat-set inserts for its retaining screws, never printed threads near water |
 | Belt flange (interface part) | Base's top edge; divider deck; upper torso's lower edge | Four M3 heat-set bosses; the upper torso's skirt shingles over the base by 8 mm |
 | Divider deck | Belt flange; two glands; base cradle beneath | 100 % infill in the slicer; a raised lip for the PU bead |
 | Phone sled | Torso rails; iPhone 6s 138.3 × 67.1 × 7.1 mm with clip-on lens | Three-point location, fits one way only (asymmetric key), witness mark. 0.3 mm clearance on the slide, zero on the datum faces |
-| Window hood | Torso interior above the window | 10° downward pitch; the acrylic bonds inside the torso wall |
+| Chassis plate | Torso flange's upper inserts | Carries the phone sled at the front and the electronics deck at the back, so everything dry-side bolts to one plate that bolts to the torso |
 | Electronics deck | Torso interior behind the phone | M3 standoff holes for ESP32 devkit, two XL4015, three MOSFET modules, fuse holder |
 | Tank head | Canister's thread | Printed thread for retention only; the seal is the canister's own gasket. Dip tube boss, float switch mount, vent hole, filler neck stub |
 | Tank cradle | Base floor; canister lying flat | Saddle shape; keeps the canister off the floor slots |
 | Filler cap | Filler neck | Retention thread plus an O-ring groove |
-| Vent grille frames (×2) | Torso back, low and high | 4 mm openings; insect mesh bonds on the inside |
+| Fan frame (interface part) | Torso back, high, unioned into the wall | 32 mm hole pitch inserts for the 40 mm fan; the intake below it is a plain opening with mesh bonded inside |
 | Pump mount | Base floor | Four grommet pockets |
 
 **Dimensions of bought parts, with defaults.** All in `cad/params.py`, all re-measured when
@@ -99,8 +99,11 @@ the parts arrive:
 All scripts in `cad/shell/`, run by Blender in background mode from `build.py`. The shell is
 built from primitives with subdivision surfaces, shaped by lattice and proportional edits in
 script, with a displacement modifier driven by a procedural texture for the beard's strands
-and the hat's felt. Booleans cut the openings and the section splits and union in the
-interface parts, which Blender imports from the STL that build123d exported.
+and the hat's felt. Blender only sculpts: each section is joined, voxel-remeshed and solidified to a 2.4 mm
+wall, then exported as a raw closed mesh. Every boolean — unioning the interface parts,
+cutting the openings and the section splits — runs afterwards in Python with `manifold3d`
+through `trimesh`, because Blender's exact boolean was measured to leave non-manifold
+results on subdivided meshes while manifold's stayed watertight in every probe.
 
 **Style:** the classic garden gnome. Pointed hat with a bend near the tip and a rolled brim,
 a round nose, full cheeks, heavy brows, a moustache on the head, a long beard on the torso
@@ -141,10 +144,11 @@ cad/
     base.py          tank head, cradle, filler cap, pump mount, vent frames
   shell/
     common.py        scene setup, import of interface STL, boolean helpers, export
-    body.py          base and upper torso
-    head.py          face, back of head, hat
-    beard.py         beard collar
-    preview.py       workbench renders of each section and the assembly
+    body.py          base and upper torso, raw
+    head.py          face, back of head, hat, raw
+    beard.py         beard collar, raw
+    preview.py       workbench renders of each finished section and the assembly
+  assemble.py        manifold booleans: interface parts in, openings and splits out
   tests/
     test_mech.py     build123d parts
     test_shell.py    exported meshes
@@ -152,12 +156,13 @@ cad/
     step/  stl/  preview/
 ```
 
-A dedicated virtual environment, `.venv-cad`, holds build123d, trimesh and pytest, created
+A dedicated virtual environment, `.venv-cad`, holds build123d, bd_warehouse, trimesh, manifold3d, rtree and pytest, created
 with `uv` like the model-export environment. Blender uses its own bundled Python and needs
 nothing installed; `params.py` is plain Python so both interpreters import it.
 
 `build.py mech` writes every mechanism part as STEP and STL. `build.py shell` runs Blender
-with each shell script, importing the interface STLs, and writes the section meshes.
+with each shell script and writes the raw section meshes; `build.py assemble` unions the
+interface STLs in and cuts the openings, writing the printable sections.
 `build.py preview` renders each section and the whole assembly from the front, side and a
 three-quarter view. `build.py` with no argument does all three in order.
 
@@ -195,7 +200,7 @@ renders are inspected after every change to the shell scripts.
 | Risk | Mitigation |
 |---|---|
 | Bought parts arrive a different size from the defaults | Every bought dimension is a parameter; the README lists what to measure. Print nothing that touches a bought part until it has been measured |
-| Booleans on subdivided meshes produce non-manifold results | Blender's exact boolean solver, applied to meshes after subdivision, with the watertight test catching every failure |
+| Booleans on subdivided meshes produce non-manifold results | Measured: Blender's exact solver fails this, manifold3d does not. All booleans run in manifold3d; the watertight test catches any regression |
 | Printed thread on the tank head does not match the canister | The thread is retention only and its pitch, diameter and starts are parameters; print the tank head alone first as the fit coupon |
 | Head with hat is top-heavy and its centre of gravity is above the axle | The ear boss height is a parameter; balance the printed head on a rod and move the parameter, then reprint the face and back only |
 | The shell's wall thickness is uncertain where displacement adds beard texture | Displacement is applied outward only, from a 2.4 mm base wall, so texture adds material and never thins it |
