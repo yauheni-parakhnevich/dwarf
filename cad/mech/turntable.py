@@ -3,11 +3,12 @@ import math
 from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, Location, extrude, Axis
 import params as P
 from mech import part
-from mech.common import cyl_z, cyl_y, box, insert_holes, servo_body
+from mech.common import cyl_z, cyl_y, box, insert_holes, polar, servo_body
 
 
 def _polar(r, deg, z):
-    return (r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg)), z)
+    """polar() with the height this module's insert_holes calls want."""
+    return (*polar(r, deg), z)
 
 
 def _crank_pin():

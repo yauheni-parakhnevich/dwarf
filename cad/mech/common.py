@@ -1,6 +1,7 @@
+import math
 from pathlib import Path
-from build123d import (Box, Compound, Cylinder, Location, Plane, Pos, Rot, Part, export_step,
-                       export_stl, mirror)
+from build123d import (Axis, Box, Compound, Cylinder, Location, Plane, Polygon, Pos, Rot, Part,
+                       export_step, export_stl, mirror, revolve)
 import params as P
 
 OUT = Path(__file__).resolve().parents[1] / "out"
@@ -16,6 +17,23 @@ def export(part: Part, name: str) -> None:
     # 0.05 mm chordal tolerance: coarser than build123d's default, fine for a 0.6 mm nozzle
     if not export_stl(part, str(STL / f"{name}.stl"), tolerance=0.05, angular_tolerance=0.1):
         raise RuntimeError(f"STL export failed: {name}")
+
+
+def polar(r, deg):
+    """(x, y) at radius r, `deg` round from +X."""
+    return r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg))
+
+
+def skin_solid(profile, inset=0.0):
+    """The solid of revolution `inset` millimetres inside a shell profile's skin.
+
+    Inset 0 is the skin itself; WALL - 1.2 is the surface ring_r_out puts an interface part on,
+    so a part clipped to it is embedded 1.2 mm into the wall and never stands proud; WALL is the
+    wall's inner face; WALL + 1 the cavity with a millimetre to spare.
+    """
+    pts = [(P.shell_r(profile, z) - inset, z) for _, z in profile]
+    z0, z1 = profile[0][1], profile[-1][1]
+    return revolve(Plane.XZ * Polygon((0.0, z0), *pts, (0.0, z1)), axis=Axis.Z)
 
 
 def cyl_z(r, z0, z1, x=0.0, y=0.0):

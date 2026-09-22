@@ -1,9 +1,9 @@
 import itertools
 import math
 import pytest
-from build123d import Axis, Location, Plane, Polygon, Pos, Sphere, Vertex, revolve
+from build123d import Axis, Location, Pos, Sphere, Vertex
 import params as P
-from mech.common import box, cyl_x, cyl_z, cyl_y, servo_body
+from mech.common import box, cyl_x, cyl_z, cyl_y, polar, servo_body, skin_solid
 
 
 @pytest.fixture(scope="session")
@@ -44,8 +44,14 @@ def test_deck_bore_clears_the_shaft(parts):
     assert (deck & probe).volume < 1e-6
 
 
-def test_shaft_bore_takes_tube_and_wires():
-    assert P.SHAFT_ID >= 6.0 + 3 * 1.5 + 1.5
+def test_shaft_bore_takes_tube_and_wires(parts):
+    """Measured on the part, not on the parameter: the bore is SHAFT_ID end to end."""
+    shaft = parts["shaft"]
+    bb = shaft.bounding_box()
+    clear = cyl_z(P.SHAFT_ID / 2 - 0.05, bb.min.Z - 1, bb.max.Z + 1)
+    assert (clear & shaft).volume < 1e-6                     # SHAFT_ID passes from end to end
+    assert (cyl_z(P.SHAFT_ID / 2 + 0.05, bb.min.Z - 1, bb.max.Z + 1) & shaft).volume > 1e-3
+    assert P.SHAFT_ID >= P.TUBE_OD + 3 * 1.5 + 1.5           # tube, three wires and slack
 
 
 def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
@@ -234,26 +240,36 @@ def test_phone_slot_fits_the_phone_with_clearance(parts):
     assert (sled & fat).volume > 0
 
 
+def _clip(y, z, h=30.0):
+    """The clip-on lens: LENS_CLIP_T proud of the back glass, LENS_CLIP_W across, h tall."""
+    return box(P.PHONE_BACK_X, P.LENS_FRONT_X, y - P.LENS_CLIP_W / 2, y + P.LENS_CLIP_W / 2,
+               z - h / 2, z + h / 2)
+
+
 def test_phone_sled_only_fits_camera_down(parts):
-    """Flip the phone end for end: the lens clip now sits where the sled has no cutout."""
+    """Camera down the clip runs up the sled's channel; flipped it lands on the key finger."""
+    from mech.common import phone_body
+    from mech.torso import phone_sled
     sled = parts["phone_sled"]
-    clip = box(P.PHONE_BACK_X, P.LENS_FRONT_X, P.CAM_Y - 12, P.CAM_Y + 12, P.Z_LENS - 12, P.Z_LENS + 12)     # correct way
-    assert (sled & clip).volume < 1e-6
-    # flipped end for end, the camera moves to the top and mirrors to y = -CAM_Y. The sled's back
-    # holds the phone there, so the clip standing proud of the back glass has nowhere to go and
-    # the phone cannot seat.
-    flipped_phone = box(P.PHONE_FRONT_X, P.PHONE_BACK_X + 1,
-                        P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
-                        P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
-    assert (sled & flipped_phone).volume > 0
+    assert (sled & (phone_body() + _clip(P.CAM_Y, P.Z_LENS))).volume < 1e-6        # the right way round
+    # flipped end for end the camera goes to the top and mirrors to -CAM_Y
+    z_flipped = P.PHONE_BOTTOM_Z + P.PHONE_L - P.PHONE_CAM_FROM_END
+    flipped = phone_body() + _clip(-P.CAM_Y, z_flipped)
+    assert (sled & flipped).volume > 1e-3                                          # ... and it will not seat
+    # and it is the key finger that stops it: delete the finger and the flipped phone drops in
+    from mech.torso import SLED_KEY_OVERRUN, SLED_LIP_TOP
+    key = box(P.PHONE_BACK_X + P.CLEAR - 0.01, P.PHONE_BACK_X + P.SLED_WALL + 1,
+              -P.CAM_Y - 6.01, -P.CAM_Y + 6.01, P.PHONE_BOTTOM_Z + SLED_LIP_TOP - 20.01,
+              P.PHONE_BOTTOM_Z + P.PHONE_L - P.PHONE_CAM_FROM_END + SLED_KEY_OVERRUN + 0.01)
+    assert ((sled - key) & flipped).volume < 1e-6
 
 
 def test_nothing_stands_in_the_phones_volume(parts):
     """Every dry-zone part keeps out of the phone: the sled's pocket surrounds it, nothing touches it."""
     from mech.common import phone_body
     phone = phone_body()
-    for name in ("belt_flange_lower", "belt_flange_upper", "divider", "chassis",
-                 "phone_sled", "electronics_deck", "fan_frame"):
+    for name in ("belt_flange_lower", "belt_flange_upper", "divider", "chassis", "phone_sled",
+                 "electronics_deck", "fan_frame", "hatch_lip", "hatch_bosses"):
         assert (phone & parts[name]).volume < 1e-6, name
 
 
@@ -271,13 +287,28 @@ def test_belt_screws_line_up(parts):
 def test_divider_fills_the_base_cup(parts):
     bb = parts["divider"].bounding_box()
     assert math.isclose(bb.min.Z, P.Z_BELT, abs_tol=1e-6)
-    assert math.isclose(bb.max.Z, P.Z_BASE_TOP, abs_tol=1e-6)
+    assert math.isclose(bb.max.Z, P.Z_BASE_TOP + P.DIVIDER_PROUD, abs_tol=1e-6)   # proud of the rim
     assert bb.max.X <= P.shell_r(P.BASE_PROFILE, P.Z_BELT) - P.WALL - P.CLEAR + 1e-6
 
 
-def test_electronics_fit_on_the_deck():
-    boards = [P.ESP32, P.XL4015, P.XL4015, P.MOSFET, P.MOSFET, P.MOSFET]
-    assert sum(w * h for w, h in boards) * 1.3 <= P.EDECK_L * P.EDECK_W
+def test_the_boards_fit_the_deck_as_laid_out():
+    """Every rectangle is on the deck, none overlaps another, and none covers a screw or driver."""
+    from mech.torso import _edeck_holes, _rect
+    ex, ey = P.EDECK_POS
+    for name in P.EDECK_LAYOUT:
+        x0, y0, x1, y1 = _rect(P.EDECK_LAYOUT[name])
+        assert ex - P.EDECK_L / 2 <= x0 < x1 <= ex + P.EDECK_L / 2, name
+        assert ey - P.EDECK_W / 2 <= y0 < y1 <= ey + P.EDECK_W / 2, name
+    for a, b in itertools.combinations(P.EDECK_LAYOUT, 2):
+        ax0, ay0, ax1, ay1 = _rect(P.EDECK_LAYOUT[a])
+        bx0, by0, bx1, by1 = _rect(P.EDECK_LAYOUT[b])
+        assert ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0, (a, b)
+    for x, y in _edeck_holes():                              # head and driver, r 3
+        for name in P.EDECK_LAYOUT:
+            x0, y0, x1, y1 = _rect(P.EDECK_LAYOUT[name])
+            assert not (x0 - 3 < x < x1 + 3 and y0 - 3 < y < y1 + 3), (name, x, y)
+    area = sum((r[2] - r[0]) * (r[3] - r[1]) for r in P.EDECK_LAYOUT.values())
+    assert area <= P.EDECK_L * P.EDECK_W
 
 
 def test_lower_belt_flange_follows_the_bases_flare(parts):
@@ -413,17 +444,10 @@ def test_wet_zone_parts_stand_on_the_floor_under_the_belt(parts):
         assert bb.max.Z < P.Z_BELT - 2 * P.RING_T, name
 
 
-def _base_inner():
-    """The base's cavity with a millimetre to spare: shell_r - WALL - 1 at every height."""
-    pts = [(P.shell_r(P.BASE_PROFILE, z) - P.WALL - 1.0, z) for _, z in P.BASE_PROFILE]
-    z0, z1 = P.BASE_PROFILE[0][1], P.BASE_PROFILE[-1][1]
-    return revolve(Plane.XZ * Polygon((0.0, z0), *pts, (0.0, z1)), axis=Axis.Z)
-
-
 def test_canister_and_pump_fit_inside_the_base(parts):
     """The whole wet zone: nothing overlaps, nothing reaches the wall, nothing reaches the belt."""
     from mech.common import canister_body, pump_body, valve_body
-    inner = _base_inner()
+    inner = skin_solid(P.BASE_PROFILE, P.WALL + 1.0)   # the cavity with a millimetre to spare
     bodies = {"canister": canister_body(), "pump": pump_body(), "valve": valve_body(),
               "pump_mount": parts["pump_mount"], "tank_cradle": parts["tank_cradle"],
               "tank_head": parts["tank_head"]}
@@ -453,30 +477,121 @@ def test_assembly_step_exists_after_build(tmp_path):
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
     from mech import ALL
     comp = assembly({n: f() for n, f in ALL})
-    assert len(comp.solids()) >= 27
+    # 29 parts; the hatch bosses are four solids and the nozzle bosses two
+    assert len(comp.solids()) == 34
     labels = [c.label for c in comp.children]
     assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
     assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
     step = tmp_path / "mechanism_assembly.step"                  # the build writes exactly this
     assert export_step(comp, str(step))
     assert step.stat().st_size > 0
+    from build123d import import_step
+    back = import_step(str(step))                                # the labels survive the round trip
+    assert {c.label for c in back.children} == set(labels)
 
 
-def test_no_two_fixed_parts_overlap(parts):
-    """Everything that does not turn with the plate or nod with the head, against everything else.
+def test_no_two_parts_in_a_group_overlap(parts):
+    """Three groups - what is fixed, what turns with the plate, what nods with the head - each
+    checked against itself. The linkage is left out: it sweeps, and its own test covers it.
 
     Interface parts of one shell section are let off each other: they are unioned into the same
     revolve, so an overlap between two of them would close up rather than clash. None of them
     overlaps today - the exemption is there for the shell, not to excuse a mistake.
+
+    One interference is the design's: the divider stands DIVIDER_PROUD above the base's rim so
+    the belt screws always squeeze the bead. It is asserted for what it is, and for no more.
     """
     from mech import INTERFACES
     section = {n: s for s, names in INTERFACES.items() for n in names}
-    moving = {"plate", "shaft", "yoke", "coupler", "ear_boss", "tilt_cradle", "cradle_rails",
-              "face_stop", "head_lip", "nozzle_holder", "nozzle_bosses", "servo_crank", "pan_link"}
-    fixed = [n for n in parts if n not in moving]
-    for i, a in enumerate(fixed):
-        for b in fixed[i + 1:]:
-            v = (parts[a] & parts[b]).volume
+    pan = {"plate", "shaft", "yoke"}
+    head = {"coupler", "ear_boss", "tilt_cradle", "cradle_rails", "face_stop", "head_lip",
+            "nozzle_holder", "nozzle_bosses"}
+    linkage = {"servo_crank", "pan_link", "stop_pin"}
+    groups = [[n for n in parts if n not in pan | head | linkage], sorted(pan), sorted(head)]
+    for group in groups:
+        for a, b in itertools.combinations(group, 2):
             if a in section and b in section and section[a] == section[b]:
                 continue
-            assert v < 1e-3, (a, b, v)
+            crush = (parts[a] & parts[b])
+            if {a, b} == {"divider", "belt_flange_upper"}:
+                bb = crush.bounding_box()
+                assert math.isclose(bb.min.Z, P.Z_BASE_TOP, abs_tol=1e-6)
+                assert math.isclose(bb.max.Z, P.Z_BASE_TOP + P.DIVIDER_PROUD, abs_tol=1e-6)
+                continue
+            assert crush.volume < 1e-3, (a, b, crush.volume)
+
+
+def test_the_sled_slides_out_through_the_hatch(parts):
+    """With the panel off, the sled and the phone in it come straight out along +X."""
+    from mech.common import phone_body
+    from mech.torso import _wedge
+    unit = parts["phone_sled"] + phone_body()
+    outside = skin_solid(P.TORSO_PROFILE, P.WALL) - _wedge(P.HATCH_HALF_ANGLE, *P.HATCH_Z)
+    fixed = [parts[n] for n in ("chassis", "electronics_deck", "belt_flange_upper", "deck_ring",
+                                "deck", "fan_frame", "hatch_bosses", "hatch_lip")] + [outside]
+    clear_of = P.shell_r(P.TORSO_PROFILE, P.Z_LENS) + 5.0
+    d = 0.0
+    while True:
+        moved = unit.moved(Location((d, 0, 0)))
+        for other in fixed:
+            assert (moved & other).volume < 1e-3, d
+        if P.PHONE_FRONT_X - P.SLED_WALL + d > clear_of:
+            break
+        d += 5.0
+
+
+def test_belt_screw_length(parts):
+    """An M3 x 20 driven from the counterbore's floor: full engagement, and it does not bottom."""
+    lower, upper = parts["belt_flange_lower"], parts["belt_flange_upper"]
+    floor = P.Z_BASE_TOP + P.RING_T - (P.SCREW_HEAD_H + 0.5)
+    x, y = polar(P.FLANGE_SCREW_R, P.FLANGE_SCREW_ANGLES[0])
+    head = cyl_z(3.2 - 0.05, floor, P.Z_BASE_TOP + P.RING_T, x, y)
+    assert (head & upper).volume < 1e-6                          # the head sinks below the ring's top
+    probe = cyl_z(P.INSERT_D / 2 - 0.05, P.Z_BELT - 2 * P.RING_T, P.Z_BELT, x, y)
+    bore_floor = (probe & lower).bounding_box().max.Z            # where the insert bore stops
+    tip = floor - 20.0
+    assert min(P.INSERT_DEPTH, P.Z_BELT - tip) >= P.INSERT_DEPTH - 1e-6   # six millimetres of insert
+    assert tip - bore_floor >= 1.0, (tip, bore_floor)                     # ... and daylight below it
+
+
+def test_chassis_and_deck_screws_have_driver_paths(parts):
+    """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else."""
+    from mech.common import phone_body
+    from mech.torso import _edeck_holes
+    obstacles = dict(parts)
+    obstacles["phone"] = phone_body()
+    z_chassis = P.Z_CHASSIS + P.CHASSIS_T
+    heads = [(polar(P.CHASSIS_SCREW_R, a), z_chassis) for a in P.CHASSIS_SCREW_ANGLES]
+    z_deck = z_chassis + P.EDECK_STANDOFF + P.EDECK_T
+    heads += [((x, y), z_deck) for x, y in _edeck_holes()]
+    for (x, y), z in heads:
+        driver = cyl_z(3.0, z, z + 30.0, x, y)
+        for name, other in obstacles.items():
+            assert (driver & other).volume < 1e-3, (x, y, name)
+
+
+def test_hatch_bosses_take_a_blind_insert_and_stay_in_the_wall(parts):
+    """One bracket per screw, each with a short insert facing the panel and material behind it."""
+    bosses = parts["hatch_bosses"]
+    assert len(bosses.solids()) == len(P.HATCH_SCREWS)
+    for z, a in P.HATCH_SCREWS:
+        r_in = P.shell_r(P.TORSO_PROFILE, z) - P.WALL
+        bore = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH_SHORT + 0.1, r_in - 0.1, 0, z).rotate(Axis.Z, a)
+        assert (bore & bosses).volume < 1e-6, (z, a)                      # the insert's hole is clear
+        behind = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH_SHORT - 0.9,
+                       r_in - P.INSERT_DEPTH_SHORT - 0.1, 0, z).rotate(Axis.Z, a)
+        assert (behind & bosses).volume > 1e-3, (z, a)                    # ... and it is blind
+    assert (bosses - skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)).volume < 1e-6   # never proud
+
+
+def test_hatch_lip_frames_the_opening_and_leaves_its_top_clear(parts):
+    """A ledge round the bottom and both sides; the top edge is a shingle, not a lip."""
+    lip = parts["hatch_lip"]
+    bb = lip.bounding_box()
+    assert math.isclose(bb.min.Z, P.HATCH_Z[0], abs_tol=1e-6)
+    assert math.isclose(bb.max.Z, P.HATCH_Z[1], abs_tol=1e-6)
+    top = lip & box(-120, 120, -120, 120, P.HATCH_Z[1] - P.HATCH_LIP_W, P.HATCH_Z[1])
+    assert top.volume > 1e-3                                              # the sides run to the top
+    middle = top & box(-120, 120, -30, 30, P.HATCH_Z[1] - P.HATCH_LIP_W, P.HATCH_Z[1])
+    assert middle.volume < 1e-6                                           # nothing crosses the middle
+    assert (lip - skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)).volume < 1e-6
