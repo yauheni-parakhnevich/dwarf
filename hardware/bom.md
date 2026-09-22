@@ -33,6 +33,10 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | DS18B20 probe ×2 | `DS18B20 waterproof temperature probe` | 4–10 | Buy two. A clone reports exactly **85.0°C** forever — the power-on default it never updates |
 | M3 heat-set inserts + tip | `M3 heat set threaded insert soldering tip` | 5–12 | The tip shank must match your iron (T12/900M/C245), which is the mistake people actually make |
 | Wire, heatshrink, JST, 40mm fan | `22AWG silicone wire kit`, `40mm 5V fan` | 10–20 | JST pitch (2.0 PH vs 2.54 XH) must match what you're mating |
+| Resistors: 10k ×5, 4.7k ×1 | `1/4W metal film resistor kit` | 2–5 | Four 10k hold the MOSFET gates down through boot, one pulls the float switch up on GPIO 34 (input-only, no internal pull-up), one 4.7k is the 1-Wire bus pull-up. Without the gate resistors **the valve opens every time the board reboots** |
+| Flyback diodes ×2 | `1N5819 Schottky` or `1N4007` | 1–3 | Across the solenoid and the pump, cathode to +12 V. Both are inductive; switching one off without a path for the collapsing field fails the MOSFET **on**, leaving a valve stuck open |
+| Electrolytic 1000 µF 25 V ×1 | `1000uF 25V low ESR capacitor` | 1–3 | Pump inrush sags the 12 V rail far enough to reset the ESP32 in the middle of timing a 300 ms burst |
+| Fuse 5 A + inline holder | `5A automotive blade fuse holder` | 2–4 | A shorted pump has a 5 A supply behind it and 22 AWG in front of it |
 | Tubing + fittings | `PU tubing 6mm 8bar`, `G1/4 BSP barbed fitting` | 10–20 | Tubing must state bar/MPa. Confirm **BSP (G), parallel** — AliExpress brass is often NPT and will weep |
 | Clip-on 0.6x lens | `0.6x wide angle clip-on phone lens` | 3–8 | Check the clip doesn't vignette the 6s main camera |
 | Thrust / lazy-susan bearing | `60mm lazy susan bearing` | 3–7 | Or print a BB race — see part list below |

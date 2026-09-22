@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 860" width="960" height="860" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arw" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+      <path d="M0 0 L7 3.5 L0 7 z" fill="#666"/>
+    </marker>
+  </defs>
+  <style>
+    .lbl  { font-size: 10.5px; fill: #222; }
+    .dim  { font-size: 9px;  fill: #666; }
+    .ttl  { font-size: 12px; fill: #222; font-weight: bold; }
+    .zone { fill: #f7f7f7; stroke: #ccc; stroke-width: 1; stroke-dasharray: 5 4; }
+    .part { stroke: #333; stroke-width: 1.4; fill: #fff; }
+    .fill { fill: #ececec; stroke: #333; stroke-width: 1.3; }
+    .p12  { stroke: #c0392b; stroke-width: 2.2; fill: none; }
+    .p6   { stroke: #e67e22; stroke-width: 2.2; fill: none; }
+    .p5   { stroke: #2b6cb0; stroke-width: 2.2; fill: none; }
+    .gnd  { stroke: #333;    stroke-width: 2.2; fill: none; }
+    .sig  { stroke: #7d3c98; stroke-width: 1.5; fill: none; }
+    .new  { stroke: #16a085; stroke-width: 1.8; fill: none; }
+  </style>
+
+  <text class="ttl" x="480" y="22" text-anchor="middle">Dwarf — ESP32 wiring. Green parts are the ones a working bench rig still needs.</text>
+
+  <!-- ============ POWER ZONE ============ -->
+  <rect class="zone" x="20" y="40" width="250" height="330" rx="6"/>
+  <text class="dim" x="32" y="58">POWER — dry zone, on the electronics deck</text>
+
+  <rect class="part" x="36" y="72" width="104" height="40" rx="3"/>
+  <text class="lbl" x="88" y="90" text-anchor="middle">12 V 5 A</text>
+  <text class="dim" x="88" y="103" text-anchor="middle">sealed supply</text>
+
+  <!-- fuse -->
+  <rect class="part" x="166" y="78" width="46" height="18" rx="9" stroke="#16a085"/>
+  <text class="dim" x="189" y="91" text-anchor="middle" fill="#16a085">5 A</text>
+  <path class="p12" d="M140 87 h26"/>
+  <text class="dim" x="189" y="70" text-anchor="middle" fill="#16a085">fuse</text>
+
+  <!-- bulk cap -->
+  <path class="p12" d="M212 87 h30 v30"/>
+  <path class="new" d="M230 117 h24 M230 125 h24"/>
+  <path class="gnd" d="M242 125 v40"/>
+  <text class="dim" x="262" y="122" fill="#16a085">1000 µF</text>
+  <text class="dim" x="262" y="134" fill="#16a085">pump inrush</text>
+
+  <!-- buck 1: 6V -->
+  <rect class="part" x="36" y="150" width="104" height="44" rx="3"/>
+  <text class="lbl" x="88" y="168" text-anchor="middle">XL4015</text>
+  <text class="dim" x="88" y="182" text-anchor="middle">set to 6.0 V</text>
+  <path class="p12" d="M242 87 v20 M88 112 v38" />
+  <path class="p12" d="M88 112 h154 v-25"/>
+
+  <!-- buck 2: 5V -->
+  <rect class="part" x="36" y="232" width="104" height="44" rx="3"/>
+  <text class="lbl" x="88" y="250" text-anchor="middle">XL4015</text>
+  <text class="dim" x="88" y="264" text-anchor="middle">set to 5.0 V</text>
+  <path class="p12" d="M28 112 v144 h8" />
+  <path class="p12" d="M88 112 h-60"/>
+
+  <text class="dim" x="36" y="300" fill="#c0392b">Set both OFF-LOAD before</text>
+  <text class="dim" x="36" y="312" fill="#c0392b">anything is connected.</text>
+  <text class="dim" x="36" y="324">A 12 V board that should have</text>
+  <text class="dim" x="36" y="336">been 5 V kills the ESP32 and</text>
+  <text class="dim" x="36" y="348">the phone behind it.</text>
+
+  <!-- ============ RAILS ============ -->
+  <path class="p12" d="M242 87 h700"/>
+  <text class="dim" x="946" y="84" text-anchor="end" fill="#c0392b">12 V</text>
+
+  <path class="p6" d="M140 172 h120 v470 h-40"/>
+  <text class="dim" x="266" y="168" fill="#e67e22">6 V — servos only</text>
+
+  <path class="p5" d="M140 254 h60 v560"/>
+  <text class="dim" x="206" y="250" fill="#2b6cb0">5 V — logic, fan, phone</text>
+
+  <path class="gnd" d="M40 800 h890"/>
+  <text class="dim" x="44" y="818">GND — star point at the buck outputs; every ground returns here, nowhere else</text>
+
+  <!-- ============ ESP32 ============ -->
+  <rect class="fill" x="330" y="380" width="190" height="270" rx="4"/>
+  <text class="ttl" x="425" y="404" text-anchor="middle">ESP32 DevKit v1</text>
+  <text class="dim" x="425" y="418" text-anchor="middle">ESP32-D0WD-V3 · 4 MB</text>
+
+  <text class="lbl" x="344" y="444">VIN</text>
+  <path class="p5" d="M200 440 h130"/>
+  <text class="dim" x="222" y="436" fill="#2b6cb0">5 V into VIN, never 12 V</text>
+
+  <text class="lbl" x="344" y="470">GND</text>
+  <path class="gnd" d="M330 466 h-96 v334"/>
+
+  <text class="lbl" x="344" y="496">3V3</text>
+  <text class="dim" x="374" y="496">out — feeds the two pull-ups only</text>
+
+  <text class="lbl" x="506" y="524" text-anchor="end">18</text>
+  <text class="lbl" x="506" y="548" text-anchor="end">19</text>
+  <text class="lbl" x="506" y="572" text-anchor="end">25</text>
+  <text class="lbl" x="506" y="596" text-anchor="end">26</text>
+  <text class="lbl" x="506" y="620" text-anchor="end">27</text>
+  <text class="lbl" x="506" y="644" text-anchor="end">14</text>
+  <text class="lbl" x="344" y="572">34</text>
+  <text class="lbl" x="344" y="600">4</text>
+
+  <!-- ============ SENSORS (left of the ESP32) ============ -->
+  <rect class="zone" x="20" y="540" width="200" height="180" rx="6"/>
+  <text class="dim" x="32" y="558">SENSORS</text>
+
+  <rect class="part" x="36" y="572" width="86" height="32" rx="3"/>
+  <text class="dim" x="79" y="592" text-anchor="middle">float switch</text>
+  <path class="sig" d="M122 588 h208"/>
+  <path class="new" d="M250 588 v-40 h-10 v-10 h20 v10 h-10"/>
+  <text class="dim" x="258" y="534" fill="#16a085">10k to 3V3</text>
+  <text class="dim" x="36" y="620">GPIO 34 is input-only and has</text>
+  <text class="dim" x="36" y="632">no internal pull-up. Closes to</text>
+  <text class="dim" x="36" y="644">GND while water is present.</text>
+
+  <rect class="part" x="36" y="660" width="86" height="32" rx="3"/>
+  <text class="dim" x="79" y="680" text-anchor="middle">DS18B20</text>
+  <path class="sig" d="M122 676 h180 v-70 h28"/>
+  <path class="new" d="M286 606 v-40 h-10 v-10 h20 v10 h-10"/>
+  <text class="dim" x="294" y="556" fill="#16a085">4.7k to 3V3</text>
+  <text class="dim" x="36" y="710">Unplugged = −127 °C = refuses to arm</text>
+
+  <!-- ============ LOADS ============ -->
+  <rect class="zone" x="560" y="120" width="380" height="600" rx="6"/>
+  <text class="dim" x="572" y="140">SWITCHED LOADS</text>
+
+  <!-- SERVOS -->
+  <rect class="part" x="596" y="156" width="120" height="44" rx="3"/>
+  <text class="lbl" x="656" y="174" text-anchor="middle">DS3218 pan</text>
+  <text class="dim" x="656" y="190" text-anchor="middle">GPIO 18 · 6 V</text>
+  <rect class="part" x="596" y="212" width="120" height="44" rx="3"/>
+  <text class="lbl" x="656" y="230" text-anchor="middle">MG996R tilt</text>
+  <text class="dim" x="656" y="246" text-anchor="middle">GPIO 19 · 6 V</text>
+  <path class="sig" d="M520 524 h150 v-324"/>
+  <path class="sig" d="M520 548 h130 v-292"/>
+  <path class="p6" d="M260 642 h-0 M260 200 v0"/>
+  <path class="p6" d="M736 178 h-20 M736 234 h-20 M736 178 v56 M736 234 v408 h-476"/>
+  <text class="dim" x="744" y="200" fill="#e67e22">6 V, its own buck:</text>
+  <text class="dim" x="744" y="212" fill="#e67e22">a DS3218 stalls at</text>
+  <text class="dim" x="744" y="224" fill="#e67e22">~2.5 A and would</text>
+  <text class="dim" x="744" y="236" fill="#e67e22">brown out the logic</text>
+
+  <!-- VALVE -->
+  <rect class="part" x="596" y="300" width="96" height="40" rx="3"/>
+  <text class="dim" x="644" y="318" text-anchor="middle">AOD4184</text>
+  <text class="dim" x="644" y="331" text-anchor="middle">module</text>
+  <rect class="part" x="744" y="300" width="100" height="40" rx="3"/>
+  <text class="lbl" x="794" y="318" text-anchor="middle">solenoid</text>
+  <text class="dim" x="794" y="331" text-anchor="middle">12 V NC</text>
+  <path class="p12" d="M794 87 v213"/>
+  <path class="gnd" d="M692 320 h52"/>
+  <path class="sig" d="M520 572 h76 "/>
+  <!-- gate pulldown -->
+  <path class="new" d="M560 572 v70 h-10 v10 h20 v-10 h-10"/>
+  <text class="dim" x="566" y="668" fill="#16a085">10k gate → GND</text>
+  <!-- flyback -->
+  <path class="new" d="M866 300 v40 M856 312 l20 0 l-10 16 z"/>
+  <text class="dim" x="880" y="316" fill="#16a085">1N5819</text>
+  <text class="dim" x="880" y="328" fill="#16a085">flyback</text>
+
+  <!-- PUMP -->
+  <rect class="part" x="596" y="392" width="96" height="40" rx="3"/>
+  <text class="dim" x="644" y="410" text-anchor="middle">AOD4184</text>
+  <text class="dim" x="644" y="423" text-anchor="middle">module</text>
+  <rect class="part" x="744" y="392" width="100" height="40" rx="3"/>
+  <text class="lbl" x="794" y="410" text-anchor="middle">pump</text>
+  <text class="dim" x="794" y="423" text-anchor="middle">12 V · 3–5 A</text>
+  <path class="p12" d="M794 87 v0 M820 87 v305"/>
+  <path class="gnd" d="M692 412 h52"/>
+  <path class="sig" d="M520 596 h56 v-184 h20"/>
+  <path class="new" d="M576 596 v46 h-10 v10 h20 v-10 h-10"/>
+  <path class="new" d="M866 392 v40 M856 404 l20 0 l-10 16 z"/>
+  <text class="dim" x="880" y="408" fill="#16a085">1N5819</text>
+  <text class="dim" x="744" y="452" fill="#c0392b">18 AWG minimum to the pump</text>
+
+  <!-- FAN -->
+  <rect class="part" x="596" y="484" width="96" height="40" rx="3"/>
+  <text class="dim" x="644" y="502" text-anchor="middle">AOD4184</text>
+  <text class="dim" x="644" y="515" text-anchor="middle">module</text>
+  <rect class="part" x="744" y="484" width="100" height="40" rx="3"/>
+  <text class="lbl" x="794" y="502" text-anchor="middle">40 mm fan</text>
+  <text class="dim" x="794" y="515" text-anchor="middle">5 V</text>
+  <path class="p5" d="M200 814 h0 M794 484 v-160 h0"/>
+  <path class="p5" d="M200 700 h0"/>
+  <path class="gnd" d="M692 504 h52"/>
+  <path class="sig" d="M520 620 h72 v-96 h4"/>
+  <path class="new" d="M592 620 v22 h-10 v10 h20 v-10 h-10"/>
+
+  <!-- CHARGER -->
+  <rect class="part" x="596" y="576" width="96" height="40" rx="3"/>
+  <text class="dim" x="644" y="594" text-anchor="middle">high-side</text>
+  <text class="dim" x="644" y="607" text-anchor="middle">switch</text>
+  <rect class="part" x="744" y="576" width="100" height="40" rx="3"/>
+  <text class="lbl" x="794" y="594" text-anchor="middle">iPhone USB</text>
+  <text class="dim" x="794" y="607" text-anchor="middle">5 V</text>
+  <path class="gnd" d="M692 596 h52"/>
+  <path class="sig" d="M520 644 h76"/>
+  <path class="new" d="M608 644 v0"/>
+
+  <text class="dim" x="572" y="700" fill="#16a085">Every gate gets 10k to GND. Between power-on and the first line of</text>
+  <text class="dim" x="572" y="712" fill="#16a085">setup() these pins float, and a floating gate half-opens a MOSFET.</text>
+</svg>
