@@ -61,8 +61,10 @@ it the rail sags far enough to reset the ESP32 at the exact moment it is trying 
 | 33 | in | Pairing button, to GND | **10 kΩ pull-up to 3V3.** The internal pull-up measured insufficient on this board: the pin read LOW with nothing attached, which the firmware saw as a button held down |
 | 2 | out | Onboard LED, blinks while pairing is open | Strapping pin, but driving it as an output after boot is ordinary |
 
-Pins deliberately avoided: 0, 2, 5, 12 and 15 are strapping pins and decide how the chip
-boots; 6–11 are wired to the flash chip. Nothing in this design touches any of them.
+Pins deliberately avoided: 0, 5, 12 and 15 are strapping pins and decide how the chip boots;
+6–11 are wired to the flash chip. Nothing in this design touches any of them. GPIO 2 is also
+a strapping pin and is the one exception: it is where the devkit's own LED already sits, it
+is only ever driven as an output well after boot, and nothing external is attached to it.
 
 ## 4. The parts the bill of materials was missing
 
