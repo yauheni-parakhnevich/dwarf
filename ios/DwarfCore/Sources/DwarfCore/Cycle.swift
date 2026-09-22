@@ -49,6 +49,14 @@ public final class Cycle {
         self.aimer = Aimer(calibration: calibration, limits: limits)
     }
 
+    /// What the policy has already spent, for persisting across a restart.
+    public var shotLog: [ShotRecord] { policy.shotLog }
+
+    /// Puts a persisted budget back. See `FirePolicy.restore(_:now:uptime:)`.
+    public func restoreShotLog(_ records: [ShotRecord], now: Date, uptime: TimeInterval) {
+        policy.restore(records, now: now, uptime: uptime)
+    }
+
     /// Replaces the calibration, for instance right after the owner adds a point in the
     /// web UI.
     public func update(calibration: Calibration, limits: AimLimits = AimLimits()) {

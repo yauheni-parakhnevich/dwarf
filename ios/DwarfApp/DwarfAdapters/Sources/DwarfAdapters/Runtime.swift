@@ -53,6 +53,10 @@ public final class Runtime {
         return state
     }
 
+    /// How many previously spent shots this pipeline started life already knowing about.
+    /// Zero on a clean install, and on any run where the last one fired nothing.
+    public private(set) var restoredShots = 0
+
     /// Set in tests; production reads `ProcessInfo`.
     public var thermalOverride: ProcessInfo.ThermalState?
 
@@ -92,6 +96,12 @@ public final class Runtime {
 
         self.cycle = Cycle(calibration: store.calibration, schedulerConfig: config,
                            trackerConfig: tracker)
+        // Hand back what the last run already spent. Without this the caps were a property
+        // of one run of one process: rebuilding the pipeline — which the mount-orientation
+        // button on the screen does — gave the animal in front of the gnome a fresh
+        // allowance, and so did relaunching the app.
+        self.cycle.restoreShotLog(store.shotLog, now: clock.now, uptime: clock.uptime)
+        self.restoredShots = self.cycle.shotLog.count
         self.cycle.masks = store.masks
         self.cycle.mode = store.settings.mode
     }
@@ -315,10 +325,22 @@ public final class Runtime {
         case .shoot(let pan, let tilt, let ms):
             // The only place in the app allowed to turn a decision into water.
             send(.shoot(pan: pan, tilt: tilt, ms: ms))
+            persistShotLog()
         case .wouldShoot:
             // Deliberately not sent. A dry run that fires is worse than no dry run.
+            // The budget is still spent and still recorded, because a dry run whose log
+            // does not predict live behaviour is worthless.
             mutate { $0.wouldShootCount += 1 }
+            persistShotLog()
         }
+    }
+
+    /// Written after every shot, live or dry-run, because the budget it protects is spent
+    /// at that moment and a crash a second later must not refund it.
+    private func persistShotLog() {
+        store.shotLog = cycle.shotLog
+        try? store.save()
+        mutate { $0.saveFailures = self.store.saveFailures }
     }
 
     /// `try?` at every send site means a shot the policy genuinely authorised can fail to
@@ -402,6 +424,9 @@ public struct RuntimeSnapshot: Sendable {
     public var detectorFailures = 0
     /// Commands the policy authorised that failed to reach the gnome.
     public var sendFailures = 0
+    /// Writes to disk that failed. A setting, a calibration or a spent shot budget that
+    /// never reached the disk is a promise quietly broken.
+    public var saveFailures = 0
     /// Crop requests skipped because the detector was still busy with the previous ones.
     /// A steadily climbing count means the model cannot keep up with the cycle rate, which
     /// starves the sweep and, past a point, stops still animals ever being confirmed.

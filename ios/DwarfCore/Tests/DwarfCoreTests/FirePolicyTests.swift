@@ -585,5 +585,84 @@ final class FirePolicyTests: XCTestCase {
         XCTAssertEqual(policy.lastRefusal, .animalCapReached)
         XCTAssertEqual(policy.shotsInLastHour(asOf: uptime), 3)
     }
+
+    // MARK: budgets that survive a restart
+
+    func testAnAnimalsBudgetSurvivesARebuiltPolicy() {
+        // The mount-orientation button on the app's screen rebuilds the whole pipeline, and
+        // with it the policy. Without a durable log, a cat that had just used its three
+        // shots became a brand-new visitor with a full allowance — the central welfare
+        // promise of this project, undone by tapping a button. Relaunching the app did the
+        // same thing.
+        let first = FirePolicy()
+        var uptime: TimeInterval = 100
+        for _ in 0..<3 {
+            guard case .shoot = first.decide(input(uptime: uptime)) else {
+                return XCTFail("expected a shot at \(uptime)")
+            }
+            uptime += 60
+        }
+        _ = first.decide(input(uptime: uptime))
+        XCTAssertEqual(first.lastRefusal, .animalCapReached)
+        XCTAssertEqual(first.shotLog.count, 3)
+
+        // The pipeline is rebuilt: a fresh policy, handed the log back.
+        let rebuilt = FirePolicy()
+        rebuilt.restore(first.shotLog, now: noon(), uptime: uptime)
+
+        _ = rebuilt.decide(input(uptime: uptime))
+        XCTAssertEqual(rebuilt.lastRefusal, .animalCapReached,
+                       "the same animal must not get a fresh allowance")
+    }
+
+    func testTheHourlyCeilingSurvivesToo() {
+        let first = FirePolicy()
+        var limits = FireLimits()
+        limits.maxShotsPerHour = 2
+        first.limits = limits
+
+        var uptime: TimeInterval = 100
+        var places = [Point(x: 0.2, y: 0.7), Point(x: 0.8, y: 0.7)]
+        for place in places {
+            _ = first.decide(input(tracks: [track(x: place.x, y: place.y)], uptime: uptime))
+            uptime += 60
+        }
+        XCTAssertEqual(first.shotLog.count, 2)
+
+        let rebuilt = FirePolicy()
+        rebuilt.limits = limits
+        rebuilt.restore(first.shotLog, now: noon(), uptime: uptime)
+
+        places = [Point(x: 0.5, y: 0.7)]
+        _ = rebuilt.decide(input(tracks: [track(x: 0.5, y: 0.7)], uptime: uptime))
+        XCTAssertEqual(rebuilt.lastRefusal, .hourlyCapReached)
+    }
+
+    func testShotsOlderThanAnyRuleAreDropped() {
+        // An hour and a bit is the longest any rule looks back, so a log from yesterday is
+        // history rather than a constraint, and must not accumulate forever either.
+        let policy = FirePolicy()
+        let old = ShotRecord(point: Point(x: 0.5, y: 0.7),
+                             at: noon().addingTimeInterval(-7200), trackID: 1)
+        policy.restore([old], now: noon(), uptime: 100)
+
+        XCTAssertTrue(policy.shotLog.isEmpty)
+        guard case .shoot = policy.decide(input(uptime: 100)) else {
+            return XCTFail("yesterday's shots must not refuse today's")
+        }
+    }
+
+    func testAShotFromTheFutureIsIgnoredRatherThanTrusted() {
+        // A phone whose wall clock jumped backwards would otherwise write a log it then
+        // reads as permanently in the future, refusing everything until the hour passed.
+        let policy = FirePolicy()
+        let future = ShotRecord(point: Point(x: 0.5, y: 0.7),
+                                at: noon().addingTimeInterval(600), trackID: 1)
+        policy.restore([future], now: noon(), uptime: 100)
+
+        guard case .shoot = policy.decide(input(uptime: 100)) else {
+            return XCTFail("a shot dated in the future must not block a real one")
+        }
+    }
 }
 

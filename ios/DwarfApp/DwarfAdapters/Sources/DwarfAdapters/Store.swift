@@ -61,6 +61,15 @@ public final class Store {
         didSet { isCalibrated = Store.canAim(calibration) }
     }
     public var masks: MaskSet
+    /// Every shot still recent enough to matter, so an animal's allowance is not handed
+    /// back by a button tap or a relaunch. See `FirePolicy.restore(_:now:uptime:)`.
+    public var shotLog: [ShotRecord]
+
+    /// Writes that failed. `save()` used to swallow them: the temporary file had a fixed
+    /// name, so two saves racing each other left one of them with nothing to move into
+    /// place, and a full disk did the same thing quietly. A setting would look accepted on
+    /// screen and never reach the disk.
+    public private(set) var saveFailures = 0
 
     /// Files that could not be read this launch, for the status screen.
     public private(set) var loadFailures: [String] = []
@@ -102,6 +111,7 @@ public final class Store {
         self.calibration = calibration
         self.isCalibrated = Store.canAim(calibration)
         self.masks = load("masks.json", .empty)
+        self.shotLog = load("shots.json", [])
         self.loadFailures = failures
     }
 
@@ -116,16 +126,43 @@ public final class Store {
         let pending: [(name: String, data: Data)] = [
             ("settings.json", try encode(settings)),
             ("calibration.json", try encode(calibration)),
-            ("masks.json", try encode(masks))
+            ("masks.json", try encode(masks)),
+            ("shots.json", try encode(shotLog))
         ]
 
-        for file in pending {
-            try file.data.write(to: temporaryURL(file.name), options: .atomic)
+        // A name nobody else is using. The temporary file used to be `<name>.tmp`, which
+        // two concurrent saves fight over: whichever loses finds its own scratch file
+        // already consumed and throws. Measured at better than one failure in two under
+        // contention, every one of them swallowed by a `try?` at the call site.
+        let batch = UUID().uuidString
+        var written: [(name: String, temporary: URL)] = []
+        defer {
+            // Whatever did not make it into place is rubbish, and leaving it behind fills
+            // a disk that may already be why this failed.
+            for leftover in written {
+                try? FileManager.default.removeItem(at: leftover.temporary)
+            }
         }
+
         for file in pending {
-            _ = try FileManager.default.replaceItemAt(url(file.name),
-                                                      withItemAt: temporaryURL(file.name))
+            let temporary = temporaryURL(file.name, batch: batch)
+            do {
+                try file.data.write(to: temporary, options: .atomic)
+            } catch {
+                saveFailures += 1
+                throw error
+            }
+            written.append((file.name, temporary))
         }
+        for file in written {
+            do {
+                _ = try FileManager.default.replaceItemAt(url(file.name), withItemAt: file.temporary)
+            } catch {
+                saveFailures += 1
+                throw error
+            }
+        }
+        written.removeAll()
     }
 
     private static func canAim(_ calibration: Calibration) -> Bool {
@@ -140,5 +177,7 @@ public final class Store {
     }
 
     private func url(_ name: String) -> URL { directory.appendingPathComponent(name) }
-    private func temporaryURL(_ name: String) -> URL { url(name + ".tmp") }
+    private func temporaryURL(_ name: String, batch: String) -> URL {
+        url("\(name).\(batch).tmp")
+    }
 }

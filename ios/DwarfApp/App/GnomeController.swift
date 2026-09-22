@@ -40,7 +40,16 @@ final class GnomeController: ObservableObject {
     /// `needsPairing` — not part of that protocol, since nothing else the app talks to over
     /// it needs bonding — can be read for the UI.
     private let transport: BluetoothTransport
-    private var runtime: Runtime?
+    /// Written on the setup queue when the pipeline is built or rebuilt, read on the
+    /// camera's queue for every frame. Two queues and a plain reference is the pattern
+    /// ThreadSanitizer has already caught twice in this project, once with a segfault
+    /// inside ARC; `rotate()` makes it reachable from a button on the screen.
+    private let runtimeLock = NSLock()
+    private var _runtime: Runtime?
+    private var runtime: Runtime? {
+        get { runtimeLock.lock(); defer { runtimeLock.unlock() }; return _runtime }
+        set { runtimeLock.lock(); _runtime = newValue; runtimeLock.unlock() }
+    }
     /// Building the runtime loads and compiles the CoreML model, which is real blocking
     /// work. It happens on this queue, not on the main actor during a first `body`.
     private let setup = DispatchQueue(label: "garden.dwarf.setup")

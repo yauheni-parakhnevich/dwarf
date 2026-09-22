@@ -228,7 +228,8 @@ struct RootView: View {
         [
             ("calibration", gnome.calibrated ? "\(gnome.calibrationPoints) points" : "NONE"),
             ("no-fire zones", gnome.noFireZones == 0 ? "NONE" : "\(gnome.noFireZones)"),
-            ("files", gnome.loadFailures.isEmpty ? "ok" : gnome.loadFailures.joined(separator: " "))
+            ("files", gnome.loadFailures.isEmpty ? "ok" : gnome.loadFailures.joined(separator: " ")),
+            ("writes", gnome.snapshot.saveFailures == 0 ? "ok" : "\(gnome.snapshot.saveFailures) FAILED")
         ]
     }
 

@@ -283,5 +283,83 @@ final class RuntimeTests: XCTestCase {
         XCTAssertGreaterThan(rig.runtime.snapshot.framesPerSecond, 0,
                              "a configured rate describes intent; this has to describe reality")
     }
+
+    func testAnAnimalsBudgetSurvivesTheRuntimeBeingRebuilt() throws {
+        // Tapping the mount-orientation button rebuilds the whole pipeline. Before the shot
+        // log was persisted, that handed the cat standing in front of the gnome a fresh
+        // allowance — the welfare promise of the project undone by a button on its own
+        // screen. Relaunching the app did the same.
+        let rig = try makeRig()
+        rig.detector.next = [RawBox(box: Rect(x: 0.45, y: 0.62, width: 0.08, height: 0.06),
+                                    confidence: 0.9)]
+
+        for i in 0..<400 {
+            rig.clock.uptime = Double(i) * 0.1
+            healthyStatus(in: rig)
+            rig.runtime.handle(frame: brightBuffer())
+            if i % 3 == 0 { rig.runtime.waitForDetector() }
+        }
+
+        let saved = Store(directory: directory)
+        XCTAssertFalse(saved.shotLog.isEmpty, "shots must reach the disk as they happen")
+
+        // Rebuilt from the same store, as the mount button does: the policy must start with
+        // the budget already spent rather than a clean slate.
+        let rebuilt = Runtime(
+            store: saved,
+            link: rig.link,
+            detector: rig.detector,
+            geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080), quarterTurns: 0),
+            power: PowerManager(battery: rig.battery),
+            clock: SteadyClock(wrapping: rig.clock))
+        XCTAssertEqual(rebuilt.restoredShots, saved.shotLog.count,
+                       "a rebuilt pipeline must inherit what the last one spent")
+
+        // Note the cap itself is not asserted here. FakeDetector returns one model-space box
+        // whatever crop it is handed, so the same animal maps to a different frame position
+        // depending on which crop produced it, and a budget measured by place sees several
+        // animals. That is the fake's doing, not the policy's; the cap is held to account in
+        // DwarfCore's own tests, against a track that stays where it is put.
+    }
+
+    func testASaveThatFailsIsCountedRatherThanSwallowed() throws {
+        // A read-only directory is what a full disk looks like from here. The failure used
+        // to vanish into a try? with no counter and no log, so a setting would look
+        // accepted on screen and never reach the disk.
+        let store = Store(directory: directory)
+        store.settings.mode = .live
+        try store.save()
+        XCTAssertEqual(store.saveFailures, 0)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                                       ofItemAtPath: directory.path) }
+
+        store.settings.quarterTurns = 2
+        XCTAssertThrowsError(try store.save())
+        XCTAssertGreaterThan(store.saveFailures, 0)
+    }
+
+    func testConcurrentSavesDoNotFightOverOneTemporaryFile() throws {
+        // The temporary file used to be named for its target, so two saves racing each
+        // other left one with nothing to move into place. Measured at better than one
+        // failure in two under contention, every one swallowed at the call site.
+        let store = Store(directory: directory)
+        let group = DispatchGroup()
+        for queue in 0..<2 {
+            DispatchQueue.global().async(group: group) {
+                for _ in 0..<100 {
+                    store.settings.quarterTurns = queue
+                    try? store.save()
+                }
+            }
+        }
+        group.wait()
+
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasSuffix(".tmp") }
+        XCTAssertTrue(leftovers.isEmpty, "temporary files left behind: \(leftovers)")
+        XCTAssertNotNil(Store(directory: directory).settings.mode, "the store must still be readable")
+    }
 }
 

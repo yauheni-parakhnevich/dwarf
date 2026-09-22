@@ -121,6 +121,28 @@ public enum FireRefusal: String, Equatable, Sendable, CaseIterable {
     case noAimSolution
 }
 
+/// One shot, as it survives a restart.
+///
+/// Recorded against the wall clock rather than the monotonic one, which is the whole
+/// difficulty: every rule in `FirePolicy` is measured in `uptime`, and `uptime` means
+/// nothing once the process — or the phone — has restarted. A date does, so that is what
+/// goes to disk, and it is converted back on the way in.
+public struct ShotRecord: Equatable, Codable, Sendable {
+    /// Where the animal was standing, in normalised frame coordinates.
+    public let point: Point
+    /// When the shot was taken.
+    public let at: Date
+    /// The track it was fired at, for the per-animal cooldown. Track ids do not survive a
+    /// restart, so this is only meaningful within one run and is restored as nil.
+    public let trackID: Int?
+
+    public init(point: Point, at: Date, trackID: Int?) {
+        self.point = point
+        self.at = at
+        self.trackID = trackID
+    }
+}
+
 public enum FireDecision: Equatable, Sendable {
     case none
     case aim(pan: Double, tilt: Double)
@@ -143,6 +165,8 @@ public final class FirePolicy {
     }
 
     private var lastShotByTrack: [Int: TimeInterval] = [:]
+    /// The durable record, in wall-clock terms. See `shotLog` and `restore(_:now:uptime:)`.
+    private var log: [ShotRecord] = []
     /// Every shot's ground point and uptime, live or dry-run, pruned to `animalWindow` on
     /// read. This is what `maxShotsPerAnimal` is judged against instead of a track id.
     private var shotHistory: [(point: Point, uptime: TimeInterval)] = []
@@ -221,7 +245,7 @@ public final class FirePolicy {
             // Recorded for dry-run exactly as for live: a dry run whose logs do not predict
             // what live operation will do is worthless, which is the entire reason dry-run
             // exists. Both modes share one cooldown/cap history on purpose.
-            record(shot: best.id, at: best.groundPoint, uptime: input.uptime)
+            record(shot: best.id, at: best.groundPoint, uptime: input.uptime, now: input.now)
             lastAim = input.uptime
             return input.mode == .live
                 ? .shoot(pan: solution.pan, tilt: solution.tilt, ms: limits.burstMs)
@@ -340,10 +364,43 @@ public final class FirePolicy {
         return .park
     }
 
-    private func record(shot id: Int, at point: Point, uptime: TimeInterval) {
+    private func record(shot id: Int, at point: Point, uptime: TimeInterval, now: Date) {
         lastShotByTrack[id] = uptime
         recentShots.append(uptime)
         shotHistory.append((point: point, uptime: uptime))
+        log.append(ShotRecord(point: point, at: now, trackID: id))
+        log.removeAll { now.timeIntervalSince($0.at) > FirePolicy.logRetention }
+    }
+
+    /// How far back the durable log is kept. The longest window any rule looks over is the
+    /// hourly cap, so an hour with a little margin is everything that can still matter.
+    static let logRetention: TimeInterval = 3900
+
+    /// Every shot still inside the retention window, for persisting. An owner who taps a
+    /// button or relaunches the app must not hand a cat a fresh allowance.
+    public var shotLog: [ShotRecord] { log }
+
+    /// Puts a persisted log back, translating each shot's date into this run's clock.
+    ///
+    /// Without this, the caps were a property of one run of one process. Rebuilding the
+    /// pipeline — which happens whenever the mount orientation changes, from a button on
+    /// the screen — produced a policy with no memory at all, and the animal in front of it
+    /// became a brand-new visitor with a full budget. So did relaunching the app. A cap
+    /// that forgets is not a cap, which is the same lesson the tracker taught when these
+    /// budgets were keyed by track id.
+    public func restore(_ records: [ShotRecord], now: Date, uptime: TimeInterval) {
+        log = records.filter { now.timeIntervalSince($0.at) <= FirePolicy.logRetention }
+
+        for record in log {
+            // A shot's age is real even though its uptime is not: the phone may have
+            // restarted since. Age it against the clock we have now.
+            let age = now.timeIntervalSince(record.at)
+            guard age >= 0 else { continue }   // a shot from the future is a clock problem
+            let asUptime = uptime - age
+            shotHistory.append((point: record.point, uptime: asUptime))
+            recentShots.append(asUptime)
+        }
+        recentShots.sort()
     }
 
     /// How many shots are still counted against the hourly ceiling, for a status display.
