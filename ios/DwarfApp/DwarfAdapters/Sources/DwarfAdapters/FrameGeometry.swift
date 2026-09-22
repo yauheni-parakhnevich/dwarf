@@ -80,17 +80,28 @@ public struct FrameGeometry: Equatable, Sendable {
     /// A normalised rectangle in frame coordinates as whole pixels of that same frame,
     /// clamped to it. Clamping rather than refusing, because a crop that runs off the edge
     /// is still a useful crop of what is left.
+    ///
+    /// The width is rounded from the width, not derived by subtracting a rounded origin
+    /// from a rounded far edge. That sounds like a distinction without a difference and is
+    /// not: 640/1920 is one third, which has no exact binary representation, so
+    /// `x * 1920` for an origin of 123 comes back as 122.99999999999999. Flooring that and
+    /// ceiling the far edge turned a 640-pixel crop into a 641-pixel one at about one
+    /// origin in twenty, and `Letterbox` then scaled the "square" by 0.9984 and padded it
+    /// by half a pixel. Rounding each quantity from the number it actually represents
+    /// keeps a crop the size the scheduler asked for.
     public func pixelRect(of rect: Rect) -> PixelRect {
-        let left = clamp(rect.x * Double(frame.width), 0, Double(frame.width))
-        let top = clamp(rect.y * Double(frame.height), 0, Double(frame.height))
-        let right = clamp((rect.x + rect.width) * Double(frame.width), 0, Double(frame.width))
-        let bottom = clamp((rect.y + rect.height) * Double(frame.height), 0, Double(frame.height))
+        let width = Double(frame.width)
+        let height = Double(frame.height)
 
-        let x = Int(left.rounded(.down))
-        let y = Int(top.rounded(.down))
-        return PixelRect(x: x, y: y,
-                         width: max(1, Int(right.rounded(.up)) - x),
-                         height: max(1, Int(bottom.rounded(.up)) - y))
+        let x = Int(clamp((rect.x * width).rounded(), 0, width - 1))
+        let y = Int(clamp((rect.y * height).rounded(), 0, height - 1))
+        // At least one pixel, and never past the far edge: a rectangle that starts outside
+        // the frame used to come back one pixel wider than the frame itself, which is an
+        // out-of-bounds read for anything that trusts the docstring above.
+        let w = Int(clamp((rect.width * width).rounded(), 1, width - Double(x)))
+        let h = Int(clamp((rect.height * height).rounded(), 1, height - Double(y)))
+
+        return PixelRect(x: x, y: y, width: w, height: h)
     }
 
     /// `pixelRect(of:)` for input that may not be trustworthy: a rectangle off a disk file

@@ -104,4 +104,40 @@ final class FrameGeometryTests: XCTestCase {
         XCTAssertEqual(letterbox.offsetX, 0, accuracy: 1e-12)
         XCTAssertEqual(letterbox.offsetY, 0, accuracy: 1e-12)
     }
+
+    func testACropRectangleNeverRunsPastTheFrame() {
+        // A rectangle that starts outside the frame entirely used to come back one pixel
+        // wider than the frame, which is an out-of-bounds read for anything that believed
+        // the docstring. Nothing reachable did, but validPixelRect was the only thing
+        // standing between that and a crash.
+        let geometry = FrameGeometry(buffer: buffer, quarterTurns: 0)
+        for rect in [Rect(x: 1.5, y: 0, width: 0.1, height: 0.1),
+                     Rect(x: 1.0, y: 1.0, width: 0, height: 0),
+                     Rect(x: 0.99, y: 0.99, width: 5, height: 5)] {
+            let pixels = geometry.pixelRect(of: rect)
+            XCTAssertLessThanOrEqual(pixels.x + pixels.width, geometry.frame.width, "\(rect)")
+            XCTAssertLessThanOrEqual(pixels.y + pixels.height, geometry.frame.height, "\(rect)")
+            XCTAssertGreaterThan(pixels.width, 0)
+            XCTAssertGreaterThan(pixels.height, 0)
+        }
+    }
+
+    func testASixHundredAndFortyPixelCropIsAlwaysSixHundredAndForty() {
+        // 640/1920 is one third and has no exact binary representation, so origin 123
+        // multiplies back to 122.99999999999999. Flooring that while ceiling the far edge
+        // produced a 641-pixel "square" at about one origin in twenty, which Letterbox then
+        // scaled by 0.9984 and padded by half a pixel.
+        let geometry = FrameGeometry(buffer: buffer, quarterTurns: 0)
+        let side = 640.0
+        var wrong: [Int] = []
+
+        for originX in 0...(1920 - 640) {
+            let rect = Rect(x: Double(originX) / 1920, y: 0,
+                            width: side / 1920, height: side / 1080)
+            let pixels = geometry.pixelRect(of: rect)
+            if pixels.width != 640 { wrong.append(originX) }
+        }
+
+        XCTAssertTrue(wrong.isEmpty, "\(wrong.count) origins produced the wrong width, e.g. \(wrong.prefix(5))")
+    }
 }

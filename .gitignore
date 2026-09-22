@@ -6,3 +6,5 @@
 .build/
 ios/DwarfApp/DwarfApp.xcodeproj/
 .venv-model/
+# Downloaded by tools/export_model.py on first run.
+yolo11n.pt
