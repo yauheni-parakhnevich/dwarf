@@ -32,6 +32,9 @@ def test_the_deck_cage_stands_inside_the_bells_bore(parts):
     assert math.isclose(bb.min.Z, P.Z_CHASSIS + P.CHASSIS_T, abs_tol=1e-6)     # feet on the chassis
     assert math.isclose(bb.max.Z, P.Z_DECK - P.DECK_T, abs_tol=1e-6)           # head under the deck
     assert max(math.hypot(v.X, v.Y) for v in cage.vertices()) < 70.0           # inside the bell's bore
+    fx, fy = P.FAN_XY                                                          # the fan hangs clear
+    assert (cage & box(fx - P.FAN / 2, fx + P.FAN / 2, fy - P.FAN / 2, fy + P.FAN / 2,
+                       P.Z_DECK - P.DECK_T - P.FAN_T, P.Z_DECK - P.DECK_T)).volume < 1e-6
     for a in P.DECK_SCREW_ANGLES:
         x, y = polar(P.CAGE_LEG_R, a)
         foot = cyl_z(P.INSERT_D / 2 - 0.05, bb.min.Z - 1, bb.min.Z + P.INSERT_DEPTH - 0.2, x, y)
@@ -282,7 +285,7 @@ def test_nothing_stands_in_the_phones_volume(parts):
     from mech.common import phone_body
     phone = phone_body()
     for name in ("belt_flange_lower", "belt_flange_upper", "divider", "chassis", "phone_sled",
-                 "electronics_deck", "fan_frame", "filler_neck"):
+                 "electronics_deck", "filler_neck"):
         assert (phone & parts[name]).volume < 1e-6, name
 
 
@@ -352,28 +355,6 @@ def test_the_lower_flanges_tongue_stands_outside_the_divider(parts):
     assert (flange & divider).volume < 1e-6                                 # they never touch
 
 
-def test_the_fan_frames_bosses_face_the_panel(parts):
-    """A blank for the left side panel: four bosses facing -Y, deep enough for a blind insert.
-
-    Nothing is clipped to a profile any more - the assembler cuts it to the statue's cavity - so
-    what this holds is that wherever the panel's inner wall lands in the 95 to 100 band, the
-    bosses are behind it with a full insert's depth of metal in front of the hole's blind end.
-    """
-    frame = parts["fan_frame"]
-    bb = frame.bounding_box()
-    x, z = P.FAN_XZ
-    assert bb.min.Y <= 80.0 + 1e-6 and bb.max.Y >= 115.0 - 1e-6            # right across the wall
-    assert (cyl_y(P.FAN / 2 - 2.05, bb.min.Y - 1, bb.max.Y + 1, x, z) & frame).volume < 1e-6
-    for dx in (-1, 1):
-        for dz in (-1, 1):
-            bx, bz = x + dx * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2
-            face = 90.0
-            bore = cyl_y(P.INSERT_D / 2 - 0.05, face - P.INSERT_DEPTH + 0.1, face - 0.1, bx, bz)
-            assert (bore & frame).volume < 1e-6, (dx, dz)                  # the insert's bore is open
-            blind = cyl_y(P.INSERT_D / 2 - 0.05, face - P.INSERT_DEPTH - 1.0,
-                          face - P.INSERT_DEPTH - 0.1, bx, bz)
-            assert (blind & frame).volume > 1e-3, (dx, dz)                 # ... and blind behind it
-
 
 def test_assembly_step_exists_after_build(tmp_path):
     from build123d import export_step
@@ -422,6 +403,9 @@ def test_no_two_parts_in_a_group_overlap(placed):
     pan = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank", "pan_link"}
     head = {"nozzle_arm"}
     linkage = {"servo_crank", "pan_link", "stop_pin", "nozzle_arm"}
+    fx, fy, fh = P.FAN_XY[0], P.FAN_XY[1], P.FAN / 2         # the bought fan, under the deck
+    placed = dict(placed, fan=box(fx - fh, fx + fh, fy - fh, fy + fh,
+                                  P.Z_DECK - P.DECK_T - P.FAN_T, P.Z_DECK - P.DECK_T))
     groups = [[n for n in placed if n not in pan | head | linkage], sorted(pan), sorted(head)]
     for group in groups:
         for a, b in itertools.combinations(group, 2):

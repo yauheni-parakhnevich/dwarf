@@ -17,12 +17,11 @@ from pathlib import Path
 from build123d import Axis, Ellipse, Pos, extrude
 import params as P
 from mech import part
-from mech.common import box, cyl_y, cyl_z, insert_holes, polar
+from mech.common import box, cyl_z, insert_holes, polar
 
 # --- numbers this module chooses, which params does not ----------------------------------
 BLANK = 15.0                 # how far past the nominal skin every interface blank runs
 R_FRONT = P.FRONT_SKIN_X_AT_WINDOW    # 89.4, the statue's front at the window
-R_BACK = 74.0                # the statue's back at the fan, from the fit report's T8 at z 368
 # the belt screws sit on the ring's mid-line: the ellipse halfway between the joint's outer
 # section and its bore. At BELT_SCREW_ANGLES that is (51.3, 63.0) and its three mirrors.
 BELT_MID_RX = (P.BELT_RX + P.BELT_IN_RX) / 2          # 67
@@ -388,40 +387,15 @@ def electronics_deck():
 
 # --- the fan's blank in the left side panel -------------------------------------------------------
 
-@part("fan_frame", section="panel_left")
-def fan_frame():
-    """Four insert bosses round the exhaust bore, for the assembler to clip into the left panel.
-
-    With the belly hatch gone the fan moved off the back and onto the side, where the coat has a
-    flat the statue's own arm leaves: FAN_XZ is its centre and its axis is +Y. The blank reaches
-    from y 80 out to y 115, well past the panel's inner wall at about 95 to 100, so however the
-    clip falls there is a full blind insert facing the fan on the inside of it.
-    """
-    x, z = P.FAN_XZ
-    y0, y1 = 80.0, 115.0
-    half = P.FAN / 2 + 5
-    y_boss = y0 + 10.0                                                     # the face the fan bolts to
-    frame = box(x - half, x + half, y0, y1, z - half, z + half)
-    frame = frame - cyl_y(P.FAN / 2 - 2, y0 - 1, y1 + 1, x, z)             # the exhaust, round
-    for dx in (-1, 1):
-        for dz in (-1, 1):
-            frame = frame + cyl_y(4.0, y0 - 4.0, y_boss, x + dx * P.FAN_PITCH / 2,
-                                  z + dz * P.FAN_PITCH / 2)
-    for dx in (-1, 1):
-        for dz in (-1, 1):
-            frame = frame - cyl_y(P.INSERT_D / 2, y_boss - P.INSERT_DEPTH, y_boss + 1,
-                                  x + dx * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
-    return frame
-
 
 @part("filler_neck")
 def filler_neck():
     """The filler's neck, bonded into the divider's front: the cap screws onto this.
 
     The tank head's port feeds it by a hose, so the bottle is topped up without taking the
-    divider off - reached from the top now that there is no belly hatch. Its spigot passes
-    through the divider and its flange sits on the divider's top face; the thread is the same
-    M22 the cap is cut to.
+    divider off - reached from the top, with the bell lifted. Its spigot passes through the
+    divider and its flange sits on the divider's top face; the thread is the same M22 the cap
+    is cut to.
     """
     from bd_warehouse.thread import IsoThread
     nx, ny = P.FILLER_NECK_XY
