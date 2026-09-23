@@ -4,6 +4,7 @@ These are slow by the standards of the rest of the suite - a few of them run man
 on a third of a million triangles - so the meshes are loaded once per session and the derived
 ones are cached too.
 """
+import itertools
 import math
 from pathlib import Path
 
@@ -15,7 +16,7 @@ import params as P
 from mech import INTERFACES
 
 STL = Path(__file__).resolve().parents[1] / "out" / "stl"
-SECTIONS = ("base", "torso", "belly", "beard", "head_back", "face", "hat")
+SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
 HEAD = ("head_back", "face", "hat")
 ENGINE = "manifold"
 
@@ -123,30 +124,26 @@ def test_the_openings_are_open(sections):
     assert _flies(sections["head_back"], (0.0, 0.0, z_bot - 30.0), (0.0, 0.0, 1.0), 60.0), "head's underside"
 
 
-def test_the_collar_screws_pass_the_torso_into_the_beard(sections):
-    """Three M3s from inside the torso, through its wall, into inserts in the collar."""
-    z = P.Z_TORSO_TOP - 4.0
-    for deg in (90.0, 210.0, 330.0):
-        th = math.radians(deg)
-        d = (math.cos(th), math.sin(th), 0.0)
-        assert _flies(sections["torso"], (0.0, 0.0, z), d, P.shell_r(P.TORSO_PROFILE, z) + 5.0), deg
-        # down the bore, and again beside it: the difference is how deep the insert can go
-        bore = _first_radius(sections["beard"], z, d)
-        face = _first_radius(sections["beard"], z + 7.0, d)
-        assert bore is not None and face is not None, deg
-        assert bore - face >= P.INSERT_DEPTH - 0.5, (deg, bore, face)
-
-
 # --- the interface parts --------------------------------------------------------------------------
+# What the assembler is allowed to take back out of a part after unioning it in, as a fraction
+# of the part. Everything here is a deliberate trim, and the number is the measured one plus a
+# little: a part that starts disappearing will say so.
+TRIMMED = {
+    "hatch_bosses": 0.10,   # cut back over a disc at each screw, so the panel keeps its full wall
+    "hatch_lip": 0.08,      # the same four discs pass through the lip where it runs by a screw
+    "deck_ring": 0.01,      # and through the webs, where they reach the panel at the top pair
+    "ear_boss": 0.01,       # the M4 bore is drilled after the union, through the stop tab's corner
+}
+
+
 def test_every_interface_part_was_taken_into_its_section(sections):
-    """Nothing of a part may stand outside the section it was unioned into."""
+    """Nothing of a part may stand outside the section it was unioned into, bar what was cut."""
     for section, names in INTERFACES.items():
         for name in names:
             part = trimesh.load(STL / f"{name}.stl")
             left = trimesh.boolean.difference([part, sections[section]], engine=ENGINE)
-            # the ear boss keeps a sliver: the assembler drills its M4 bore after the union, which
-            # takes away the corner of the stop tab that ear_boss itself leaves in the bore
-            assert volume_of(left) < 0.01 * part.volume, (section, name, volume_of(left), part.volume)
+            budget = TRIMMED.get(name, 0.005)
+            assert volume_of(left) < budget * part.volume, (section, name, volume_of(left), part.volume)
 
 
 # --- the belly panel ---------------------------------------------------------------------------
@@ -172,9 +169,124 @@ def test_the_panel_carries_its_screws_and_its_window(sections):
     assert not _inside(belly, lo, hi).any()                 # the window is empty of panel
 
 
+# --- nothing is in anything else's way ---------------------------------------------------------
+# The pairs that are meant to meet: the panel in the torso's own wall, the cap on the split, the
+# hat on its seat. Those touch and must not overlap; every other pair must not even touch.
+TOUCHING = {("torso", "belly"), ("head_back", "face"), ("head_back", "hat"), ("face", "hat")}
+
+
+def _near(a, b, n=400, seed=3):
+    """The closest the two meshes come, sampled from points on the first."""
+    pts, _ = trimesh.sample.sample_surface(a, n, seed=seed)
+    return float(trimesh.proximity.closest_point(b, pts)[1].min())
+
+
+@pytest.mark.parametrize("pair", sorted(itertools.combinations(SECTIONS, 2)))
+def test_no_two_sections_share_a_millimetre(sections, pair):
+    a, b = (sections[n] for n in pair)
+    lo = np.maximum(a.bounds[0], b.bounds[0])
+    hi = np.minimum(a.bounds[1], b.bounds[1])
+    if (lo > hi).any():                                  # their boxes do not even meet
+        return
+    assert _clash(a, b) < 1.0, (pair, _clash(a, b))
+    if tuple(sorted(pair)) in {tuple(sorted(t)) for t in TOUCHING}:
+        assert _near(a, b) < 0.6, (pair, _near(a, b))    # and these two have to be in contact
+
+
+# --- the panel's screws ---------------------------------------------------------------------
+def _frame(deg):
+    """Unit vectors along a meridian: out, round, up."""
+    th = math.radians(deg)
+    return (np.array([math.cos(th), math.sin(th), 0.0]),
+            np.array([-math.sin(th), math.cos(th), 0.0]),
+            np.array([0.0, 0.0, 1.0]))
+
+
+def test_the_panels_screws_are_countersunk(sections):
+    """Six at the skin, three point four two millimetres in: a real sink, not a cylinder.
+
+    Read by asking the solid where its material is: a ring of points inside the hole must be
+    outside the panel, and a ring just outside it must be in.
+    """
+    belly = sections["belly"]
+    for z, deg in P.HATCH_SCREWS:
+        out, tang, up = _frame(deg)
+        # The skin at the sink's rim, found by four rays coming in from outside four millimetres
+        # off the screw's line. Down the line itself there is a hole, and far enough away to
+        # miss it the shoulder has already drawn in.
+        centre = np.array([0.0, 0.0, z])
+        rim = [centre + tang * s4 * 4.0 + up * u4 * 4.0 for s4, u4 in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+        hits = [belly.ray.intersects_location(np.array([o + out * 160.0]), np.array([-out]))[0] for o in rim]
+        r_skin = float(np.median([max(math.hypot(*p[:2]) for p in h) for h in hits if len(h)]))
+        assert r_skin > 0.0, (z, deg)
+        for depth, hole, solid in ((0.3, 2.6, 3.4), (2.3, 1.2, 2.2)):
+            centre = out * (r_skin - depth) + np.array([0.0, 0.0, z])
+            ring = [centre + (tang * math.cos(a) + up * math.sin(a)) * rad
+                    for rad in (hole, solid) for a in np.linspace(0.0, 2 * math.pi, 8, endpoint=False)]
+            inside = belly.contains(np.array(ring))
+            assert not inside[:8].any(), (z, deg, depth, "the hole is not open")
+            # a majority, not all: the ring is at one radial depth on a curved panel, so its
+            # far side is already outside the skin
+            assert inside[8:].sum() >= 5, (z, deg, depth, "there is no material round the hole")
+
+
+# --- the jet -----------------------------------------------------------------------------------
+# How far down the jet may be aimed before the shell is in it. The axis leaves cleanly to -30,
+# which is exactly the firmware fixture's own tiltMin; the Ø JET_D envelope wants five degrees
+# more, because at -30 its lower edge passes about two millimetres inside the torso's neck rim,
+# 46 mm out from the nozzle. Written down rather than rounded off: it is a real gap between what
+# the machine may be commanded to do and what the shell allows.
+AXIS_CLEAR_FROM = -30.0
+RIM_CLEAR_FROM = -25.0
+
+
+def _jet(deg):
+    """Where the jet starts and which way it goes at this tilt, and a dozen rays round its rim.
+
+    The machine's convention: positive is nose up, the same rotation `test_params` uses.
+    """
+    a = math.radians(deg)
+    tip = np.array([math.sqrt(P.HEAD_R ** 2 - (P.Z_MOUTH - P.Z_HEAD) ** 2) + 1.0, 0.0, P.Z_MOUTH])
+    dx, dz = tip[0], tip[2] - P.Z_HEAD
+    start = np.array([dx * math.cos(a) - dz * math.sin(a), 0.0,
+                      P.Z_HEAD + dx * math.sin(a) + dz * math.cos(a)])
+    along = np.array([math.cos(a), 0.0, math.sin(a)])
+    up = np.array([-math.sin(a), 0.0, math.cos(a)])
+    side = np.array([0.0, 1.0, 0.0])
+    rim = [start + (side * math.cos(t) + up * math.sin(t)) * (P.JET_D / 2)
+           for t in np.linspace(0.0, 2 * math.pi, 12, endpoint=False)]
+    return start, along, rim
+
+
+def _hits(mesh, origins, direction):
+    loc, idx, _ = mesh.ray.intersects_location(np.array(origins),
+                                               np.tile(direction, (len(origins), 1)))
+    if not len(loc):
+        return None
+    return float(np.linalg.norm(loc - np.array(origins)[idx], axis=1).min())
+
+
+def test_the_jet_clears_the_shell(sections):
+    """A JET_D column from the nozzle's tip, swung through the whole tilt range.
+
+    Thirteen rays - the axis and a dozen round the rim - which is a sampling and not a proof:
+    anything narrower than four millimetres could still slip between them. Nothing out there is.
+    """
+    for deg in np.arange(P.TILT_STOP[0], P.TILT_STOP[1] + 0.1, 5.0):
+        start, along, rim = _jet(deg)
+        for name in ("torso", "belly"):
+            mesh = sections[name]
+            if deg >= AXIS_CLEAR_FROM:
+                d = _hits(mesh, [start], along)
+                assert d is None, (f"the jet's axis hits {name} after {d:.0f} mm", deg)
+            if deg >= RIM_CLEAR_FROM:
+                d = _hits(mesh, rim, along)
+                assert d is None, (f"the jet's edge hits {name} after {d:.0f} mm", deg)
+
+
 # --- the head moves ------------------------------------------------------------------------------
 def _fixed(sections, extras=True):
-    others = {"beard": sections["beard"], "torso": sections["torso"]}
+    others = {"torso": sections["torso"]}
     if extras:
         for name in EXTRA_MECH:
             path = STL / f"{name}.stl"

@@ -118,6 +118,7 @@ _TOWER_R = math.hypot(*[c + P.PUMP_LEG / 2 for c in P.PUMP_LEG_XY])     # 105.6,
 _FLOOR_KEEP = [(0.0, 106.0), (18.0, 106.0), (21.0, P.BASE_FLOOR_R + P.WALL + 1.0),
                (27.0, P.BASE_FLOOR_R + P.WALL + 1.0), (33.0, 103.0), (118.0, 103.0),
                (126.0, _TOWER_R + P.WALL + 0.5), (P.PUMP_Z0 + 5.0, _TOWER_R + P.WALL + 0.5), (162.0, 0.0)]
+_RIM = [(P.Z_BASE_TOP - 20.0, 0.0), (P.Z_BASE_TOP - 12.0, 1.0)]     # where the torso shingles over
 _SKIRT_FOLDS = [(0.0, 6.5), (16.0, 6.5), (24.0, 3.6), (34.0, 5.0), (46.0, 8.0), (80.0, 10.0),
                 (HEM_Z + 5.0, 11.0), (120.0, 11.0), (145.0, 8.0), (162.0, 5.5), (180.0, 0.0)]
 # The belt: a groove all round below the flange's lower edge, so the band between it and the
@@ -161,6 +162,10 @@ def _base_dr(th, z):
     boot = max(0.0, lerp(z, _BOOT) - well) * g
     amp = lerp(z, _SKIRT_FOLDS) * _back(th, 10.0, 26.0) * (1.0 - g * min(1.0, boot / 6.0))
     d = well + lerp(z, _BELT) + _folds(th, amp, math.radians(6.0 * (z - HEM_Z) / 110.0))
+    # The last twenty millimetres of the rim carry no felt. The torso's skirt shingles over them
+    # with CLEAR_SHELL of air, and an outward-only displacement spends exactly that, so the skin
+    # is pulled in by the noise's own strength first and the rim comes out on the profile.
+    d -= NOISE * lerp(z, _RIM)
     for deg, ru, depth in _BOOT_CREASE:
         d -= dome(arc(th, deg, R_BASE), z - 62.0, ru, 28.0, depth)
     d = smax(d, lerp(z, _FLOOR_KEEP) - prof)           # clear of the raised floor and its skirt

@@ -52,7 +52,6 @@ BEARD_TOP_Z = 443.0
 BEARD_BOTTOM_FRONT_Z = 350.0
 BEARD_BOTTOM_BACK_Z = 340.0    # the collar's back hangs over the exhaust fan (348..388) as the spec asks
 BEARD_T = 3.0
-BEARD_GAP = 5.5            # air over the torso's shoulders: the collar's three screw bosses stand in it
 BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
 BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
 

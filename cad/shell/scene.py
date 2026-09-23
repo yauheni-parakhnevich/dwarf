@@ -16,7 +16,7 @@ sys.path.insert(0, str(CAD))
 import params as P  # noqa: E402
 
 STL = CAD / "out" / "stl"
-SECTIONS = ("base", "torso", "belly", "beard", "head_back", "face", "hat")
+SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
 placements = json.load(open(CAD / "out" / "placements.json"))
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -58,7 +58,7 @@ NODS = {"coupler", "ear_boss", "tilt_cradle", "cradle_rails", "face_stop", "head
 TURNS = {"plate", "shaft", "yoke", "neck_shroud", "servo_crank", "pan_link"}
 
 tint = {"base": (0.55, 0.6, 0.75, 1), "torso": (0.55, 0.6, 0.75, 1), "belly": (0.6, 0.7, 0.8, 1),
-        "beard": (0.9, 0.9, 0.85, 1), "head_back": (0.9, 0.75, 0.65, 1), "face": (0.9, 0.75, 0.65, 1),
+        "head_back": (0.9, 0.75, 0.65, 1), "face": (0.9, 0.75, 0.65, 1),
         "hat": (0.8, 0.3, 0.3, 1)}
 for n in SECTIONS:
     if (STL / f"{n}.stl").exists():

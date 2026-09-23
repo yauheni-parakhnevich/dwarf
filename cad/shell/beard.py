@@ -1,4 +1,9 @@
-"""The beard collar: a solid ring round the neck, a beard down the chest, a cape over the fan.
+"""Not built. The fixed collar is gone: at -35 degrees of tilt the jet crossed its bore at
+every pan angle, and no notch saves a ring the head has to fire through. The beard becomes the
+outer skin of the neck shroud, which turns with the head and is already notched for the jet;
+this file is kept for the loft and the hem machinery it works out, not for its part.
+
+The beard collar: a solid ring round the neck, a beard down the chest, a cape over the fan.
 
 It is a ring and not a shell - a closed profile swept round, BEARD_T thick, no solidify - and
 its profile is allowed to change with the angle, which is the whole design. Three things want
@@ -43,14 +48,20 @@ _HEM = [(0.0, P.BEARD_BOTTOM_FRONT_Z), (25.0, 353.0), (45.0, 359.0), (90.0, 360.
 # its sleeves; the back's six are the fan's breathing room, held to the top of the fan and shut
 # again above it - the air leaves downward, and what closes over it is what keeps the rain out.
 _GAP_Z = [(P.Z_FAN + P.FAN / 2 + 2.0, 1.0), (402.0, 0.0)]
-FAN_GAP = 6.0
-# Three bosses on the inside for the collar's screws. The ring is BEARD_T thick and the insert
-# the screws thread into is INSERT_DEPTH deep, so a hole drilled straight into the ring would
-# come out the other side. The material comes from the inside, where there is nothing between
-# the collar and the torso's neck, and it still leaves the yoke's arms their 69 mm.
+FRONT_EXTRA = 0.5      # over BEARD_GAP, so the beard hangs 6 mm off the chest
+FAN_EXTRA = 2.5        # over BEARD_GAP, so the cape stands 8 mm off the fan
+# Three bosses for the collar's screws, which is why BEARD_GAP is 5.5 and not the 2 mm a
+# collar needs on its own: the bosses stand in that air and must not touch the torso. Each
+# reaches in to half a millimetre off the torso's skin and swells outward as well, because the
+# bore has to be INSERT_DEPTH + 3 deep - three millimetres past the insert, so a screw a size
+# too long runs into empty bore instead of jacking the collar off the wall - and BEARD_T alone
+# is nowhere near that. Stock at a boss: a millimetre off the skin out to eleven.
+BEARD_GAP = 5.5        # air over the torso's shoulders; it lived in params until the collar did
 SCREW_DEG = (90.0, 210.0, 330.0)
 SCREW_Z = P.Z_TORSO_TOP - 4.0
-BOSS_DEEP = P.INSERT_DEPTH + 1.5 - P.BEARD_T         # 4.5 in from the ring, 11 mm of stock all told
+BOSS_IN = BEARD_GAP - 1.0                          # in from the ring, stopping off the torso:
+#                                                      half of that millimetre is the felt's own noise
+BOSS_OUT = 2.5                                       # and out, to carry the bore's far end
 BOSS_HALF = 11.0                                     # of arc and of height, at the ring's radius
 
 
@@ -85,26 +96,26 @@ def _wall(th, z):
     """The ring's inside before the screw bosses: over the shoulders with air, then in to the neck."""
     if z >= P.Z_TORSO_TOP:
         t = (z - P.Z_TORSO_TOP) / (P.BEARD_TOP_Z - P.Z_TORSO_TOP)
-        r0 = P.shell_r(P.TORSO_PROFILE, P.Z_TORSO_TOP) + 2.0
+        r0 = P.shell_r(P.TORSO_PROFILE, P.Z_TORSO_TOP) + BEARD_GAP
         return r0 + (P.BEARD_R_IN_TOP - r0) * t
-    gap = 2.0 + (4.0 * _front(th) + FAN_GAP * _back(th)) * lerp(z, _GAP_Z)
+    gap = BEARD_GAP + (FRONT_EXTRA * _front(th) + FAN_EXTRA * _back(th)) * lerp(z, _GAP_Z)
     return P.shell_r(P.TORSO_PROFILE, z) + gap
 
 
 def _boss(th, z):
-    """How far the screw bosses stand in from the ring's inside at this point."""
+    """1 down the middle of a screw boss, 0 off its edges."""
     r = _wall(th, SCREW_Z)
-    return max(dome(arc(th, d, r), z - SCREW_Z, BOSS_HALF, BOSS_HALF, BOSS_DEEP, soft=1.4)
+    return max(dome(arc(th, d, r), z - SCREW_Z, BOSS_HALF, BOSS_HALF, 1.0, soft=1.4)
                for d in SCREW_DEG)
 
 
 def _inner(th, z):
-    return _wall(th, z) - _boss(th, z)
+    return _wall(th, z) - BOSS_IN * _boss(th, z)
 
 
 def _outer(th, z):
     d = STRAND_D * _front(th) * lerp(z, [(400.0, 1.0), (425.0, 0.0)]) * _strand(th, z)
-    return _wall(th, z) + P.BEARD_T + d
+    return _wall(th, z) + P.BEARD_T + d + BOSS_OUT * _boss(th, z)
 
 
 def _rows(th):

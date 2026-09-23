@@ -23,9 +23,9 @@ import params as P  # noqa: E402
 
 STL = CAD / "out" / "stl"
 PNG = CAD / "out" / "preview"
-SECTIONS = ("base", "torso", "belly", "beard", "head_back", "face", "hat")
+SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
 MECH = "mechanism_assembly"
-CUTAWAY = ("base", "torso", "beard")        # the belly panel comes off, these three are halved
+CUTAWAY = ("base", "torso")                 # the belly panel comes off, these two are halved
 SIZE = 900
 CLAY = (0.62, 0.60, 0.57)
 STEEL = (0.32, 0.34, 0.38)

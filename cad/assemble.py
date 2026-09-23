@@ -32,7 +32,7 @@ from mech import ALL, INTERFACES  # noqa: E402
 RAW, STL = CAD / "out" / "raw", CAD / "out" / "stl"
 ENGINE = "manifold"
 DECIMATE = None           # a face count to reduce a sculpted section to first; see the note above
-SECTIONS = ("base", "torso", "belly", "beard", "head_back", "face", "hat")
+SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
 SLIVER = 1.0              # mm3 under which a component is boolean litter, not a part
 FAR = 400.0               # long enough to pass through anything, short enough to stay readable
 
@@ -135,8 +135,23 @@ def wedge(half_deg, z0, z1, r=FAR):
     return isect(ahead, a, b)
 
 
+def skin_at(mesh, deg, z):
+    """The outermost radius of `mesh` on the meridian `deg` at height z, or None if it misses.
+
+    The sculpt's skin is not its profile - the coat swells and tucks - so a countersink placed
+    from `shell_r` sinks into thin air or into the wall. This is where the surface actually is.
+    """
+    th = math.radians(deg)
+    loc, _, _ = mesh.ray.intersects_location(np.array([[0.0, 0.0, z]]),
+                                             np.array([[math.cos(th), math.sin(th), 0.0]]))
+    return max(math.hypot(p[0], p[1]) for p in loc) if len(loc) else None
+
+
 def countersunk(deg, z, r_skin, through=30.0):
-    """A screw hole drilled inward along a meridian: M3 clearance under a 6 mm sink, 2 deep."""
+    """A screw hole drilled inward along a meridian: M3 clearance under a 6 mm sink, 2 deep.
+
+    `r_skin` is where the cone's mouth goes, so it has to be the panel's own outer surface.
+    """
     line = [(0.0, -2.0), (3.0, -2.0), (3.0, 0.0), (P.M3_CLEAR / 2, 2.0),
             (P.M3_CLEAR / 2, through), (0.0, through)]
     c = trimesh.creation.revolve(np.array(line), sections=48)
@@ -144,16 +159,25 @@ def countersunk(deg, z, r_skin, through=30.0):
     return _aim(c, deg, (r_skin, z))
 
 
-def dilate(mesh, d):
-    """`mesh` grown d millimetres along its own normals, for use as a clearance cutter.
+def dilate(mesh, d, name=""):
+    """`mesh` grown so its faces stand d millimetres off, for use as a clearance cutter.
 
-    Only ever applied to the build123d interface parts, which are slabs and bands: a hull-like
-    offset would lose their shape and a voxel one would cost more than the boolean it feeds.
-    Falls back to the part itself if the offset tangles, since a flush rebate beats a broken one.
+    Moving vertices along their own normals is not the same as moving faces: at a box's corner
+    the vertex normal is the body diagonal, so a vertex pushed d moves each of the three faces
+    it belongs to by only d / sqrt(3). These cutters are the build123d interface parts, which
+    are slabs, boxes and bands, so the vertex offset is scaled by sqrt(3) and the faces land
+    where they were asked to. On a sphere the same scaling would overshoot by the same factor -
+    there is none here, and a cutter that takes too much would say so in the wall check.
+
+    Falls back to the part itself if the offset tangles, and says so: a flush rebate is better
+    than a broken one, but it is not what was asked for.
     """
     grown = mesh.copy()
-    grown.vertices = grown.vertices + grown.vertex_normals * d
-    return grown if grown.is_watertight and grown.volume > mesh.volume else mesh
+    grown.vertices = grown.vertices + grown.vertex_normals * (d * math.sqrt(3.0))
+    if grown.is_watertight and grown.volume > mesh.volume:
+        return grown
+    print(f"      dilate: {name or 'a part'} would not offset cleanly; rebated flush instead")
+    return mesh
 
 
 # --- finishing -------------------------------------------------------------------------------
@@ -208,6 +232,7 @@ def save(mesh, name, t0):
     assert mesh.is_watertight, f"{name} is not watertight"
     assert mesh.is_winding_consistent, f"{name} has inconsistent winding"
     assert mesh.volume > 0.0, f"{name} has no volume"
+    assert mesh.body_count == 1, f"{name} is {mesh.body_count} bodies, not one"
     mesh.export(STL / f"{name}.stl")
     # what the tests will load is the file, not the mesh in hand: check that one
     back = trimesh.load(STL / f"{name}.stl")
@@ -241,6 +266,9 @@ def base():
     # shell, so the hole is the neck's outside, not the tube's bore.
     r_skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
     cutters.append(cyl_out(P.FILLER_D / 2 + 2.5, r_skin - 30.0, r_skin + 20.0, 180.0, P.Z_FILLER))
+    # and the rim is trimmed to Z_BASE_TOP: solidify leaves the cut plane a tenth or two proud,
+    # and the torso's flange sits on exactly that plane
+    cutters.append(box(-FAR, FAR, -FAR, FAR, P.Z_BASE_TOP, FAR))
     m = cut(m, *cutters)
     m = save(m, "base", t0)
     down = m.ray.intersects_location(np.array([[0.0, 0.0, P.Z_BASE_TOP + 60.0]]), np.array([[0.0, 0.0, -1.0]]))[0]
@@ -251,15 +279,22 @@ def base():
     return m
 
 
-def _panel_rebate():
+def _panel_rebate(skins):
     """Everything the torso lets into the wall inside the hatch, grown by CLEAR_SHELL.
 
     The panel is the wall, and every interface part bites the wall's inner 1.2 mm, so without
     this the two would want the same millimetre. The lip's own note says the panel is rebated;
     the screw bosses and the deck ring's webs need it for the same reason.
+
+    Except at the screws. A hatch boss is rebated out of the panel like everything else, but
+    the screw goes through the panel in the middle of that rebate, and a countersunk M3 in
+    0.8 mm of PETG tears out. So the rebate stops CLEAR_SHELL + 4 short of each screw's axis
+    and the panel keeps its full wall where the head pulls on it.
     """
-    inside = [dilate(p, P.CLEAR_SHELL) for p in interfaces("torso")]
-    return union(*inside)
+    inside = [dilate(p, P.CLEAR_SHELL, n) for p, n in zip(interfaces("torso"), INTERFACES["torso"])]
+    keep = [cyl_out(P.CLEAR_SHELL + 4.0, r - 30.0, r + 20.0, a, z)
+            for (z, a), r in zip(P.HATCH_SCREWS, skins)]
+    return cut(union(*inside), *keep)
 
 
 def torso_and_belly():
@@ -268,6 +303,9 @@ def torso_and_belly():
     hatch = wedge(P.HATCH_HALF_ANGLE, *P.HATCH_Z)
     panel = isect(raw, hatch)
     m = union(cut(raw, hatch), *interfaces("torso"))
+    # measured on the panel before anything is cut out of it, so the ray meets a surface
+    skins = [skin_at(panel, a, zs) for zs, a in P.HATCH_SCREWS]
+    assert all(r is not None for r in skins), "a hatch screw misses the panel"
 
     cutters = []
     xb = P.shell_r(P.TORSO_PROFILE, P.Z_FAN)
@@ -276,12 +314,18 @@ def torso_and_belly():
     vent = box(-xi - 20.0, -xi + 30.0, -P.VENT_IN_W / 2, P.VENT_IN_W / 2,
                P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
     cutters.append(vent)
-    # The collar's three screws: they come from inside the torso, through its wall, into inserts
-    # in the collar. Through-holes here; the blind holes are drilled in the beard.
-    z = P.Z_TORSO_TOP - 4.0
-    r = P.shell_r(P.TORSO_PROFILE, z)
-    for a in (90.0, 210.0, 330.0):
-        cutters.append(cyl_out(P.M3_CLEAR / 2, r - 20.0, r + 20.0, a, z))
+    # And the panel keeps its full wall at the four screws, so the boss gives way instead: the
+    # bracket is cut back over a disc round each screw to a CLEAR_SHELL inside the panel's own
+    # inner face. That disc is where the insert looks out and where the screw pulls, and 0.8 mm
+    # of PETG under a countersunk head is a part that tears rather than one that holds.
+    for (zs, a), r in zip(P.HATCH_SCREWS, skins):
+        # deep enough for the whole disc, so the shallowest corner of it still clears: the skin
+        # is sampled round the disc's rim, not just on the screw's line, because the shoulder
+        # draws in through here and a cut sized at the middle leaves the edges proud
+        rim = min([r] + [x for x in (skin_at(panel, a + d, zs + dz)
+                                     for d, dz in ((3.0, 0.0), (-3.0, 0.0), (0.0, 5.0), (0.0, -5.0)))
+                         if x is not None])
+        cutters.append(cyl_out(P.CLEAR_SHELL + 4.0, rim - P.WALL - P.CLEAR_SHELL, r + 20.0, a, zs))
     m = cut(m, *cutters)
     m = save(m, "torso", t0)
 
@@ -290,25 +334,11 @@ def torso_and_belly():
     xw = P.shell_r(P.TORSO_PROFILE, zc)
     window = box(xw - 30.0, xw + 30.0, P.CAM_Y - P.WINDOW_W / 2, P.CAM_Y + P.WINDOW_W / 2,
                  zc - P.WINDOW_H / 2, zc + P.WINDOW_H / 2)
-    screws = [countersunk(a, zs, P.shell_r(P.TORSO_PROFILE, zs) + 12.0) for zs, a in P.HATCH_SCREWS]
-    belly = cut(panel, _panel_rebate(), window, *screws)
+    probe("panel screws", "the sink's mouth on the skin at r " + ", ".join(f"{r:.2f}" for r in skins))
+    screws = [countersunk(a, zs, r) for (zs, a), r in zip(P.HATCH_SCREWS, skins)]
+    belly = cut(panel, _panel_rebate(skins), window, *screws)
     belly = save(belly, "belly", t1)
     return m, belly, panel
-
-
-def beard():
-    t0 = time.time()
-    m = load_raw("beard", decimate=None)
-    z = P.Z_TORSO_TOP - 4.0
-    holes = []
-    for a in (90.0, 210.0, 330.0):
-        th = math.radians(a)
-        hit = m.ray.intersects_location(np.array([[0.0, 0.0, z]]), np.array([[math.cos(th), math.sin(th), 0.0]]))[0]
-        r_in = min(math.hypot(p[0], p[1]) for p in hit)
-        holes.append(cyl_out(P.INSERT_D / 2, r_in - 1.0, r_in + P.INSERT_DEPTH, a, z))
-        probe("collar insert", f"{a:5.1f}deg bore from r {r_in:.2f} in, {P.INSERT_DEPTH} deep")
-    m = cut(m, *holes)
-    return save(m, "beard", t0)
 
 
 def head():
@@ -363,8 +393,10 @@ def report_seam(panel):
     profile - the sleeve crossing the seam is the one place it comes close - the lip stops
     touching and the panel's edge is carried by its neighbours instead.
 
-    Sampled over the band the lip actually occupies, and stopped a fifth of a degree short of
-    the cut itself, where a ray grazes the radial face and reports whatever is behind it.
+    Reported past the CLEAR_SHELL the rebate is meant to leave, so the number is what carries
+    no load rather than what was designed in. Sampled over the band the lip actually occupies,
+    and stopped a fifth of a degree short of the cut itself, where a ray grazes the radial face
+    and reports whatever is behind it.
     """
     z0, z1 = P.HATCH_Z
     inset = math.degrees(P.HATCH_LIP_W / P.shell_r(P.TORSO_PROFILE, (z0 + z1) / 2))
@@ -377,12 +409,13 @@ def report_seam(panel):
                                                     np.array([[math.cos(th), math.sin(th), 0.0]]))[0]
                 if not len(hit):
                     continue
-                gap = min(math.hypot(p[0], p[1]) for p in hit) - (P.shell_r(P.TORSO_PROFILE, z) - 1.2)
+                gap = (min(math.hypot(p[0], p[1]) for p in hit)
+                       - (P.shell_r(P.TORSO_PROFILE, z) - 1.2) - P.CLEAR_SHELL)
                 gaps.append(gap)
                 if gap > worst[0]:
                     worst = (gap, (s * a, z))
     gaps = np.array(gaps)
-    probe("hatch seam", f"lip's outer face to the panel's inner face over {len(gaps)} probes: "
+    probe("hatch seam", f"panel unsupported over the lip, past its CLEAR_SHELL, in {len(gaps)} probes: "
                         f"median {np.median(gaps):+.2f}, worst {worst[0]:+.2f} mm at "
                         f"{worst[1][0]:+.1f}deg z {worst[1][1]:.0f}, over 1 mm: {(gaps > 1.0).sum()}")
     return worst[0]
@@ -392,7 +425,6 @@ def main():
     t0 = time.time()
     base()
     _, belly, _ = torso_and_belly()
-    beard()
     head()
     hat()
     report_seam(belly)
