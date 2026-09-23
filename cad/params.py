@@ -22,18 +22,19 @@ M2_5_CLEAR = 2.8
 SCREW_HEAD_H = 3.0
 
 # --- heights ---------------------------------------------------------------------------
-Z_FLOOR = 26.0             # underside of the raised floor; the skirt below has drain arches
-Z_BELT = 230.0             # the split; 20 mm higher than first drawn so a 2 L canister and the pump stack below it
-Z_BASE_TOP = 238.0         # the base's rim, hidden inside the torso's skirt
-Z_TORSO_TOP = 420.0
+Z_FLOOR = 150.0            # the statue has no cavity below its coat hem; the boots and legs below are sand ballast
+SAND_PLUG_D = 30.0         # a plugged hole in the floor plate to pour the sand through
+Z_BELT = 250.0             # the split, under the statue's belt strap (234..282)
+Z_BASE_TOP = 258.0         # the lower flange's tongue rises to here inside the torso
+Z_TORSO_TOP = 420.0        # the coat's neck opening
 Z_DECK = 400.0             # top face of the turntable deck
 DECK_T = 6.0
 RING_T = 8.0               # interface rings unioned into the shell
 Z_HEAD = 478.0             # tilt axis and head centre
-HEAD_R = 48.0              # the face opening must pass the tilt servo on its cradle; 45 was 2 mm short
-Z_HAT = 512.0              # underside of the brim: 34 above the tilt axis, so at +45 the brim clears the yoke arms
-Z_TOP = 589.0
-Z_LENS = 265.0
+HEAD_R = 40.0              # the statue's head is 44 mm deep in front of the ear line; nothing nods now, this only sizes the shroud's top
+Z_HAT = 500.0              # the statue's brim at the sides (0.713 H); the head and hat turn together, nothing nods
+Z_TOP = 700.0              # the statue's height: its ear line then lands on the tilt axis
+Z_LENS = 285.0
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
 # outer skins only; shell_r walks these. The base's raised floor is a separate revolve row.
@@ -331,3 +332,53 @@ DRAIN_ARCHES = 4
 DRAIN_ARCH_W, DRAIN_ARCH_H = 30.0, 12.0
 STAKE_HOLE_D = 8.0
 STAKE_HOLE_R = 95.0
+
+
+# --- the statue -----------------------------------------------------------------------------
+# The shell is an image-to-3D reconstruction of the user's reference statue (cad/in/, not
+# committed), converted to this frame, mirrored about its body axis, scaled to Z_TOP. Everything
+# below is measured on it at 700 mm; the statue stage rewrites out/statue/features.json and the
+# tests read that, not these, where they differ.
+STATUE_GLB = "in/gnome_ai.glb"
+STATUE_AXIS_Y = 8.0 * 700.0 / 589.0        # the body's axis sits +8 mm (at 589) from the boots' centre; mirrored away
+STATUE_FEATURES = {                         # fraction of height, from the fit analysis
+    "boot_top": 0.115, "hem": 0.207, "hands_bottom": 0.302, "belt": 0.367, "hands_top": 0.421,
+    "beard_bottom": 0.441, "chin": 0.589, "mouth": 0.603, "nose": 0.645, "eye": 0.679,
+    "ear": 0.684, "brim_side": 0.713, "brim_front": 0.735,
+}
+Z_TURN = 309.0                              # the turning unit starts at the beard's bottom (0.441 H)
+R_TURN = 70.0                               # cylinder about the pan axis: inside it, above Z_TURN, everything turns
+TURN_GAP = 2.0                              # air between the turning unit's edge and the fixed shoulders
+SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed
+    "base_left": (0.0, Z_BELT), "base_right": (0.0, Z_BELT),      # split at y = 0, sand ballast inside
+    "torso": (Z_BELT, 420.0),                                       # the coat, hands removed, belly panel cut out
+    "belly": (HATCH_Z[0], HATCH_Z[1]),
+    "hand_left": (200.0, 300.0), "hand_right": (200.0, 300.0),      # glued on after the torso is in
+    "beard": (Z_TURN, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),   # the turning unit, glued
+}
+# the belt joint follows the coat's section: an ellipse, not a circle
+BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
+BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
+BELT_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]
+CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
+# the dry zone, re-stacked
+FRONT_SKIN_X_AT_WINDOW = 89.0               # the statue's front at Z_LENS + WINDOW_Z_BIAS
+EDECK_L, EDECK_W = 96.0, 76.0
+EDECK_POS = (0.0, 0.0)
+# the wet zone: a bought 1 L wide-mouth bottle lying across the belly, a compact pump beside it
+BOTTLE_D, BOTTLE_L = 92.0, 200.0            # e.g. Nalgene 1 L wide-mouth; measure the one bought
+BOTTLE_THREAD = "63-415"                    # its neck; the tank head's thread follows CAN_THREAD_MAJOR
+PUMP = (120.0, 65.0, 60.0)                  # a compact 12 V diaphragm pump; the 160 x 100 one no longer fits. Re-measure
+FILLER_VIA_HATCH = True                     # the filler cap sits on the tank head inside the belly hatch; nothing on the coat's back
+# the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
+SHROUD_R_OUT = 54.0                         # no arms to clear any more; inside the chin's cavity (57)
+SHROUD_TOP_Z = 454.0
+SHROUD_SCREWS_Z = 440.0                     # four radial M3 from outside, hidden in the beard's locks
+SHROUD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
+# the nozzle tilts on a micro servo inside the beard, through the beard's parting under the mouth
+MG92B = dict(body=(22.8, 12.4, 28.5), tab_span=32.5, tab_t=2.0, tab_z=19.0, shaft_off=6.0, holes=(27.8, 0.0))
+MICRO_HORN_D = 14.0
+Z_MOUTH = 424.0                             # the statue's mouth (0.603 H)
+NOZZLE_PIVOT = (62.0, 0.0, 424.0)           # tilt axis of the nozzle arm, along Y, just inside the beard
+NOZZLE_ARM_L = 20.0                         # pivot to the nozzle's tip at the mouth's skin, x 82
+NOZZLE_SLOT_W = 12.0                        # the parting in the beard the nozzle swings through
