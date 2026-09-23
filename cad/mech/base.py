@@ -57,6 +57,8 @@ TANK_HEAD_AT = Location((P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L, BOTTLE_AXIS_Z)
 
 # --- filler cap ----------------------------------------------------------------------------
 CAP_R = P.FILLER_CAP_THREAD_MAJOR / 2 + 3           # 14
+CAP_GRIP = 2.0                                      # the flare's reach past CAP_R. At 4 the
+                                                    # cap's rim touched the sled's flank
 CAP_BORE_R = P.FILLER_CAP_THREAD_MAJOR / 2 + 0.2    # 11.2
 CAP_END_T = 4.0
 CAP_L = 14.0
@@ -125,8 +127,12 @@ def hose_route(r=None):
     sx, sy = P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z
     top = BOTTLE_AXIS_Z + STUB_OUT
     nx, ny = P.FILLER_NECK_XY
-    run = P.Z_BELT - 12.0     # under the divider, over the bottle
-    pts = [(sx, sy, top), (sx, sy, run), (nx, sy, run), (nx, ny, run), (nx, ny, P.Z_BELT - 1.5)]
+    # forward over the bottle's neck end, which is clear of it, then down the front outside the
+    # barrel, and up onto the divider's neck
+    side = BOTTLE_W / 2 + r + 1.0
+    run = P.Z_BELT - 12.0
+    pts = [(sx, sy, top), (side, sy, top), (side, sy, run), (side, ny, run),
+           (nx, ny, run), (nx, ny, P.Z_BELT - 1.5)]
     route = None
     for a, b in zip(pts, pts[1:]):
         d = math.dist(a, b)
@@ -186,7 +192,7 @@ def tank_head():
 def filler_cap():
     """Closes the neck on the divider, inside the belly hatch. Retention thread, an O-ring seal."""
     cap = cyl_z(CAP_R, 0, CAP_L)
-    cap = cap + _cone_z(CAP_R, CAP_R + 4, CAP_SEAT_Z, CAP_L)             # a grip that flares at 45
+    cap = cap + _cone_z(CAP_R, CAP_R + CAP_GRIP, CAP_SEAT_Z, CAP_L)      # a grip that flares at 45
     cap = cap - cyl_z(CAP_BORE_R, -1, CAP_SEAT_Z)
     thread = IsoThread(major_diameter=P.FILLER_CAP_THREAD_MAJOR + 0.4, pitch=P.FILLER_CAP_PITCH,
                        length=CAP_THREAD_LEN, external=False, end_finishes=("fade", "fade"))

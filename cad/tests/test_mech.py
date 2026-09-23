@@ -282,19 +282,28 @@ def test_nothing_stands_in_the_phones_volume(parts):
     from mech.common import phone_body
     phone = phone_body()
     for name in ("belt_flange_lower", "belt_flange_upper", "divider", "chassis", "phone_sled",
-                 "electronics_deck", "fan_frame", "hatch_lip", "hatch_bosses"):
+                 "electronics_deck", "fan_frame", "filler_neck"):
         assert (phone & parts[name]).volume < 1e-6, name
 
 
 def test_belt_screws_line_up(parts):
+    """One screw a corner, through the torso's ring and the divider into the base ring's insert.
+
+    They are on the belt ring's mid-line ellipse now, not a bolt circle: between the joint's
+    section and its bore, which is the only band that is material in all three layers.
+    """
+    from mech.torso import BELT_MID_RX, BELT_MID_RY, belt_screws
     lower, upper, divider = parts["belt_flange_lower"], parts["belt_flange_upper"], parts["divider"]
-    for a in P.FLANGE_SCREW_ANGLES:
-        x = P.FLANGE_SCREW_R * math.cos(math.radians(a)); y = P.FLANGE_SCREW_R * math.sin(math.radians(a))
+    for x, y in belt_screws():
+        assert (x / P.BELT_IN_RX) ** 2 + (y / P.BELT_IN_RY) ** 2 > 1.0, (x, y)   # outside the bore
+        assert (x / P.BELT_RX) ** 2 + (y / P.BELT_RY) ** 2 < 1.0, (x, y)         # ... inside the section
         probe = cyl_z(P.M3_CLEAR / 2 - 0.05, P.Z_BELT - 4, P.Z_BASE_TOP + P.RING_T + 1, x, y)
-        assert (probe & upper).volume < 1e-6, a
-        assert (probe & divider).volume < 1e-6, a
+        assert (probe & upper).volume < 1e-6, (x, y)
+        assert (probe & divider).volume < 1e-6, (x, y)
         insert = cyl_z(P.INSERT_D / 2 - 0.05, P.Z_BELT - P.INSERT_DEPTH + 0.1, P.Z_BELT - 0.1, x, y)
-        assert (insert & lower).volume < 1e-6, a
+        assert (insert & lower).volume < 1e-6, (x, y)
+    assert math.isclose(BELT_MID_RX, (P.BELT_RX + P.BELT_IN_RX) / 2, abs_tol=1e-9)
+    assert math.isclose(BELT_MID_RY, (P.BELT_RY + P.BELT_IN_RY) / 2, abs_tol=1e-9)
 
 
 def test_divider_fills_the_base_cup(parts):
@@ -324,30 +333,46 @@ def test_the_boards_fit_the_deck_as_laid_out():
     assert area <= P.EDECK_L * P.EDECK_W
 
 
-def test_lower_belt_flange_follows_the_bases_flare(parts):
-    """Revolved, not a straight ring: at every height it reaches the wall, and through none of it.
+def test_the_lower_flanges_tongue_stands_outside_the_divider(parts):
+    """The base's half rises past the split as a tongue for the torso's skirt to shingle over.
 
-    Measured on a slice rather than by intersecting a thin probe ring: a ring half a millimetre
-    off the revolve's conical face makes OCCT return nonsense (an empty common and a cut bigger
-    than the ring itself), which would pass for the wrong reason.
+    Its bore above the split is the belt's own section, so the divider - a clearance inside that
+    same ellipse - drops into it rather than onto it, and the assembler clips the tongue to the
+    cavity less CLEAR_SHELL. Below the split the ring's bore is BELT_IN, which is what gives the
+    screws their annulus.
     """
-    flange = parts["belt_flange_lower"]
-    z0 = P.Z_BELT - 2 * P.RING_T
-    for z in (z0, z0 + 4, z0 + 8, z0 + 12, P.Z_BELT):
-        band = flange & box(-120, 120, -120, 120, max(z0, z - 0.5), min(P.Z_BELT, z + 0.5))
-        r_max = max(math.hypot(v.X, v.Y) for v in band.vertices())
-        assert r_max > P.ring_r_out(P.BASE_PROFILE, z, z) - 0.5, (z, r_max)   # out at the wall here
-        assert r_max < P.shell_r(P.BASE_PROFILE, z) + 0.1, (z, r_max)         # never through the skin
+    flange, divider = parts["belt_flange_lower"], parts["divider"]
+    assert math.isclose(flange.bounding_box().min.Z, P.Z_BELT - P.FLANGE_LOWER_H, abs_tol=1e-6)
+    assert math.isclose(flange.bounding_box().max.Z, P.Z_BASE_TOP, abs_tol=1e-6)
+    for z in (P.Z_BELT + 1.0, P.Z_BASE_TOP - 1.0):                          # the tongue's bore
+        probe = cyl_z(0.4, z - 0.2, z + 0.2, P.BELT_RX - 1.0, 0.0)
+        assert (probe & flange).volume < 1e-6, z
+    probe = cyl_z(0.4, P.Z_BELT - 1.0, P.Z_BELT - 0.6, P.BELT_IN_RX - 1.0, 0.0)
+    assert (probe & flange).volume < 1e-6                                   # the ring's bore, below
+    assert (flange & divider).volume < 1e-6                                 # they never touch
 
 
-def test_fan_frame_follows_the_barrel(parts):
-    """Clipped to the wall: it reaches the wall at every height and stands proud of the skin nowhere."""
+def test_the_fan_frames_bosses_face_the_panel(parts):
+    """A blank for the left side panel: four bosses facing -Y, deep enough for a blind insert.
+
+    Nothing is clipped to a profile any more - the assembler cuts it to the statue's cavity - so
+    what this holds is that wherever the panel's inner wall lands in the 95 to 100 band, the
+    bosses are behind it with a full insert's depth of metal in front of the hole's blind end.
+    """
     frame = parts["fan_frame"]
-    for z in (P.Z_FAN - P.FAN / 2 - 5, P.Z_FAN, P.Z_FAN + P.FAN / 2 + 5):
-        band = frame & box(-120, 120, -120, 120, z - 0.5, z + 0.5)
-        r_max = max(math.hypot(p.X, p.Y) for p in band.vertices())
-        assert r_max < P.shell_r(P.TORSO_PROFILE, z), (z, r_max)                       # inside the skin
-        assert r_max > P.shell_r(P.TORSO_PROFILE, z) - P.WALL - 0.5, (z, r_max)        # out at the wall
+    bb = frame.bounding_box()
+    x, z = P.FAN_XZ
+    assert bb.min.Y <= 80.0 + 1e-6 and bb.max.Y >= 115.0 - 1e-6            # right across the wall
+    assert (cyl_y(P.FAN / 2 - 2.05, bb.min.Y - 1, bb.max.Y + 1, x, z) & frame).volume < 1e-6
+    for dx in (-1, 1):
+        for dz in (-1, 1):
+            bx, bz = x + dx * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2
+            face = 90.0
+            bore = cyl_y(P.INSERT_D / 2 - 0.05, face - P.INSERT_DEPTH + 0.1, face - 0.1, bx, bz)
+            assert (bore & frame).volume < 1e-6, (dx, dz)                  # the insert's bore is open
+            blind = cyl_y(P.INSERT_D / 2 - 0.05, face - P.INSERT_DEPTH - 1.0,
+                          face - P.INSERT_DEPTH - 0.1, bx, bz)
+            assert (blind & frame).volume > 1e-3, (dx, dz)                 # ... and blind behind it
 
 
 def test_assembly_step_exists_after_build(tmp_path):
@@ -388,8 +413,9 @@ def test_no_two_parts_in_a_group_overlap(placed):
     revolve, so an overlap between two of them would close up rather than clash. None of them
     overlaps today - the exemption is there for the shell, not to excuse a mistake.
 
-    One interference is the design's: the divider stands DIVIDER_PROUD above the base's rim so
-    the belt screws always squeeze the bead. It is asserted for what it is, and for no more.
+    Two interferences are the design's: the divider stands DIVIDER_PROUD above the base's rim so
+    the belt screws always squeeze the bead, and the filler's cap screws onto its neck. The first
+    is asserted for what it is and for no more; the second has its own test next door.
     """
     from mech import INTERFACES
     section = {n: s for s, names in INTERFACES.items() for n in names}
@@ -401,6 +427,8 @@ def test_no_two_parts_in_a_group_overlap(placed):
         for a, b in itertools.combinations(group, 2):
             if a in section and b in section and section[a] == section[b]:
                 continue
+            if {a, b} == {"filler_neck", "filler_cap"}:
+                continue                     # the cap screws onto the neck; its own test measures that
             crush = (placed[a] & placed[b])
             if {a, b} == {"divider", "belt_flange_upper"}:
                 bb = crush.bounding_box()
@@ -410,30 +438,13 @@ def test_no_two_parts_in_a_group_overlap(placed):
             assert crush.volume < 1e-3, (a, b, crush.volume)
 
 
-def test_the_sled_slides_out_through_the_hatch(parts):
-    """With the panel off, the sled and the phone in it come straight out along +X."""
-    from mech.common import phone_body
-    from mech.torso import _wedge
-    unit = parts["phone_sled"] + phone_body()
-    outside = skin_solid(P.TORSO_PROFILE, P.WALL) - _wedge(P.HATCH_HALF_ANGLE, *P.HATCH_Z)
-    fixed = [parts[n] for n in ("chassis", "electronics_deck", "belt_flange_upper", "deck_ring",
-                                "deck", "fan_frame", "hatch_bosses", "hatch_lip")] + [outside]
-    clear_of = P.shell_r(P.TORSO_PROFILE, P.Z_LENS) + 5.0
-    d = 0.0
-    while True:
-        moved = unit.moved(Location((d, 0, 0)))
-        for other in fixed:
-            assert (moved & other).volume < 1e-3, d
-        if P.PHONE_FRONT_X - P.SLED_WALL + d > clear_of:
-            break
-        d += 5.0
-
 
 def test_belt_screw_length(parts):
     """An M3 x 20 driven from the counterbore's floor: full engagement, and it does not bottom."""
     lower, upper = parts["belt_flange_lower"], parts["belt_flange_upper"]
     floor = P.Z_BASE_TOP + P.RING_T - (P.SCREW_HEAD_H + 0.5)
-    x, y = polar(P.FLANGE_SCREW_R, P.FLANGE_SCREW_ANGLES[0])
+    from mech.torso import belt_screws
+    x, y = belt_screws()[0]
     head = cyl_z(3.2 - 0.05, floor, P.Z_BASE_TOP + P.RING_T, x, y)
     assert (head & upper).volume < 1e-6                          # the head sinks below the ring's top
     probe = cyl_z(P.INSERT_D / 2 - 0.05, P.Z_BELT - 2 * P.RING_T, P.Z_BELT, x, y)
@@ -450,7 +461,8 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
     obstacles = dict(parts)
     obstacles["phone"] = phone_body()
     z_chassis = P.Z_CHASSIS + P.CHASSIS_T
-    heads = [(polar(P.CHASSIS_SCREW_R, a), z_chassis) for a in P.CHASSIS_SCREW_ANGLES]
+    from mech.torso import chassis_screws
+    heads = [(xy, z_chassis) for xy in chassis_screws()]
     z_deck = z_chassis + P.EDECK_STANDOFF + P.EDECK_T
     heads += [((x, y), z_deck) for x, y in _edeck(P.EDECK_HOLES)]
     for (x, y), z in heads:
@@ -459,28 +471,4 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
             assert (driver & other).volume < 1e-3, (x, y, name)
 
 
-def test_hatch_bosses_take_a_blind_insert_and_stay_in_the_wall(parts):
-    """One bracket per screw, each with a blind insert facing the panel and material behind it."""
-    bosses = parts["hatch_bosses"]
-    assert len(bosses.solids()) == len(P.HATCH_SCREWS)
-    for z, a in P.HATCH_SCREWS:
-        r_in = P.shell_r(P.TORSO_PROFILE, z) - P.WALL
-        bore = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH + 0.1, r_in - 0.1, 0, z).rotate(Axis.Z, a)
-        assert (bore & bosses).volume < 1e-6, (z, a)                      # the insert's hole is clear
-        behind = cyl_x(P.INSERT_D / 2 - 0.05, r_in - P.INSERT_DEPTH - 0.9,
-                       r_in - P.INSERT_DEPTH - 0.1, 0, z).rotate(Axis.Z, a)
-        assert (behind & bosses).volume > 1e-3, (z, a)                    # ... and it is blind
-    assert (bosses - skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)).volume < 1e-6   # never proud
 
-
-def test_hatch_lip_frames_the_opening_and_leaves_its_top_clear(parts):
-    """A ledge round the bottom and both sides; the top edge is a shingle, not a lip."""
-    lip = parts["hatch_lip"]
-    bb = lip.bounding_box()
-    assert math.isclose(bb.min.Z, P.HATCH_Z[0], abs_tol=1e-6)
-    assert math.isclose(bb.max.Z, P.HATCH_Z[1], abs_tol=1e-6)
-    top = lip & box(-120, 120, -120, 120, P.HATCH_Z[1] - P.HATCH_LIP_W, P.HATCH_Z[1])
-    assert top.volume > 1e-3                                              # the sides run to the top
-    middle = top & box(-120, 120, -30, 30, P.HATCH_Z[1] - P.HATCH_LIP_W, P.HATCH_Z[1])
-    assert middle.volume < 1e-6                                           # nothing crosses the middle
-    assert (lip - skin_solid(P.TORSO_PROFILE, P.WALL - 1.2)).volume < 1e-6

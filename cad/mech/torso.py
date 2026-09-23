@@ -17,7 +17,7 @@ from pathlib import Path
 from build123d import Axis, Ellipse, Pos, extrude
 import params as P
 from mech import part
-from mech.common import box, cyl_y, cyl_z, insert_holes
+from mech.common import box, cyl_y, cyl_z, insert_holes, polar
 
 # --- numbers this module chooses, which params does not ----------------------------------
 BLANK = 15.0                 # how far past the nominal skin every interface blank runs
@@ -30,7 +30,11 @@ BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
 # The chassis has its own four on the same mid-line, between the belt's: the belt joint has to
 # open without the chassis coming off first. Nearest pair is 48.3 mm apart. (params' own
 # CHASSIS_SCREW_ANGLES is the belt's set and is not used here.)
-CHASSIS_SCREW_ANGLES = [10.0, 170.0, 190.0, 350.0]
+# ... and clear of the phone and of the sled's guide ribs: at 10 degrees the screw landed at
+# (66, 17), under the tray, with its driver going up into the phone; at 25 the driver caught the
+# rib's outer edge. At 30 it is at (58.0, 49.0), a millimetre and a half in front of the tray's
+# pocket and five clear of the rib.
+CHASSIS_SCREW_ANGLES = [30.0, 150.0, 210.0, 330.0]
 # The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
 # stood inside the sled's tray, which is at x 59.9 .. 73 from z 249.3 up; beside the tray it
 # needs |y| >= 36.55 + 18 (the cap's grip) and it sits at y -58. That is 44 degrees round from
@@ -43,7 +47,8 @@ NECK_TOP_Z = NECK_BASE_Z + 15.0
 # gets 7 mm of blank instead of 15 and every other direction keeps at least 13.
 FLOOR_RX, FLOOR_RY = 106.0, 125.0
 FLOOR_T = 4.0
-SAND_PLUG_XY = (-65.0, 0.0)  # behind the bottle, where the cavity at Z_FLOOR is 93 deep
+SAND_PLUG_XY = (-74.0, 0.0)  # behind the bottle, where the cavity at Z_FLOOR is 106 deep;
+                             # its lip has to clear the cradle's flank rib, which reaches -51.5
 LEG_PORT_X = -60.0           # tube and wiring down to the legs, clear of the bottle's -X face
 LEG_PORT_R = 12.0
 BRACKET_BOLT = 25.0          # half-pitch of the four inserts each leg bracket hangs from
@@ -89,6 +94,11 @@ def belt_screws():
 def chassis_screws():
     """The chassis's own four, on the same ellipse between the belt's."""
     return _mid_ring(CHASSIS_SCREW_ANGLES)
+
+
+def cage_feet():
+    """Where the turntable cage's four legs land on the chassis, from params not by hand."""
+    return [polar(P.CAGE_LEG_R, a) for a in P.DECK_SCREW_ANGLES]
 
 
 def measured_legs():
@@ -182,6 +192,9 @@ def belt_flange_upper():
     z0 = P.Z_BASE_TOP
     z1 = z0 + P.RING_T
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
+    px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
+    ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
+    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, z1 + 1, *P.FILLER_NECK_XY)   # the filler's neck
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
         ring = ring - cyl_z(3.2, z1 - (P.SCREW_HEAD_H + 0.5), z1 + 1, x, y)
@@ -263,6 +276,8 @@ def chassis():
         c = c - cyl_z(CHASSIS_BORE_R, z0 - 1, z1 + 1, 0.0, y)
     for x, y in chassis_screws():                                    # down into the torso ring
         c = c - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
+    for x, y in cage_feet():                                         # up into the cage's feet
+        c = c - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in belt_screws():                                       # reach the belt screws below
         c = c - cyl_z(3.5, z0 - 1, z1 + 1, x, y)
     for x, y in _sled_locks():                                       # the sled's lock bosses
@@ -321,10 +336,11 @@ def phone_sled():
     tray = tray - box(x0 - 1, x1 + 1, y1 - 2, y1 + 1, z1 - 4, z1 + 1)
     # two lugs behind the tray that land on the chassis's bosses and lock it at home
     z_lug = P.Z_CHASSIS + P.CHASSIS_T + P.SLED_FOOT_H
+    lug_t = P.EDECK_STANDOFF - P.SLED_FOOT_H - 0.5          # half a millimetre under the deck
     for x, y in _sled_locks():
-        tray = tray + box(x - BOSS_R - 1, x0 + 1.0, y - 5, y + 5, z_lug, z_lug + 4)
-        tray = tray - cyl_z(P.M3_CLEAR / 2, z_lug - 1, z_lug + 5, x, y)
-        tray = tray - cyl_z(3.2, z_lug + 1, z_lug + 5, x, y)             # head, flush
+        tray = tray + box(x - BOSS_R - 1, x0 + 1.0, y - 5, y + 5, z_lug, z_lug + lug_t)
+        tray = tray - cyl_z(P.M3_CLEAR / 2, z_lug - 1, z_lug + lug_t + 1, x, y)
+        tray = tray - cyl_z(3.2, z_lug + 1, z_lug + lug_t + 1, x, y)     # head, flush
     return tray
 
 
@@ -414,8 +430,10 @@ def filler_neck():
                        length=NECK_TOP_Z - NECK_BASE_Z - 4.0, external=True,
                        end_finishes=("square", "square"))
     core = thread.min_radius
-    neck = cyl_z(bore + 2.0, P.Z_BELT - 1.0, NECK_BASE_Z, nx, ny)          # spigot, through the divider
+    neck = cyl_z(bore + 2.0, P.Z_BELT, NECK_BASE_Z, nx, ny)                # spigot, through the divider
+                                                                           # only: a millimetre lower and
+                                                                           # it is in the base ring's bore
     neck = neck + cyl_z(NECK_FLANGE_R, NECK_BASE_Z, NECK_BASE_Z + 3.0, nx, ny)
     neck = neck + cyl_z(core, NECK_BASE_Z, NECK_TOP_Z, nx, ny)
     neck = neck + Pos(nx, ny, NECK_BASE_Z + 3.0) * thread
-    return neck - cyl_z(bore, P.Z_BELT - 2.0, NECK_TOP_Z + 1.0, nx, ny)
+    return neck - cyl_z(bore, P.Z_BELT - 1.0, NECK_TOP_Z + 1.0, nx, ny)
