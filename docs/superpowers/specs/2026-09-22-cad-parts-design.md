@@ -279,3 +279,13 @@ renders are inspected after every change to the shell scripts.
   15 mm, which a 6 × 4 PU tube tolerates statically (§3's 25 mm was for a longer run); the
   filler stub rises from the tank head's shoulder; the mouth is the nozzle's outboard bearing;
   the pump is tied down and the valve strapped; the beard's back hangs to 340 over the exhaust.
+- **2026-09-23, final review and the reference statue.** The final review found the neck shroud in
+  the jet's path below +8° of tilt; notching it exposed the turntable's own rim in the path at −35°,
+  and raising the mouth to 8 mm below the head's centre exposed the fixed beard collar, whose bore
+  the jet crosses at every pan angle. **The fixed collar is deleted**: the beard turns with the head
+  as the outer skin of the neck shroud, which is notched for the jet, hanging over the coat as it
+  does on the reference statue. The user judged the procedural sculpt ugly against a real statue,
+  which is fair and was the risk named in §1: the shell sections are to be regenerated from an
+  image-to-3D reconstruction of the user's reference photos (`cad/in/`, not committed), scaled to
+  the mechanism's envelope, hollowed, and fed to the same assembler. The mechanism, its tests and
+  the assembler stand.
