@@ -331,8 +331,8 @@ PUMP_TIE_SLOTS = True                       # cable-tie slots hold the pump to i
 FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
-FILLER_STUB_DIR = "+z"                      # the stub rises from the tank head's shoulder, reached through the belly hatch
-FILLER_VIA_HATCH = True
+FILLER_VIA_HATCH = True                     # a hose from the tank head's port to a filler neck in the divider's front, under the hatch
+FILLER_NECK_XY = (60.0, 0.0)                # on the divider, inside the hatch's wedge; its cap is the filler_cap
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 SAND_Z_TOP = Z_FLOOR - PUMP[2] - 12.0       # sand fills the boots up to here, under the pump and the valve
@@ -369,7 +369,7 @@ BELT_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]
 CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
 # the dry zone, re-stacked
 FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
-EDECK_L, EDECK_W = 96.0, 76.0
+EDECK_L, EDECK_W = 100.0, 92.0             # its corner sits at 0.68 of the chassis ellipse
 EDECK_POS = (0.0, 0.0)
 # the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
 SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
