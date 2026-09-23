@@ -29,11 +29,13 @@ BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
 # The chassis has its own four on the same mid-line, between the belt's: the belt joint has to
 # open without the chassis coming off first. Nearest pair is 48.3 mm apart. (params' own
 # CHASSIS_SCREW_ANGLES is the belt's set and is not used here.)
-# ... and clear of the phone and of the sled's guide ribs: at 10 degrees the screw landed at
-# (66, 17), under the tray, with its driver going up into the phone; at 25 the driver caught the
-# rib's outer edge. At 30 it is at (58.0, 49.0), a millimetre and a half in front of the tray's
-# pocket and five clear of the rib.
-CHASSIS_SCREW_ANGLES = [30.0, 150.0, 210.0, 330.0]
+# ... and clear of the phone, of the sled's guide ribs and of the filler's neck. At 10 degrees
+# the screw landed at (66, 17), under the tray, with its driver going up into the phone; at 25
+# the driver caught the rib's outer edge; at 30 it was (58.0, 49.0), eleven millimetres from the
+# neck and inside the notch the ring needs for it. The front one is at 70 now - (22.9, 92.1),
+# forty-four from the neck and twenty from the belt screw at 55 - and the other three keep their
+# corners.
+CHASSIS_SCREW_ANGLES = [70.0, 150.0, 210.0, 330.0]
 # The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
 # stood inside the sled's tray, which is at x 59.9 .. 73 from z 249.3 up; beside the tray it
 # needs |y| >= 36.55 + 18 (the cap's grip) and it sits at y -58. That is 44 degrees round from
@@ -194,9 +196,9 @@ def belt_flange_upper():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
     ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
-    # only as tall as the neck's own flange: any deeper and it takes the belt screw at 40
-    # degrees, which is 8.86 mm away, out of the ring with it
-    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, NECK_BASE_Z + 3.5, *P.FILLER_NECK_XY)
+    # full height now: the belt screws moved to 55 degrees and the chassis's to 70, so the
+    # nearest of either is 28 mm away and the notch takes nothing with it
+    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, z1 + 1, *P.FILLER_NECK_XY)
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
         ring = ring - cyl_z(3.2, z1 - (P.SCREW_HEAD_H + 0.5), z1 + 1, x, y)
