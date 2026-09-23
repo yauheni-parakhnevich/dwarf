@@ -286,9 +286,9 @@ TILT_STOP_TAB_R = 15.0
 SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
 SHROUD_R_OUT = 70.4                                  # over the arms' outer corners (65.5), inside the torso's neck (73.6)
 SHROUD_SKIRT_Z = SHROUD_BASE_Z + 8.0                 # where the cone from the base reaches SHROUD_R_OUT
-SHROUD_SHOULDER_Z = BEARD_TOP_Z + 2.0                # 445: above the collar's rim the shroud closes toward the head
-SHROUD_TOP_Z = Z_HEAD - 16.0                         # 462
-SHROUD_TOP_R = 50.0                                  # the head's sphere passes through at r 45.3
+SHROUD_SHOULDER_Z = BEARD_TOP_Z + 11.0               # 454: the cone starts high enough that the nose clears it at full nose-down
+SHROUD_TOP_Z = Z_HEAD - 17.6                         # 460.4: the rim passes under the ear's stop tab
+SHROUD_TOP_R = 54.0                                  # 9 mm to the head's 44.7 at this height; the nose at -35 needs it
 TUBE_OD = 6.0
 TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's barb faces -X so one such bend reaches the axis
 
