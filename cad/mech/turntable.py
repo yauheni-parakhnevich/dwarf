@@ -302,8 +302,12 @@ LUG_D = 4.0
 
 
 def _tilt_servo():
-    """The MG92B where it sits: shaft along +Y at the pivot's height, body out to -Y."""
-    return servo_body(P.MG92B, (P.NOZZLE_PIVOT[0], SERVO_SHAFT_Y, P.NOZZLE_PIVOT[2]), axis="y")
+    """The MG92B where it sits: shaft along +Y at the pivot, body out to -Y and hanging downward.
+
+    Downward because the beard closes in above the chin: the same ray is good to r 84 at z 430
+    and only to 76 at 441, so the body's far corner has to be the low one.
+    """
+    return servo_body(P.MG92B, (P.NOZZLE_PIVOT[0], SERVO_SHAFT_Y, P.NOZZLE_PIVOT[2]), axis="y", up=False)
 
 
 def _pivot_sector(a0, a1, y0, y1):
@@ -345,18 +349,18 @@ def tilt_bracket():
     back = (cyl_z(r + 3.0, P.SHROUD_BASE_Z + 3.0, 446.0) - cyl_z(r + P.CLEAR, P.SHROUD_BASE_Z + 2.0, 447.0)) \
         & _sector(-30.0, 30.0, 0, 600, r + 10.0)
     back = back - _arm_swing()                                     # the arm's tail swings through it
-    b = back + box(50.0, 70.0, *CHEEK_Y, 412.0, 446.0)             # the servo's cheek
+    sb = _tilt_servo().bounding_box()
+    b = back + box(50.0, 70.0, *CHEEK_Y, sb.min.Z - 5.0, sb.max.Z + 5.0)    # the servo's cheek
     b = b + box(50.0, 74.0, *FAR_CHEEK_Y, 412.0, 436.0)            # ... and the far bearing's,
     a0, a1 = stop_slot_angles()                                    # which carries the arm's stops
     y0, y1 = FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1
     slot = (cyl_y(LUG_R + LUG_D / 2 + P.CLEAR, y0, y1, px, pz)
             - cyl_y(LUG_R - LUG_D / 2 - P.CLEAR, y0 - 1, y1 + 1, px, pz))
     b = b - (slot & _pivot_sector(a0, a1, y0, y1))
-    bb = _tilt_servo().bounding_box()
-    b = b - box(bb.min.X - P.CLEAR, bb.max.X + P.CLEAR, CHEEK_Y[0] - 1, 0.0,
-                bb.min.Z - P.CLEAR, bb.max.Z + P.CLEAR)            # the body drops through its cheek
+    b = b - box(sb.min.X - P.CLEAR, sb.max.X + P.CLEAR, CHEEK_Y[0] - 1, 0.0,
+                sb.min.Z - P.CLEAR, sb.max.Z + P.CLEAR)            # the body drops through its cheek
     along = P.MG92B["holes"][0]
-    zc = (bb.min.Z + bb.max.Z) / 2
+    zc = (sb.min.Z + sb.max.Z) / 2
     for dz in (-along / 2, along / 2):                             # the tabs' two M2 screws
         b = b - cyl_y(2.4 / 2, y0 - 1, y1 + 1, px, zc + dz)
     b = b - cyl_y(3.2 / 2, FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1, px, pz)   # the pivot pin

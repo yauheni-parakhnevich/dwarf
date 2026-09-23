@@ -54,14 +54,14 @@ def box(x0, x1, y0, y1, z0, z1):
     return Pos((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2) * Box(x1 - x0, y1 - y0, z1 - z0)
 
 
-def servo_body(spec, shaft_xyz, axis="z"):
+def servo_body(spec, shaft_xyz, axis="z", up=True):
     """A servo as a solid, for clearance checks and cutters.
 
     `shaft_xyz` is where the output shaft leaves the body and `axis` is the shaft direction.
     Only the orientations this design uses exist:
     "-z": shaft down, body above the shaft face, length running +X from the shaft end (pan);
-    "y":  shaft along +Y, body behind the shaft face, length running +Z from the shaft end (tilt,
-          TILT_SERVO_UP) so the tabs sit where the sphere is wide.
+    "y":  shaft along +Y, body behind the shaft face, length running +Z from the shaft end; with
+          up=False it runs -Z instead, which is how the nozzle's micro servo hangs.
     """
     L, W, H = spec["body"]
     off = spec["shaft_off"]
@@ -69,7 +69,9 @@ def servo_body(spec, shaft_xyz, axis="z"):
     if axis == "-z":
         return box(sx - off, sx + (L - off), sy - W / 2, sy + W / 2, sz, sz + H)
     if axis == "y":
-        return box(sx - W / 2, sx + W / 2, sy - H, sy, sz - off, sz + (L - off))
+        if up:
+            return box(sx - W / 2, sx + W / 2, sy - H, sy, sz - off, sz + (L - off))
+        return box(sx - W / 2, sx + W / 2, sy - H, sy, sz - (L - off), sz + off)
     raise ValueError(axis)
 
 
@@ -78,12 +80,6 @@ def phone_body():
     return box(P.PHONE_FRONT_X, P.PHONE_BACK_X,
                P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
                P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
-
-
-def canister_body():
-    L, W, H = P.CANISTER
-    cx, cy = P.CANISTER_XY
-    return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.CANISTER_Z0, P.CANISTER_Z0 + H)
 
 
 def pump_body():

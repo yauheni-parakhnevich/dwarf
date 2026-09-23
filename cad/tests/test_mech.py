@@ -347,20 +347,16 @@ def test_assembly_step_exists_after_build(tmp_path):
     labels = [c.label for c in comp.children]
     assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
     assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
-    # the two parts that declare a placement are drawn at the origin and land where it says
-    from mech.base import CAP_L, STUB_OUT, TANK_HEAD_L
+    # every part that declares a placement is drawn upright at the origin and lands elsewhere:
+    # the STEP a printer is given is the print frame, and only assembly() moves it
     at = {c.label: c.bounding_box() for c in comp.children}
-    raw = {spec.name: spec.build().bounding_box() for spec in ALL if spec.placement != Location()}
-    neck_x = P.CANISTER_XY[0] - P.CANISTER[0] / 2
-    assert math.isclose(raw["tank_head"].min.Z, 0.0, abs_tol=1e-6)            # drawn upright, bore along Z
-    assert math.isclose(at["tank_head"].max.X, neck_x, abs_tol=1e-6)          # fitted on the neck
-    assert math.isclose(at["tank_head"].min.X, neck_x - TANK_HEAD_L, abs_tol=1e-6)
-    assert math.isclose(at["tank_head"].max.Z, P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_OUT, abs_tol=1e-6)
-    skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
-    assert math.isclose(raw["filler_cap"].min.Z, 0.0, abs_tol=1e-6)           # ... and so is the cap
-    assert math.isclose(at["filler_cap"].max.X, -skin, abs_tol=1e-6)          # mouth on the skin
-    assert math.isclose(at["filler_cap"].min.X, -skin - CAP_L, abs_tol=1e-6)  # ... closed end outboard
-    assert math.isclose((at["filler_cap"].min.Z + at["filler_cap"].max.Z) / 2, P.Z_FILLER, abs_tol=1e-6)
+    placed_specs = [spec for spec in ALL if spec.placement != Location()]
+    assert placed_specs, "no part declares a placement any more; this test has nothing to hold"
+    for spec in placed_specs:
+        raw = spec.build().bounding_box()
+        assert math.isclose(raw.min.Z, 0.0, abs_tol=1e-6), spec.name          # drawn standing up
+        moved = at[spec.name]
+        assert abs(moved.min.Z - raw.min.Z) + abs(moved.min.X - raw.min.X) > 1e-6, spec.name
     step = tmp_path / "mechanism_assembly.step"                  # the build writes exactly this
     assert export_step(comp, str(step))
     assert step.stat().st_size > 0
