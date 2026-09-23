@@ -132,7 +132,7 @@ def tank_cradle():
     pad = box(cx - hx, cx + hx, cy - hy, cy + hy, PLATE_TOP, P.BOTTLE_Z0)
     for sx in (-1, 1):                                                   # ribs down the flanks
         x = cx + sx * hx
-        pad = pad + box(min(x, x + sx * RIB_T), max(x, x + sx * RIB_T), cy - 80.0, cy + 80.0,
+        pad = pad + box(min(x, x + sx * RIB_T), max(x, x + sx * RIB_T), cy - hy + 15.0, cy + hy - 15.0,
                         PLATE_TOP, P.BOTTLE_Z0 + RIB_H)
     for sy in (-1, 1):                                                   # and a stop at each end
         y = cy + sy * hy
