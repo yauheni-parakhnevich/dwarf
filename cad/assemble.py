@@ -39,9 +39,11 @@ INTO = {
     "belt_flange_lower": ("base_left", "base_right"),
     "floor_plate": ("base_left", "base_right"),
     "belt_flange_upper": ("torso", "panel_left", "panel_right"),
-    "deck_ring": ("torso", "panel_left", "panel_right"),
     "fan_frame": (f"panel_{P.FAN_PANEL}",),
 }
+# The deck ring is not here any more: it became a cage standing on the chassis, declares no
+# section, and touches no wall. `unclaimed()` is what makes sure the next part to be added to
+# `mech`'s registry is not silently left out of the shell the same way.
 STAKE_ANGLES = (45.0, 135.0, 225.0, 315.0)
 DRAIN_ANGLES = (55.0, 125.0, 235.0, 305.0)
 
@@ -294,8 +296,25 @@ def debris(mesh, name, limit=5000.0):
     return keep[0] if len(keep) == 1 else union(*keep) if len(keep) > 1 else mesh
 
 
+def unclaimed():
+    """Interface parts the mechanism declares that this module would not union into anything."""
+    try:
+        import mech.base, mech.head, mech.torso, mech.turntable  # noqa: F401
+        from mech import INTERFACES
+    except Exception as exc:
+        print(f"      could not read the mechanism's registry ({exc.__class__.__name__}); "
+              f"not checking for parts left out")
+        return ()
+    named = {n for names in INTERFACES.values() for n in names}
+    return tuple(sorted(named - set(INTO)))
+
+
 def main():
     STL.mkdir(parents=True, exist_ok=True)
+    missed = unclaimed()
+    if missed:
+        raise RuntimeError(f"{', '.join(missed)} declare a shell section in mech/ but this "
+                           f"module does not know where to put them; add them to INTO")
     grown = trimesh.load(CAD / "out" / "statue" / "cavity_grown.stl")
     print(f"assemble cavity_grown {grown.volume / 1e6:.2f} L; sections from {RAW}")
     for name in SECTIONS:
