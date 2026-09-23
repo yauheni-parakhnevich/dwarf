@@ -312,7 +312,7 @@ BOTTLE = (97.0, 195.0, 71.0)                # a rectangular 1 L HDPE lab bottle 
 # be 170 long at most, whatever its label says.
 BOTTLE_SHOULDER_H = 25.0                    # the top of the bottle tapers in over this height
 BOTTLE_SHOULDER_IN = (8.0, 16.0)            # ... by this much on each side (x) and each end (y)
-BOTTLE_XY = (-7.0, 0.0)                     # 7 mm back from centre: room in front of it for the filler hose to pass beside its end
+BOTTLE_XY = (-4.0, 0.0)                     # 4 mm back from centre: room in front of it for the filler hose; at 7 its rear shoulder corners left the coat
 BOTTLE_Z0 = Z_FLOOR + 4.0 + 2.0             # on the floor plate's cradle
 BOTTLE_THREAD_MAJOR = 38.0                  # its neck, towards +Y; CAN_THREAD_MAJOR follows it
 CAN_THREAD_MAJOR = 38.0
@@ -335,7 +335,7 @@ FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
 FILLER_VIA_TOP = True                       # a hose from the tank head's port to a filler neck in the divider's front, reached from the top with the bell off
-FILLER_NECK_XY = (44.0, 58.0)               # on the divider inside the ring's bore, on the bottle's neck side, beside the sled's path; the hose comes up the gap in front of the bottle's end
+FILLER_NECK_XY = (46.0, 57.0)               # on the divider inside the ring's bore (0.98 of it), on the bottle's neck side, beside the sled's path; the hose comes up the gap in front of the bottle's end
                                             # stand inside the sled's tray. See the note in mech/torso.py
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
@@ -378,7 +378,7 @@ SECTIONS_STATUE = {                         # printable pieces, each within the 
 # The fan hangs under the deck and blows upward through a hole in it; the intake is in the belt
 # ring's back and the air leaves through the bell's turning gap and the beard's parting, a chimney.
 # The sleeves are too thin to hold a fan and everything else above the belt turns.
-FAN_XY = (-45.0, -20.0)                     # the fan's axis, under the deck: clear of the bearing, the cage's legs, the servo and the deck's trimmed back
+FAN_XY = (-49.0, -20.0)                     # the fan's axis, under the deck: its hole stops short of the bearing's square, inside the deck's trimmed back (r 71 of 72)
 FAN_HOLE_D = FAN - 4.0
 Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
