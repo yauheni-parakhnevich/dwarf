@@ -296,14 +296,8 @@ MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
 NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
 NOZZLE_HOLDER_X = (15.0, 28.0)
 TILT_STOP_TAB_R = 15.0
-# --- neck shroud: a body of revolution on the plate that turns with the head, hiding the yoke
-#     inside the collar and closing the gap around the head to a few millimetres
+# --- neck shroud: a cylinder on the plate that turns with the head and carries it; see the statue block
 SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
-SHROUD_R_OUT = 70.4                                  # between the arms' corners and the neck's inner wall; asserted below
-SHROUD_SKIRT_Z = SHROUD_BASE_Z + 8.0                 # where the cone from the base reaches SHROUD_R_OUT
-SHROUD_SHOULDER_Z = BEARD_TOP_Z + 11.0               # 454: the cone starts high enough that the nose clears it at full nose-down
-SHROUD_TOP_Z = Z_HEAD - 17.6                         # 460.4: the rim passes under the ear's stop tab
-SHROUD_TOP_R = 54.0                                  # 9.3 mm to the head's 44.7 at this height; the nose at -35 needs it
 JET_D = NOZZLE_D + 4.0                               # the jet's keep-out: nozzle bore plus spread over 30 mm
 JET_NOTCH_HALF_DEG = 9.0                             # the shroud's front is notched for the jet over the whole tilt range
 TUBE_OD = 6.0
@@ -378,7 +372,7 @@ PUMP = (120.0, 65.0, 60.0)                  # a compact 12 V diaphragm pump; the
 FILLER_VIA_HATCH = True                     # the filler cap sits on the tank head inside the belly hatch; nothing on the coat's back
 # the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
 SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
-SHROUD_TOP_Z = 454.0
+SHROUD_TOP_Z = 454.0                        # closed top with a hole for the tube and wires
 SHROUD_SCREWS_Z = 440.0                     # four radial M3 from outside, hidden in the beard's locks
 SHROUD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
 # the nozzle tilts on a micro servo inside the beard, through the beard's parting under the mouth
