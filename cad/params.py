@@ -175,10 +175,12 @@ DECK_R = 80.0                  # the statue's front cavity at the deck is 85; a 
 DECK_LOBE = dict(angle=270.0, half=45.0, r=86.0)   # the hangers' corners reach 83.3; the cavity there is 95
 DECK_BACK_R = 72.0             # over 140..220 degrees the coat's back is only 74..80 out
 RING_R_IN = 50.0
-RING_R_OUT = 58.0              # the ring is a narrow annulus; four webs reach the wall; the phone's top passes outside it
+RING_R_OUT = 58.0              # the ring is a narrow annulus standing on four legs down to the chassis (a cage): nothing above the belt is fixed shell
+CAGE_LEG = 12.0                # the legs' square section
+CAGE_LEG_R = 60.0              # the legs' centres; the deck's screws sit on the same points
 RING_WEB_W = 8.0
-DECK_SCREW_R = 54.0
-DECK_SCREW_ANGLES = [90.0, 150.0, 210.0, 240.0]   # off the column's arc slot (front +-76), the hangers (250..300) and the phone
+DECK_SCREW_R = CAGE_LEG_R
+DECK_SCREW_ANGLES = [82.0, 98.0, 235.0, 250.0]    # the cage's legs: clear of the electronics deck (|y| > 50), the pan servo (x -5..35, y -70..-50), the stop pins (+-70.7 at r 60) and the phone
 PLATE_R = 50.0
 PLATE_T = 5.0
 Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
