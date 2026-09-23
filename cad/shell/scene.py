@@ -54,8 +54,8 @@ groups = {
     "fixed": collection("fixed", mech),
     "interface (printed with the shell)": collection("interface (printed with the shell)", mech),
 }
-NODS = {"coupler", "ear_boss", "tilt_cradle", "cradle_rails", "face_stop", "head_lip", "nozzle_holder", "nozzle_bosses"}
-TURNS = {"plate", "shaft", "yoke", "neck_shroud", "servo_crank", "pan_link"}
+NODS = {"nozzle_arm"}                       # only the nozzle tilts now; the head is one shell
+TURNS = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank", "pan_link"}
 
 tint = {"base": (0.55, 0.6, 0.75, 1), "torso": (0.55, 0.6, 0.75, 1), "belly": (0.6, 0.7, 0.8, 1),
         "head_back": (0.9, 0.75, 0.65, 1), "face": (0.9, 0.75, 0.65, 1),
