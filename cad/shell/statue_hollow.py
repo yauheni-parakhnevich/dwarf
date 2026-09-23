@@ -36,5 +36,5 @@ def wall(thickness, name):
     print(f"statue {name}: wall {thickness} mm, {len(ob.data.polygons)} faces")
 
 
-wall(P.WALL, "shell")
+wall(P.WALL, "wall_full")
 wall(P.WALL - GROW, "wall_thin")

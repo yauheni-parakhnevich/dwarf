@@ -50,6 +50,65 @@ STEP = 5.0                   # the reach table's resolution
 Z_LEGS = P.Z_FLOOR - 50.0    # where the pump and the valve stand
 
 
+# --- writing meshes out ---------------------------------------------------------------------
+
+def tidy(mesh):
+    """Drop the crumbs a cut leaves and pull apart pinched vertices before writing the file.
+
+    Both are the lessons the assembler learned, and they apply to every mesh here, not only the
+    sections. A plane grazing a 200 000-triangle skin leaves closed surfaces with no volume
+    behind them; manifold3d is entitled to leave two vertices in one place where a cutter grazed
+    a facet. Either is a perfectly good solid in memory and neither survives an STL, which has no
+    vertex identity and merges the pair into an edge with four faces on it. The cavity went out
+    of here unwatertight that way, and a mesh nothing can test is worse than no mesh. A crumb is
+    anything under a cubic centimetre - the smallest real section is a hand, at fifty.
+    """
+    parts = mesh.split(only_watertight=False)
+    dropped = 0
+    if len(parts) > 1:
+        solid = [c for c in parts if abs(c.volume) > 1000.0]
+        dropped = len(parts) - len(solid)
+        if dropped:
+            mesh = solid[0] if len(solid) == 1 else trimesh.util.concatenate(solid)
+    v = np.asarray(mesh.vertices)
+    pairs = cKDTree(v).query_pairs(2e-4, output_type="ndarray")
+    pinches = 0
+    if len(pairs):
+        mesh = mesh.copy()
+        idx = np.unique(pairs[:, 0])
+        # A vertex of a degenerate triangle has no normal, and numpy hands back NaN rather than
+        # saying so. Exported, a NaN vertex takes its faces with it - the base lost the 10 mm
+        # under its rim that way, silently - so the ones without a direction stay where they are.
+        n = np.nan_to_num(np.asarray(mesh.vertex_normals)[idx], nan=0.0, posinf=0.0, neginf=0.0)
+        mesh.vertices[idx] = mesh.vertices[idx] + n * 2e-3
+        pinches = int((np.linalg.norm(n, axis=1) > 0).sum())
+    return mesh, dropped, pinches
+
+
+def write(mesh, path, label="", quiet=False):
+    """Tidy, write, read back, and refuse to go on if the file is not the solid we had."""
+    mesh, dropped, pinches = tidy(mesh)
+    mesh.merge_vertices()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mesh.export(path)
+    back = trimesh.load(path)
+    note = "".join([f", {dropped} crumbs" if dropped else "", f", {pinches} pinches" if pinches else ""])
+    if not quiet:
+        print(f"statue {path.stem:13s} {len(back.faces):7d} faces  {back.volume / 1e6:7.3f} L  "
+              f"watertight={back.is_watertight}{note}  {label}")
+    else:
+        e = back.extents
+        print(f"       {path.stem:12s} {back.volume / 1e3:8.1f} cm3  {len(back.faces):7d} faces  "
+              f"{back.body_count} body  bbox {e[0]:.0f} x {e[1]:.0f} x {e[2]:.0f} mm  "
+              f"watertight={back.is_watertight}{note}{label}")
+    if not back.is_watertight or not back.is_winding_consistent:
+        raise RuntimeError(f"{path.name} is not a solid after the round trip to STL")
+    if abs(back.volume - mesh.volume) > 0.001 * abs(mesh.volume) or \
+            np.abs(back.bounds - mesh.bounds).max() > 0.01:
+        raise RuntimeError(f"{path.name} changed on its way through the STL")
+    return back
+
+
 # --- the frame ------------------------------------------------------------------------------
 
 def box(lo, hi):
@@ -122,13 +181,10 @@ def outer():
     mirror = half.copy()
     mirror.apply_transform(np.diag([1.0, -1.0, 1.0, 1.0]))  # trimesh flips the winding for us
     sym = trimesh.boolean.boolean_manifold([half, mirror], "union")
-    sym.merge_vertices()
-    OUT.mkdir(parents=True, exist_ok=True)
-    sym.export(OUT / "outer.stl")
     b = sym.bounds
-    print(f"statue outer  {len(sym.faces)} faces  watertight={sym.is_watertight}  "
-          f"volume={sym.volume / 1e6:.2f} L  bounds x{b[0][0]:.0f}..{b[1][0]:.0f} "
-          f"y{b[0][1]:.0f}..{b[1][1]:.0f} z{b[0][2]:.0f}..{b[1][2]:.0f}")
+    sym = write(sym, OUT / "outer.stl",
+                f"bounds x{b[0][0]:.0f}..{b[1][0]:.0f} y{b[0][1]:.0f}..{b[1][1]:.0f} "
+                f"z{b[0][2]:.0f}..{b[1][2]:.0f}")
     return sym
 
 
@@ -137,22 +193,19 @@ def outer():
 def hollow():
     """shell.stl, cavity.stl, cavity_grown.stl. Blender walls; manifold takes the difference."""
     from build import blender
-    blender("statue_hollow.py", wants=[OUT / "shell.stl", OUT / "wall_thin.stl"])
+    raw = [OUT / "wall_full.stl", OUT / "wall_thin.stl"]
+    blender("statue_hollow.py", wants=raw)
     skin = trimesh.load(OUT / "outer.stl")
     out = {}
-    for name, wall in (("cavity", "shell"), ("cavity_grown", "wall_thin")):
-        w = trimesh.load(OUT / f"{wall}.stl")
+    for void_name, wall_file, t in (("cavity", raw[0], P.WALL), ("cavity_grown", raw[1], P.WALL - GROW)):
+        w = trimesh.load(wall_file)
         if not w.is_watertight:
-            raise RuntimeError(f"{wall}.stl is not watertight; SOLIDIFY folded somewhere")
-        void = trimesh.boolean.boolean_manifold([skin, w], "difference")
-        void.export(OUT / f"{name}.stl")
-        out[name] = void
-        print(f"statue {name:13s} {len(void.faces)} faces  watertight={void.is_watertight}  "
-              f"volume={void.volume / 1e6:.2f} L")
-        if name == "cavity":
-            print(f"statue shell        {len(w.faces)} faces  volume={w.volume / 1e6:.2f} L  "
-                  f"({w.volume * 1.24e-3:.0f} g of PLA at 1.24 g/cm3)")
-    return out["cavity"], out["cavity_grown"]
+            raise RuntimeError(f"{wall_file.name} is not watertight; SOLIDIFY folded somewhere")
+        if void_name == "cavity":
+            out["shell"] = write(w, OUT / "shell.stl", f"wall {t} mm, {w.volume * 1.24e-3:.0f} g of PLA")
+        out[void_name] = write(trimesh.boolean.boolean_manifold([skin, w], "difference"),
+                               OUT / f"{void_name}.stl", f"{t} mm inside the skin")
+    return out["cavity"], out["cavity_grown"], out["shell"]
 
 
 # --- what the mechanism needs to know -------------------------------------------------------
@@ -185,25 +238,49 @@ def hits(segs, origin, direction):
     return t[np.r_[True, np.diff(t) > 1.0]] if len(t) else t
 
 
-def reach(cavity):
+def inside(segs, point):
+    """Is the point inside the section those segments bound? Crossing parity, in 2D.
+
+    Three rays, best of three. One ray is enough in theory and wrong in practice: send it
+    through a vertex shared by two segments, or along a fold the offset left, and it counts two
+    crossings where the boundary was crossed once. Three directions that share no such accident
+    turn that into a vote, and a level of the head stops reporting itself as solid.
+    """
+    votes = sum(len(hits(segs, point, d)) % 2 for d in ((1.0, 0.0), (0.0, 1.0), (0.6, 0.8)))
+    return votes >= 2
+
+
+def reach(cavity, shell):
     """How far the cavity reaches from the pan axis, every STEP mm: min, front, back, left, right.
 
-    The fit report's T8 in table form. Distance from the axis to the first wall in each of 72
-    directions; where the axis is not inside the cavity at all - up in the hat, where the skin
-    closes in - the row is all zeros and the layout tests know to stay out.
+    The fit report's T8 in table form: the distance from the axis to the first wall in each of 72
+    directions. A crossing only counts as a wall if there is shell material just past it. That
+    test is not fussiness - SOLIDIFY folds the wall in on itself where the skin's own curvature
+    is tighter than its thickness, under the brim and behind the ears, and the difference that
+    makes the cavity turns each fold into a surface the ray meets and the material behind it into
+    something the same ray passes straight through. Both questions are answered on the two
+    sections at this height, by crossing parity, which needs no ray cast into either solid.
+
+    Where the axis is not inside the cavity at all - up in the leaning hat - the row is zeros,
+    and whatever reads this table knows to stay out rather than to trust a reach of nothing.
     """
     table = {}
     zlo, zhi = cavity.bounds[0][2], cavity.bounds[1][2]
     for z in np.arange(math.ceil(zlo / STEP) * STEP, zhi, STEP):
         segs = segments_at(cavity, z)
-        if not len(segs):
-            continue
         rs = np.zeros(72)
-        if cavity.contains([[0.0, 0.0, float(z)]])[0]:
+        if len(segs) and inside(segs, (0.0, 0.0)):
+            wall = segments_at(shell, z)
             for i in range(72):
                 a = math.radians(i * 5)
-                t = hits(segs, (0.0, 0.0), (math.cos(a), math.sin(a)))
-                rs[i] = t[0] if len(t) else 0.0
+                d = (math.cos(a), math.sin(a))
+                ts = hits(segs, (0.0, 0.0), d)[:4]
+                for t in ts:
+                    if inside(wall, (d[0] * (t + 0.5), d[1] * (t + 0.5))):
+                        rs[i] = t
+                        break
+                else:
+                    rs[i] = ts[-1] if len(ts) else 0.0
         table[str(int(round(z)))] = [round(float(x), 1) for x in
                                      (rs.min(), rs[0], rs[36], rs[18], rs[54])]  # min, +x, -x, +y, -y
     return table
@@ -244,7 +321,7 @@ def legs(cavity):
                 xs = np.arange(best[0] - 6, best[0] + 6, grid)
                 ys = np.arange(best[1] - 6, best[1] + 6, grid)
             pts = np.array([(x, y) for x in xs for y in ys
-                            if (y >= 0) == (sign > 0) and len(hits(segs, (x, y), (1.0, 0.0))) % 2])
+                            if (y >= 0) == (sign > 0) and inside(segs, (x, y))])
             if not len(pts):
                 break
             room_all = clearance(segs, pts)
@@ -306,7 +383,7 @@ def measured(skin):
     return out, src
 
 
-def features(skin, cavity):
+def features(skin, cavity, shell):
     feats, src = measured(skin)
     doc = {
         "frame": "mm, Z up, +X front, +Y left, origin on the floor under the pan axis",
@@ -317,7 +394,7 @@ def features(skin, cavity):
         "features_source": src,
         "reach_columns": ["min", "front(+x)", "back(-x)", "left(+y)", "right(-y)"],
         "reach_step": STEP,
-        "reach": reach(cavity),
+        "reach": reach(cavity, shell),
         "legs_z": Z_LEGS,
         "legs": legs(cavity),
     }
@@ -327,37 +404,6 @@ def features(skin, cavity):
 
 
 # --- the sections ---------------------------------------------------------------------------
-
-def tidy(mesh, name):
-    """Drop the crumbs a cut leaves and pull apart pinched vertices before writing the file.
-
-    Both are the same lessons the assembler learned. A plane grazing a 200 000-triangle skin
-    leaves closed surfaces with no volume behind them, which are watertight in memory and not
-    watertight once an STL has merged their coincident vertices; and manifold3d may leave two
-    vertices in one place, which an STL cannot tell apart either. A crumb here is anything under
-    a cubic centimetre - the smallest real section is a hand, at fifty.
-    """
-    parts = mesh.split(only_watertight=False)
-    dropped = 0
-    if len(parts) > 1:
-        solid = [c for c in parts if abs(c.volume) > 1000.0]
-        dropped = len(parts) - len(solid)
-        if dropped:
-            mesh = solid[0] if len(solid) == 1 else trimesh.util.concatenate(solid)
-    v = np.asarray(mesh.vertices)
-    pairs = cKDTree(v).query_pairs(2e-4, output_type="ndarray")
-    pinches = 0
-    if len(pairs):
-        mesh = mesh.copy()
-        idx = np.unique(pairs[:, 0])
-        # A vertex of a degenerate triangle has no normal, and numpy hands back NaN rather than
-        # saying so. Exported, a NaN vertex takes its faces with it - the base lost the 10 mm
-        # under its rim that way, silently - so the ones without a direction stay where they are.
-        n = np.nan_to_num(np.asarray(mesh.vertex_normals)[idx], nan=0.0, posinf=0.0, neginf=0.0)
-        mesh.vertices[idx] = mesh.vertices[idx] + n * 2e-3
-        pinches = int((np.linalg.norm(n, axis=1) > 0).sum())
-    return mesh, dropped, pinches
-
 
 def sections(shell):
     """Cut the shell into the printable raw sections.
@@ -391,26 +437,11 @@ def sections(shell):
     for name, (lo, hi) in plan.items():
         out[name] = cut(body, lo, hi)
     total = 0.0
-    print(f"{'section':12s} {'faces':>7s} {'volume cm3':>11s} {'bbox x':>8s} {'y':>7s} {'z':>7s}  bodies")
     for name in ("base_left", "base_right", "torso", "hand_left", "hand_right", "beard", "head", "hat"):
-        m, dropped, pinches = tidy(out[name], name)
-        m.merge_vertices()
-        m.export(RAW / f"{name}.stl")
-        out[name] = m
-        back = trimesh.load(RAW / f"{name}.stl")
+        back = write(out[name], RAW / f"{name}.stl", quiet=True)
+        out[name] = back
         e = back.extents
-        n = back.split(only_watertight=False)
         total += back.volume
-        flag = "" if (back.is_watertight and back.is_winding_consistent and max(e) <= P.BED) else "   <-- CHECK"
-        note = "".join([f"  {dropped} crumbs" if dropped else "", f"  {pinches} pinches" if pinches else ""])
-        print(f"{name:12s} {len(back.faces):7d} {back.volume / 1e3:11.1f} "
-              f"{e[0]:8.1f} {e[1]:7.1f} {e[2]:7.1f}  {len(n)}{flag}{note}")
-        if not back.is_watertight:
-            raise RuntimeError(f"{name} is not watertight after the round trip")
-        if abs(back.volume - m.volume) > 0.001 * abs(m.volume) or \
-                np.abs(back.bounds - m.bounds).max() > 0.01:
-            raise RuntimeError(f"{name} changed on its way through the STL: "
-                               f"{m.volume / 1e3:.1f} -> {back.volume / 1e3:.1f} cm3")
         if max(e) > P.BED:
             raise RuntimeError(f"{name} is {max(e):.1f} mm across; the bed is {P.BED}")
     # what the cuts threw away: the kerf between the base halves and the turning seam
@@ -433,9 +464,8 @@ def preview():
 
 def main():
     skin = outer()
-    cavity, grown = hollow()
-    shell = trimesh.load(OUT / "shell.stl")
-    features(skin, cavity)
+    cavity, grown, shell = hollow()
+    features(skin, cavity, shell)
     sections(shell)
     preview()
 
