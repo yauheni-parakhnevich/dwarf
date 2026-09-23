@@ -311,7 +311,7 @@ TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's ba
 # stand in the trouser legs, hanging from brackets under the floor plate. Below them the boots
 # hold sand. Leg centres are measured on the statue's cavity mesh by the statue stage and
 # written to out/statue/features.json ("legs"); the numbers here are the fit report's estimate.
-BOTTLE = (97.0, 210.0, 71.0)                # a rectangular 1 L HDPE lab bottle lying on its wide face: x, y (along the belly), z. Measure the one bought
+BOTTLE = (97.0, 195.0, 71.0)                # a rectangular 1 L HDPE lab bottle lying on its wide face: x, y (along the belly), z. The belly takes 195 across at its corners; buy one at most this long (or with rounded ends) and measure it
 BOTTLE_XY = (0.0, 0.0)                      # centred: its corners are the tightest thing in the belly
 BOTTLE_Z0 = Z_FLOOR + 4.0 + 2.0             # on the floor plate's cradle
 BOTTLE_THREAD_MAJOR = 38.0                  # its neck, towards +Y; CAN_THREAD_MAJOR follows it
