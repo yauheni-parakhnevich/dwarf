@@ -136,18 +136,36 @@ def test_the_window_is_open(sections):
         f"only {P.Z_TURN - P.TURN_GAP - top:.1f} mm of coat is left over the window")
 
 
-def test_the_vents_are_open(sections):
+def test_the_intake_is_open(sections):
     assert hits(sections["torso"], (0.0, 0.0, P.Z_VENT_IN), (-1.0, 0.0, 0.0)) is None, \
         "the intake is blocked"
-    x, z = P.FAN_XZ
-    side = 1.0 if P.FAN_PANEL == "left" else -1.0
-    panel = sections[f"panel_{P.FAN_PANEL}"]
-    # From the fan's own plane out through the sleeve's skin. There is no second probe beside it
-    # here, as there is at the window: the sleeve is not a flat. Over the fan's own disc the skin
-    # wanders between y 91 and 114 and the panel does not cover all of it, so a ray four
-    # millimetres to the side of the bore misses the statue rather than proving anything.
-    assert hits(panel, (x, side * P.FAN_Y, z), (0.0, side, 0.0)) is None, "the exhaust is blocked"
-    assert abs(P.FAN_Y) > P.PANEL_Y, "the fan sits inboard of the panel's own edge"
+
+
+def test_the_neck_gap_is_the_exhaust(sections):
+    """The fan blows up through the deck, and the air leaves by the bell's turning gap.
+
+    So that gap is not slack any more, it is the exhaust: at the height between the ring's top
+    and the bell's rim the shell has to be open all the way round, except where the sleeve
+    panels pass through it, and nothing - no interface part clipped into the ring, no boss - may
+    stand in it.
+    """
+    z = P.Z_TURN - P.TURN_GAP / 2
+    open_at, blocked_by = 0, {}
+    for deg in range(0, 360, 5):
+        a = math.radians(deg)
+        d = (math.cos(a), math.sin(a), 0.0)
+        hit = [n for n, m in sections.items() if hits(m, (0.0, 0.0, z), d) is not None]
+        if hit:
+            blocked_by.setdefault(tuple(hit), []).append(deg)
+        else:
+            open_at += 1
+    stray = {k: v for k, v in blocked_by.items() if any(not n.startswith("panel_") for n in k)}
+    assert not stray, f"something other than the sleeves stands in the neck gap: {stray}"
+    assert open_at >= 60, f"only {open_at} of 72 directions out of the neck gap are open"
+    for deg in (0, 180):                       # the front and the back, whatever the panels do
+        a = math.radians(deg)
+        assert all(hits(m, (0.0, 0.0, z), (math.cos(a), math.sin(a), 0.0)) is None
+                   for m in sections.values()), f"the neck gap is closed at {deg} deg"
 
 
 def test_the_mouth_and_the_parting_are_open(sections):
