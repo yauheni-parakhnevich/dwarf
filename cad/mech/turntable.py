@@ -54,23 +54,34 @@ def _column_slot(z0, z1):
     return band & ahead.rotate(Axis.Z, half - 90) & ahead.rotate(Axis.Z, 90 - half)
 
 
-@part("deck_ring", section="torso")
+@part("deck_ring")
 def deck_ring():
-    """Narrow annulus the deck bolts to, joined to the shoulders' wall by four webs. Unioned into the torso.
+    """A cage: the annulus the deck bolts to, standing on four legs down to the chassis.
 
-    Narrow on purpose: the phone's top passes outside it (PHONE_FRONT_X > RING_R_OUT). Cut
-    away around the pan servo hanging beneath it, and along the arc the plate's column swings
-    in: the column reaches r 52.15, past the ring's own bore at RING_R_IN.
+    Nothing above the coat's shoulder is fixed any more but the two side panels, and the bell
+    sweeps the ground between them, so the deck cannot hang from the shell. It stands instead
+    on four legs that run straight down to the chassis and bolt through it from below, inside
+    the bell's bore the whole way. The deck's own four screws go into the legs' tops.
+
+    Print it legs down: 134 mm tall, the ring flat on the bed's far end, no support needed.
     """
     z1 = P.Z_DECK - P.DECK_T
     z0 = z1 - P.RING_T
+    foot = P.Z_CHASSIS + P.CHASSIS_T
+    half = P.CAGE_LEG / 2
     ring = cyl_z(P.RING_R_OUT, z0, z1) - cyl_z(P.RING_R_IN, z0 - 1, z1 + 1)
-    r_wall = P.ring_r_out(P.TORSO_PROFILE, z0, z1)
     for a in P.DECK_SCREW_ANGLES:
-        ring = ring + box(P.RING_R_OUT - 2, r_wall, -P.RING_WEB_W / 2, P.RING_WEB_W / 2, z0, z1).rotate(Axis.Z, a)
-    (x0, y0), (x1, y1) = P.PAN_RING_CUT
-    ring = ring - box(x0, x1, y0, y1, z0 - 1, z1 + 1)
+        ring = ring + box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
     ring = ring - _column_slot(z0 - 1, z1 + 1)          # RING_R_IN is 50; the column reaches r 52.15
+    for hx, hy in P.pan_hangers():                      # the -Y leg shares its ground with a hanger
+        ring = ring - box(hx - P.PAN_HANGER / 2 - P.CLEAR, hx + P.PAN_HANGER / 2 + P.CLEAR,
+                          hy - P.PAN_HANGER / 2 - P.CLEAR, hy + P.PAN_HANGER / 2 + P.CLEAR, foot - 1, z1 + 1)
+    ez = foot + P.EDECK_STANDOFF                        # ... and the -Y one a corner of the boards
+    ring = ring - box(P.EDECK_POS[0] - P.EDECK_L / 2 - P.CLEAR, P.EDECK_POS[0] + P.EDECK_L / 2 + P.CLEAR,
+                      P.EDECK_POS[1] - P.EDECK_W / 2 - P.CLEAR, P.EDECK_POS[1] + P.EDECK_W / 2 + P.CLEAR,
+                      ez - P.CLEAR, ez + P.EDECK_T + P.CLEAR)
+    feet = [_polar(P.CAGE_LEG_R, a, foot) for a in P.DECK_SCREW_ANGLES]
+    ring = insert_holes(ring, feet, direction="up")     # an M3 up through the chassis into each foot
     return insert_holes(ring, [_polar(P.DECK_SCREW_R, a, z1) for a in P.DECK_SCREW_ANGLES], depth=P.RING_T - 1)
 
 

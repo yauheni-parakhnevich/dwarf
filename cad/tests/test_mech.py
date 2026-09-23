@@ -25,6 +25,21 @@ def test_every_part_fits_the_bed(parts):
         assert max(s.X, s.Y, s.Z) <= P.BED, (name, s)
 
 
+def test_the_deck_cage_stands_inside_the_bells_bore(parts):
+    """It is the deck's only support now, and every millimetre of it is inside the turning bore."""
+    cage = parts["deck_ring"]
+    bb = cage.bounding_box()
+    assert math.isclose(bb.min.Z, P.Z_CHASSIS + P.CHASSIS_T, abs_tol=1e-6)     # feet on the chassis
+    assert math.isclose(bb.max.Z, P.Z_DECK - P.DECK_T, abs_tol=1e-6)           # head under the deck
+    assert max(math.hypot(v.X, v.Y) for v in cage.vertices()) < 70.0           # inside the bell's bore
+    for a in P.DECK_SCREW_ANGLES:
+        x, y = polar(P.CAGE_LEG_R, a)
+        foot = cyl_z(P.INSERT_D / 2 - 0.05, bb.min.Z - 1, bb.min.Z + P.INSERT_DEPTH - 0.2, x, y)
+        assert (foot & cage).volume < 1e-6, a          # an insert up from every foot, for the chassis
+        top = cyl_z(P.INSERT_D / 2 - 0.05, bb.max.Z - P.RING_T + 1.2, bb.max.Z + 1, x, y)
+        assert (top & cage).volume < 1e-6, a           # ... and one down from every leg's top
+
+
 def test_deck_ring_is_cut_around_the_pan_servo(parts):
     body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
     assert (body & parts["deck_ring"]).volume < 1e-6
