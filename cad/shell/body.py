@@ -1,3 +1,7 @@
+"""NOT BUILT. The shell is the statue now: `cad/statue.py` cuts the sections out of
+`in/gnome_ai.glb`, and `build.py shell` no longer runs this file. It is kept for its swell
+functions, which are the record of what the shape had to clear, and for `common.py`.
+"""
 """Base and upper torso, raw. Openings and interface parts are added by assemble.py.
 
 Every height here comes out of `params`, and so does the one rule that shapes the whole

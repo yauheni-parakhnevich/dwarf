@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Build the printed parts. Stages: mech, shell, assemble, preview. No argument runs all."""
+"""Build the printed parts. Stages: mech, statue, shell, assemble, preview. No argument runs all."""
 import os
 import subprocess
 import sys
@@ -11,7 +11,8 @@ sys.path.insert(0, str(CAD))
 BLENDER = os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Blender")
 OUT = CAD / "out"
 # Which raw sections each sculpt owns. Named here because the stage has to know what a script
-# was supposed to leave behind before it can tell whether the script worked.
+# was supposed to leave behind before it can tell whether the script worked. Nothing runs them
+# any more - see `shell()`.
 SHELL = {"body.py": ("base", "torso"), "head.py": ("head", "hat")}
 
 
@@ -62,10 +63,23 @@ def blender(script, wants=(), fresh_in=None):
                                f"Blender does not fail on a script's exception")
 
 
+def statue():
+    """The statue becomes the shell: frame, hollow, features, raw sections, previews."""
+    import statue as s
+    s.main()
+
+
 def shell():
-    for script, names in SHELL.items():
-        print(f"shell {script}")
-        blender(script, wants=[OUT / "raw" / f"{n}.stl" for n in names])
+    """Nothing. The sculpted shell was replaced by the statue.
+
+    `shell/body.py`, `shell/head.py` and `shell/beard.py` built the gnome out of revolves and
+    relief before there was a statue to print. They stay in the tree because their helpers -
+    `shell/common.py` - still do the Blender work, and because the swell functions are the only
+    written record of what the shape had to satisfy; but the skin now comes from
+    `in/gnome_ai.glb` through the `statue` stage, and running them would only overwrite
+    `out/raw` with a shell nothing reads.
+    """
+    print("shell skipped: the sections come from the statue stage (build.py statue)")
 
 
 def assemble():
@@ -93,7 +107,7 @@ def scene():
     blender("scene.py", wants=[OUT / "gnome.blend"])
 
 
-STAGES = {"mech": mech, "shell": shell, "assemble": assemble, "preview": preview, "scene": scene}
+STAGES = {"mech": mech, "statue": statue, "shell": shell, "assemble": assemble, "preview": preview, "scene": scene}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(STAGES)

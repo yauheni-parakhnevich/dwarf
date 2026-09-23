@@ -1,3 +1,7 @@
+"""NOT BUILT. The shell is the statue now: `cad/statue.py` cuts the sections out of
+`in/gnome_ai.glb`, and `build.py shell` no longer runs this file. It is kept for its swell
+functions, which are the record of what the shape had to clear, and for `common.py`.
+"""
 """The head - one sphere with the face on it - and the hat.
 
 The head is exported whole. The assembler splits it at FACE_SPLIT_X into a face cap and a
