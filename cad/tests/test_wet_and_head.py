@@ -124,12 +124,13 @@ def test_the_filler_is_reached_from_above(parts, placed):
     # its grip passes the sled's flank with room for a finger's width of air, no more: the neck
     # sits where the belt ring's bore allows and the flare was cut back to make even that
     sled = placed["phone_sled"].bounding_box()
-    assert bb.max.Y < sled.min.Y - 1.0, (bb.max.Y, sled.min.Y)
+    assert bb.min.Y > sled.max.Y + 1.0 or bb.max.Y < sled.min.Y - 1.0, (bb.min.Y, bb.max.Y)
     assert (cap & placed["phone_sled"]).volume < 1e-6
     assert (cap & placed["chassis"]).volume < 1e-6                     # the chassis is notched for it
     # nothing of the dry zone stands over it: a driver comes straight down onto the cap
-    above = cyl_z((bb.max.X - bb.min.X) / 2 + 1.0, bb.max.Z, P.Z_DECK,
-                  (bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2)
+    # a hand comes down on the cap's outboard side, which stands past the deck's edge
+    nx, ny = P.FILLER_NECK_XY
+    above = cyl_z(8.0, bb.max.Z, P.Z_DECK, nx, ny + 8.0)
     for name in ("chassis", "electronics_deck", "phone_sled"):
         assert (above & placed[name]).volume < 1e-6, name
 

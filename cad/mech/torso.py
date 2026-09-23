@@ -46,8 +46,9 @@ NECK_TOP_Z = NECK_BASE_Z + 15.0
 # gets 7 mm of blank instead of 15 and every other direction keeps at least 13.
 FLOOR_RX, FLOOR_RY = 106.0, 125.0
 FLOOR_T = 4.0
-SAND_PLUG_XY = (-74.0, 0.0)  # behind the bottle, where the cavity at Z_FLOOR is 106 deep;
-                             # its lip has to clear the cradle's flank rib, which reaches -51.5
+SAND_PLUG_XY = (-78.0, 0.0)  # behind the bottle, where the cavity at Z_FLOOR is 106 deep;
+                             # its lip clears the cradle's rear flank rib by 3.5 mm and both
+                             # leg ports by 11, and stands 9 inside the plate's own ellipse
 LEG_PORT_X = -60.0           # tube and wiring down to the legs, clear of the bottle's -X face
 LEG_PORT_R = 12.0
 BRACKET_BOLT = 25.0          # half-pitch of the four inserts each leg bracket hangs from
@@ -193,7 +194,9 @@ def belt_flange_upper():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
     ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
-    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, z1 + 1, *P.FILLER_NECK_XY)   # the filler's neck
+    # only as tall as the neck's own flange: any deeper and it takes the belt screw at 40
+    # degrees, which is 8.86 mm away, out of the ring with it
+    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, NECK_BASE_Z + 3.5, *P.FILLER_NECK_XY)
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
         ring = ring - cyl_z(3.2, z1 - (P.SCREW_HEAD_H + 0.5), z1 + 1, x, y)
@@ -379,10 +382,7 @@ def electronics_deck():
     fx0, fy0, fx1, fy1 = _rect(P.EDECK_LAYOUT["fuse"])               # two ties over the fuse holder
     for lo, hi in ((fy0 + 0.5, fy0 + 4.0), (fy1 - 4.0, fy1 - 0.5)):
         d = d - box(fx1 + 1.0, fx1 + 1.0 + TIE_SLOT_W, lo, hi, zc0, zc1)
-    # a bite out of the near corner so a hand comes straight down onto the filler's cap, which
-    # stands on the divider below it; the corner is outside every board's rectangle anyway
-    nx, ny = P.FILLER_NECK_XY
-    return d - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 4 + 2.0, zc0, zc1 + ESP32_RAIL_H, nx, ny)
+    return d
 
 
 # --- the fan's blank in the left side panel -------------------------------------------------------

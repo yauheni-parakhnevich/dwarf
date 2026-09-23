@@ -120,19 +120,23 @@ def can_thread():
 def hose_route(r=None):
     """The filler hose, from the tank head's stub to the neck on the divider, as cylinders.
 
-    Up off the stub, forward along the belly over the bottle, then across to the neck: three
-    straight runs, none of them tighter than the tube's bend radius at its corners.
+    Up off the stub, forward past the bottle's +Y end - where its shoulder has drawn in far
+    enough in y that the hose is outboard of it - then in to the neck and up. The one tight leg
+    is the last across: at x 44 the hose's inboard flank is 0.6 mm off the shoulder's front face
+    and its crown 0.5 mm under the divider. Thirteen millimetres is all there is between the
+    bottle's top and the divider, so the hose is modelled at a 1.5 mm wall, not 2.
     """
-    r = P.FILLER_D / 2 + 2.0 if r is None else r
+    r = P.FILLER_D / 2 + 1.5 if r is None else r
     sx, sy = P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z
     top = BOTTLE_AXIS_Z + STUB_OUT
     nx, ny = P.FILLER_NECK_XY
-    # forward over the bottle's neck end, which is clear of it, then down the front outside the
-    # barrel, and up onto the divider's neck
-    side = BOTTLE_W / 2 + r + 1.0
-    run = P.Z_BELT - 12.0
-    pts = [(sx, sy, top), (side, sy, top), (side, sy, run), (side, ny, run),
-           (nx, ny, run), (nx, ny, P.Z_BELT - 1.5)]
+    run = P.Z_BELT - r - 0.5
+    # out past the shoulder's y before crossing: at the run's height the shoulder still reaches
+    # y 84.7, and the hose's flank has to be outboard of that
+    out = P.BOTTLE[1] / 2 - P.BOTTLE_SHOULDER_IN[1] * (run - r - (P.BOTTLE_Z0 + P.BOTTLE[2]
+          - P.BOTTLE_SHOULDER_H)) / P.BOTTLE_SHOULDER_H + r + 0.5
+    pts = [(sx, sy, top), (sx, sy, run), (sx, out, run), (nx, out, run), (nx, ny, run),
+           (nx, ny, P.Z_BELT - 1.5)]
     route = None
     for a, b in zip(pts, pts[1:]):
         d = math.dist(a, b)
