@@ -19,10 +19,11 @@ SECTIONS = ("base", "torso", "belly", "beard", "head_back", "face", "hat")
 HEAD = ("head_back", "face", "hat")
 ENGINE = "manifold"
 
-# Mech parts that share the head's swept space and want checking against it. The turntable's
-# neck_shroud is being drawn now; add "neck_shroud" here when its STL exists and the nod and pan
-# tests will take it into account without any other change.
-EXTRA_MECH: tuple = ()
+# Mech parts that stand in the head's swept space and want checking against it as it nods. Add a
+# name here and the nod test takes it in without any other change. Anything on the turntable's
+# plate belongs here and not in the pan test: it turns with the head, so panning moves the two
+# together and only the nod moves one past the other.
+EXTRA_MECH: tuple = ("neck_shroud",)
 
 pytestmark = pytest.mark.skipif(not (STL / "belly.stl").exists(),
                                 reason="run `build.py mech shell assemble` first")
@@ -172,12 +173,13 @@ def test_the_panel_carries_its_screws_and_its_window(sections):
 
 
 # --- the head moves ------------------------------------------------------------------------------
-def _fixed(sections):
+def _fixed(sections, extras=True):
     others = {"beard": sections["beard"], "torso": sections["torso"]}
-    for name in EXTRA_MECH:
-        path = STL / f"{name}.stl"
-        assert path.exists(), f"EXTRA_MECH names {name}, which has not been built"
-        others[name] = trimesh.load(path)
+    if extras:
+        for name in EXTRA_MECH:
+            path = STL / f"{name}.stl"
+            assert path.exists(), f"EXTRA_MECH names {name}, which has not been built"
+            others[name] = trimesh.load(path)
     return others
 
 
@@ -198,7 +200,7 @@ def test_the_head_nods_to_its_stops(head_assembly, sections, deg):
 def test_the_head_pans_to_its_stops(head_assembly, sections, deg):
     T = trimesh.transformations.rotation_matrix(math.radians(deg), (0.0, 0.0, 1.0), (0.0, 0.0, 0.0))
     moved = head_assembly.copy().apply_transform(T)
-    for name, other in _fixed(sections).items():
+    for name, other in _fixed(sections, extras=False).items():
         assert _clash(moved, other) < 1.0, (deg, name)
 
 
