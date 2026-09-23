@@ -1,24 +1,8 @@
 import itertools
 import math
-import pytest
 from build123d import Axis, Location, Pos, Sphere, Vertex
 import params as P
 from mech.common import box, cyl_x, cyl_z, cyl_y, polar, servo_body, skin_solid
-
-
-@pytest.fixture(scope="session")
-def parts():
-    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
-    from mech import ALL
-    return {spec.name: spec.build() for spec in ALL}
-
-
-@pytest.fixture(scope="session")
-def placed(parts):
-    """The same parts carried to where they sit in the machine."""
-    from mech import ALL
-    at = {spec.name: spec.placement for spec in ALL}
-    return {name: at[name] * p for name, p in parts.items()}
 
 
 def _bb(p):
@@ -71,22 +55,16 @@ def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
     b = below.bounding_box()
     assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot down here
     assert abs(b.min.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6 and abs(b.max.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6
-    pin, _ = crank_pins(0)                                              # the foot's pin insert is blind
+    pin, _ = P.crank_pins(0)                                              # the foot's pin insert is blind
     probe = cyl_z(P.INSERT_D / 2, P.Z_CRANK_BOTTOM - 1, P.Z_CRANK_TOP, pin[0], pin[1])
     assert (probe & plate).volume > 1e-3
-
-
-def crank_pins(deg):
-    a = math.radians(P.CRANK_REST_DEG + deg)
-    v = (P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a))
-    return v, (P.PAN_SERVO_XY[0] + v[0], P.PAN_SERVO_XY[1] + v[1])
 
 
 def test_link_eyes_are_a_centre_distance_apart(parts):
     link = parts["pan_link"]
     bb = link.bounding_box()
     assert math.isclose(bb.max.Z, P.Z_LINK_TOP, abs_tol=1e-6) and math.isclose(bb.min.Z, P.Z_LINK_BOTTOM, abs_tol=1e-6)
-    a, b = crank_pins(0)
+    a, b = P.crank_pins(0)
     assert math.isclose(math.hypot(b[0] - a[0], b[1] - a[1]), P.PAN_OFFSET, abs_tol=1e-6)
     for x, y in (a, b):
         clear = cyl_z(P.PIN_BORE / 2 - 0.05, P.Z_LINK_BOTTOM - 1, P.Z_LINK_TOP + 1, x, y)
@@ -97,7 +75,7 @@ def test_link_eyes_are_a_centre_distance_apart(parts):
 
 
 def test_the_cranks_pin_insert_is_blind(parts):
-    _, pin = crank_pins(0)
+    _, pin = P.crank_pins(0)
     probe = cyl_z(P.INSERT_D / 2, P.Z_CRANK_BOTTOM - 1, P.Z_CRANK_TOP, pin[0], pin[1])
     assert (probe & parts["servo_crank"]).volume > 1e-3
 
@@ -111,13 +89,14 @@ def test_link_and_crank_live_below_the_deck_ring(parts):
 def test_linkage_sweeps_without_touching_anything(parts):
     """Plate (with its column) about the pan axis, servo crank about the servo axis, link translated."""
     servo_axis = Axis((P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], 0), (0, 0, 1))
-    rest_plate, _ = crank_pins(0)
+    rest_plate, _ = P.crank_pins(0)
     servo = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
-    fixed = parts["deck"] + parts["deck_ring"] + servo
-    for deg in range(-int(P.PAN_STOP_DEG) + 1, int(P.PAN_STOP_DEG), 8):
+    fixed = parts["deck"] + parts["deck_ring"] + parts["shaft"] + servo
+    interior = range(-int(P.PAN_STOP_DEG) + 1, int(P.PAN_STOP_DEG), 8)
+    for deg in [-P.PAN_STOP_DEG, *interior, P.PAN_STOP_DEG]:      # the stops themselves as well
         plate = (parts["plate"] + parts["yoke"]).rotate(Axis.Z, deg)
         crank = parts["servo_crank"].rotate(servo_axis, deg)
-        pin, _ = crank_pins(deg)
+        pin, _ = P.crank_pins(deg)
         link = parts["pan_link"].moved(Location((pin[0] - rest_plate[0], pin[1] - rest_plate[1], 0)))
         for a, b, what in ((plate, crank, "plate/crank"), (plate, fixed, "plate/fixed"), (crank, fixed, "crank/fixed"),
                            (link, plate, "link/plate"), (link, crank, "link/crank"), (link, fixed, "link/fixed")):
@@ -135,13 +114,8 @@ def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
     assert math.isclose(hangers.bounding_box().min.Z, P.Z_PAN_SHAFT_FACE + (P.DS3218["body"][2] - P.DS3218["tab_z"]) + P.DS3218["tab_t"], abs_tol=1e-6)
 
 
-def _stop_pin_deg():
-    return (P.PAN_STOP_DEG + math.degrees(math.asin((P.STOP_TAB_W / 2) / P.STOP_POST_R))
-            + math.degrees(math.asin((P.STOP_POST_D / 2) / P.STOP_POST_R)))
-
-
 def test_yoke_clears_the_pan_stop_posts_through_the_sweep(parts):
-    pins = parts["stop_pin"] + parts["stop_pin"].rotate(Axis.Z, -2 * _stop_pin_deg())
+    pins = parts["stop_pin"] + parts["stop_pin"].rotate(Axis.Z, -2 * P.stop_pin_deg())
     feet = parts["yoke"] & box(-80, 80, -80, 80, P.Z_PLATE_TOP - 1, P.Z_PLATE_TOP + P.YOKE_RING_T + 1)
     assert feet.bounding_box().min.Z >= P.STOP_PIN_TOP + 1.0             # a millimetre of daylight
     for deg in range(-64, 65, 5):
@@ -151,7 +125,7 @@ def test_yoke_clears_the_pan_stop_posts_through_the_sweep(parts):
 def test_stop_pins_seat_in_the_deck(parts):
     pin = parts["stop_pin"]
     assert math.isclose(pin.bounding_box().max.Z, P.STOP_PIN_TOP, abs_tol=1e-6)
-    for p in (pin, pin.rotate(Axis.Z, -2 * _stop_pin_deg())):
+    for p in (pin, pin.rotate(Axis.Z, -2 * P.stop_pin_deg())):
         assert (p & parts["deck"]).volume == 0                           # each sits in its own hole
 
 
@@ -185,6 +159,27 @@ def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
     probe = cyl_z(P.INSERT_D / 2, top - P.INSERT_DEPTH_SHORT - 0.5, top, 0, P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T / 2)
     assert (probe & coupler).volume < 1e-6                     # ... of the pocket, so it cannot foul the hex
     assert coupler.bounding_box().max.Y >= P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T - 1e-6
+
+
+def test_the_jet_leaves_the_head_untouched(parts):
+    """A JET_D column from the mouth, straight out, at every degree the firmware can ask for.
+
+    The mouth is on the head's sphere and the jet follows the head, so one cylinder rotated
+    about the tilt axis is the whole envelope; the hat's brim turns with it.
+    """
+    from mech.turntable import jet_axis
+    tilt_axis = Axis((0, 0, P.Z_HEAD), (0, 1, 0))
+    x0 = math.sqrt(P.HEAD_R ** 2 - (P.Z_HEAD - P.Z_MOUTH) ** 2)
+    jet = cyl_x(P.JET_D / 2, x0, x0 + 120.0, 0, P.Z_MOUTH)
+    fixed = parts["neck_shroud"] + parts["yoke"] + parts["coupler"] + parts["ear_boss"] \
+        + parts["plate"] + parts["deck"]
+    brim = cyl_z(P.HAT_BRIM_R + 1, P.Z_HAT, P.Z_HAT + P.HAT_BRIM_T)
+    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
+        # build123d's +deg about +Y lowers the nose, so the machine's tilt is -deg here
+        shot = jet.rotate(tilt_axis, -deg)
+        assert (shot & fixed).volume < 1e-6, deg
+        assert (shot & brim.rotate(tilt_axis, -deg)).volume < 1e-6, deg
+    assert jet_axis(0)[0][0] == x0                      # the notch was cut for this same mouth
 
 
 def test_head_lip_is_welded_behind_the_split_and_clears_the_cap_in_front(parts):
@@ -419,14 +414,14 @@ def test_assembly_step_exists_after_build(tmp_path):
     assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
     assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
     # the two parts that declare a placement are drawn at the origin and land where it says
-    from mech.base import CAP_L, STUB_TOP, TANK_HEAD_L
+    from mech.base import CAP_L, STUB_OUT, TANK_HEAD_L
     at = {c.label: c.bounding_box() for c in comp.children}
     raw = {spec.name: spec.build().bounding_box() for spec in ALL if spec.placement != Location()}
     neck_x = P.CANISTER_XY[0] - P.CANISTER[0] / 2
     assert math.isclose(raw["tank_head"].min.X, 0.0, abs_tol=1e-6)            # drawn mouth at the origin
     assert math.isclose(at["tank_head"].max.X, neck_x, abs_tol=1e-6)          # fitted on the neck
     assert math.isclose(at["tank_head"].min.X, neck_x - TANK_HEAD_L, abs_tol=1e-6)
-    assert math.isclose(at["tank_head"].max.Z, P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_TOP, abs_tol=1e-6)
+    assert math.isclose(at["tank_head"].max.Z, P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_OUT, abs_tol=1e-6)
     skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
     assert math.isclose(raw["filler_cap"].min.X, 0.0, abs_tol=1e-6)
     assert math.isclose(at["filler_cap"].max.X, -skin, abs_tol=1e-6)          # mouth on the skin

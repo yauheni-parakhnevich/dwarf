@@ -12,25 +12,12 @@ def _polar(r, deg, z):
     return (*polar(r, deg), z)
 
 
-def _crank_pin():
-    """The plate's pin, relative to the pan axis; the servo's pin is the same vector from its axis."""
-    a = math.radians(P.CRANK_REST_DEG)
-    return P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a)
-
-
 def _bearing_holes(part, z0, z1):
     """The lazy susan's four screws, on the diagonal of its bolt square."""
     for a in (45, 135, 225, 315):
         x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
         part = part - cyl_z(P.BEARING_HOLE / 2, z0, z1, x, y)
     return part
-
-
-def _stop_pin_deg():
-    """Where a stop pin's centre sits: the plate's tab and the pin both subtend at STOP_POST_R."""
-    tab = math.degrees(math.asin((P.STOP_TAB_W / 2) / P.STOP_POST_R))
-    pin = math.degrees(math.asin((P.STOP_POST_D / 2) / P.STOP_POST_R))
-    return P.PAN_STOP_DEG + tab + pin
 
 
 def _in_wall():
@@ -96,10 +83,11 @@ def deck():
     d = d - box(sx - off - P.PAN_SERVO_FIT, sx + (L - off) + P.PAN_SERVO_FIT,
                 sy - W / 2 - P.PAN_SERVO_FIT, sy + W / 2 + P.PAN_SERVO_FIT,
                 P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.PAN_SERVO_FIT)
-    # seats for the two hard-stop pins, drilled from the top face. They are separate parts, so
-    # nothing stands proud of the deck and it prints flat, hangers up.
+    # seats for the two hard-stop pins, drilled from the top face. STOP_PIN_DEPTH is the deck's
+    # own thickness, so they go right through: the pin is glued and its end shows underneath.
+    # The pins are separate parts, so nothing stands proud and the deck prints flat, hangers up.
     for sign in (1, -1):
-        x, y, _ = _polar(P.STOP_POST_R, sign * _stop_pin_deg(), 0)
+        x, y, _ = _polar(P.STOP_POST_R, sign * P.stop_pin_deg(), 0)
         d = d - cyl_z((P.STOP_POST_D + 0.1) / 2, z1 - P.STOP_PIN_DEPTH, z1 + 0.01, x, y)
     return d
 
@@ -107,7 +95,7 @@ def deck():
 @part("stop_pin")
 def stop_pin():
     """Glued into the deck; the plate's tab runs into it at the pan stop. Print two."""
-    x, y, _ = _polar(P.STOP_POST_R, _stop_pin_deg(), 0)
+    x, y, _ = _polar(P.STOP_POST_R, P.stop_pin_deg(), 0)
     return cyl_z(P.STOP_POST_D / 2, P.Z_DECK - P.STOP_PIN_DEPTH, P.STOP_PIN_TOP, x, y)
 
 
@@ -129,12 +117,15 @@ def plate():
     r_in, r_out, w = P.PAN_COLUMN
     p = p + box(r_in, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, z0 + 0.01)
     p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
-    px, py = _crank_pin()
+    px, py = P.crank_pins(0)[0]
     # the pin's boss: the screw clamps this half-millimetre, so the link is free to turn on it
     p = p + cyl_z(P.PIN_BOSS_D / 2, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H, P.Z_CRANK_BOTTOM, px, py)
     p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H)],
                      depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm bar
-    p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES], depth=P.PLATE_T - 1)
+    # the yoke and the shroud stack 3 + 3 above a 4 mm insert, so an M3 x 10 would bottom out;
+    # a millimetre more hole gives it daylight
+    p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES],
+                     depth=P.INSERT_DEPTH_SHORT + 1)
     return p
 
 
@@ -153,7 +144,7 @@ def servo_crank():
     """Hangs on the pan servo's horn, pocketed from above; carries the far pin of the parallelogram below."""
     z0, z1 = P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP
     sx, sy = P.PAN_SERVO_XY
-    dx, dy = _crank_pin()
+    dx, dy = P.crank_pins(0)[0]
     px, py = sx + dx, sy + dy
     arm = box(min(sx, px) - 4, max(sx, px) + 4, min(sy, py) - 4, max(sy, py) + 4, z0, z1)
     arm = arm + cyl_z(P.HORN_D / 2 + 3, z0, z1, sx, sy) + cyl_z(4, z0, z1, px, py)
@@ -171,7 +162,7 @@ def servo_crank():
 def pan_link():
     """Joins the plate's pin to the servo crank's pin, below both. Eye-to-eye is the servo offset."""
     z0, z1 = P.Z_LINK_BOTTOM, P.Z_LINK_TOP
-    (ax, ay), (bx, by) = _crank_pin(), (P.PAN_SERVO_XY[0] + _crank_pin()[0], P.PAN_SERVO_XY[1] + _crank_pin()[1])
+    (ax, ay), (bx, by) = P.crank_pins(0)
     length = math.hypot(bx - ax, by - ay)
     ang = math.degrees(math.atan2(by - ay, bx - ax))
     bar = box(0, length, -3.0, 3.0, z0, z1).rotate(Axis.Z, ang).moved(Location((ax, ay, 0)))
@@ -243,17 +234,16 @@ def _meet(a, b, c, d):
     return (ar + t * u[0], az + t * u[1])
 
 
-def _shroud_profile():
-    """The shroud's wall as a closed (r, z) loop: up the outside, round the rim, down the inside.
+def _shroud_faces():
+    """The shroud's outer path and the inner face of its wall, both bottom to top, as (r, z).
 
     The path the brief names - base ring, cone out, cylinder, cone in - is the OUTER surface,
     and the wall lies WALL inside it. The skirt is shallow enough that its inner surface runs
     into the base ring rather than onto its top face, which is why the base is thicker than
     three millimetres at its rim; the screws' counterbores are sunk to leave exactly three.
     """
-    base_top = P.SHROUD_BASE_Z + 3.0
     a1 = (P.PLATE_R, P.SHROUD_BASE_Z)
-    a2 = (P.PLATE_R, base_top)
+    a2 = (P.PLATE_R, P.SHROUD_BASE_Z + 3.0)
     a3 = (P.SHROUD_R_OUT, P.SHROUD_SKIRT_Z)
     a4 = (P.SHROUD_R_OUT, P.SHROUD_SHOULDER_Z)
     a5 = (P.SHROUD_TOP_R, P.SHROUD_TOP_Z)
@@ -265,13 +255,58 @@ def _shroud_profile():
     b3 = _meet(*l2, *l1)
     t = (P.YOKE_RING_R_IN - l1[0][0]) / (l1[1][0] - l1[0][0])
     b2 = (P.YOKE_RING_R_IN, l1[0][1] + t * (l1[1][1] - l1[0][1]))
-    # a rolled rim: a half-round on the top edge, away from the material
+    return [(P.YOKE_RING_R_IN, P.SHROUD_BASE_Z), a1, a2, a3, a4, a5], [b2, b3, b4, b5]
+
+
+def _shroud_profile():
+    """The wall as a closed (r, z) loop: up the outside, round the rolled rim, down the inside."""
+    outer, inner = _shroud_faces()
+    a5, b5 = outer[-1], inner[-1]
     mid = ((a5[0] + b5[0]) / 2, (a5[1] + b5[1]) / 2)
     rad = math.hypot(a5[0] - mid[0], a5[1] - mid[1])
     start = math.atan2(a5[1] - mid[1], a5[0] - mid[0])
     roll = [(mid[0] + rad * math.cos(start + i * math.pi / 6),
              mid[1] + rad * math.sin(start + i * math.pi / 6)) for i in range(1, 6)]
-    return [(P.YOKE_RING_R_IN, P.SHROUD_BASE_Z), a1, a2, a3, a4, a5, *roll, b5, b4, b3, b2]
+    return [*outer, *roll, *reversed(inner)]
+
+
+def jet_axis(deg):
+    """Where the jet leaves the mouth and which way it points, in (r, z), at a tilt of `deg`.
+
+    Positive is nose up, the machine's convention. The mouth is on the head's sphere, so its
+    x comes from HEAD_R and the mouth's drop below the tilt axis.
+    """
+    x0 = math.sqrt(P.HEAD_R ** 2 - (P.Z_HEAD - P.Z_MOUTH) ** 2)
+    dz = P.Z_MOUTH - P.Z_HEAD
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return (x0 * c - dz * s, P.Z_HEAD + x0 * s + dz * c), (c, s)
+
+
+def jet_notch_z():
+    """How low the shroud's front notch has to reach.
+
+    At the nose-down stop the jet leaves at that angle and crosses the shroud's inner face low
+    on the skirt; the notch starts half the jet's width and a two millimetre margin below it.
+    """
+    (px, pz), (dx, dz) = jet_axis(P.TILT_STOP[0])
+    inner = _shroud_faces()[1]
+    hits = []
+    for (qr, qz), (rr, rz) in zip(inner, inner[1:]):
+        det = dx * (qz - rz) - dz * (qr - rr)
+        if abs(det) < 1e-12:
+            continue
+        t = ((qr - px) * (qz - rz) - (qz - pz) * (qr - rr)) / det
+        u = (dx * (qz - pz) - dz * (qr - px)) / det
+        if t > 0 and -1e-9 <= u <= 1 + 1e-9:
+            hits.append(pz + t * dz)
+    return min(hits) - P.JET_D / 2 - 2.0
+
+
+def _jet_notch():
+    """The wedge through the shroud's front that the jet passes down, open at the top."""
+    half, far = P.JET_NOTCH_HALF_DEG, P.SHROUD_R_OUT + 5.0
+    ahead = box(0, far, -far, far, jet_notch_z(), P.SHROUD_TOP_Z + 5.0)
+    return ahead.rotate(Axis.Z, half - 90) & ahead.rotate(Axis.Z, 90 - half)
 
 
 def _arm_slots():
@@ -298,7 +333,7 @@ def neck_shroud():
     to a rolled rim SHROUD_TOP_R from the pan axis, a few millimetres off the head.
     """
     s = revolve(Plane.XZ * Polygon(*_shroud_profile()), axis=Axis.Z)
-    s = s - _arm_slots()
+    s = s - _arm_slots() - _jet_notch()
     head_d = P.M3_CLEAR + 2.6                                  # an M3 socket head is 5.5 across
     for a in P.YOKE_SCREW_ANGLES:
         x, y = polar(P.YOKE_SCREW_R, a)
