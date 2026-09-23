@@ -15,15 +15,15 @@ collar is built with `loft`: one profile per angle, the same points in the same 
 round and closed.
 
 What it may not do: the yoke's arms swing through r 66 between the deck and the head, so the
-ring's inside stays at 69 or more over its whole height; and the three screws the assembler
-drills at Z_TORSO_TOP - 4 want BEARD_T of material, so the strands have faded out by then.
+ring's inside stays at 69 or more over its whole height - the three screw bosses included, and
+they are the closest thing to it.
 """
 import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import P, export_raw, finish, fresh_scene, lerp, loft, wrap  # noqa: E402
+from common import P, arc, dome, export_raw, finish, fresh_scene, lerp, loft, wrap  # noqa: E402
 
 SEG = 288            # 1.25 degrees: nine columns across a strand
 ROWS = 52            # up the inside and down the outside, about two millimetres apart
@@ -44,6 +44,14 @@ _HEM = [(0.0, P.BEARD_BOTTOM_FRONT_Z), (25.0, 353.0), (45.0, 359.0), (90.0, 360.
 # again above it - the air leaves downward, and what closes over it is what keeps the rain out.
 _GAP_Z = [(P.Z_FAN + P.FAN / 2 + 2.0, 1.0), (402.0, 0.0)]
 FAN_GAP = 6.0
+# Three bosses on the inside for the collar's screws. The ring is BEARD_T thick and the insert
+# the screws thread into is INSERT_DEPTH deep, so a hole drilled straight into the ring would
+# come out the other side. The material comes from the inside, where there is nothing between
+# the collar and the torso's neck, and it still leaves the yoke's arms their 69 mm.
+SCREW_DEG = (90.0, 210.0, 330.0)
+SCREW_Z = P.Z_TORSO_TOP - 4.0
+BOSS_DEEP = P.INSERT_DEPTH + 1.5 - P.BEARD_T         # 4.5 in from the ring, 11 mm of stock all told
+BOSS_HALF = 11.0                                     # of arc and of height, at the ring's radius
 
 
 def _front(th):
@@ -73,8 +81,8 @@ def _hem(th):
     return z + STRAND_HEM * _front(th) * (1.0 - _strand(th, z))
 
 
-def _inner(th, z):
-    """The ring's inside: over the torso's shoulders with air, then in to the neck."""
+def _wall(th, z):
+    """The ring's inside before the screw bosses: over the shoulders with air, then in to the neck."""
     if z >= P.Z_TORSO_TOP:
         t = (z - P.Z_TORSO_TOP) / (P.BEARD_TOP_Z - P.Z_TORSO_TOP)
         r0 = P.shell_r(P.TORSO_PROFILE, P.Z_TORSO_TOP) + 2.0
@@ -83,9 +91,20 @@ def _inner(th, z):
     return P.shell_r(P.TORSO_PROFILE, z) + gap
 
 
+def _boss(th, z):
+    """How far the screw bosses stand in from the ring's inside at this point."""
+    r = _wall(th, SCREW_Z)
+    return max(dome(arc(th, d, r), z - SCREW_Z, BOSS_HALF, BOSS_HALF, BOSS_DEEP, soft=1.4)
+               for d in SCREW_DEG)
+
+
+def _inner(th, z):
+    return _wall(th, z) - _boss(th, z)
+
+
 def _outer(th, z):
     d = STRAND_D * _front(th) * lerp(z, [(400.0, 1.0), (425.0, 0.0)]) * _strand(th, z)
-    return _inner(th, z) + P.BEARD_T + d
+    return _wall(th, z) + P.BEARD_T + d
 
 
 def _rows(th):
