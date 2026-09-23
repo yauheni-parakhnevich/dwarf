@@ -108,7 +108,7 @@ Z_CHASSIS = Z_BASE_TOP + RING_T   # 246, sits on the torso flange
 #     carries the window and the hood. The phone sled slides out forward through it, and every
 #     screw in the dry zone is driven through it. The panel is cut from the torso's raw mesh by the
 #     assembler; four bosses and a lip around the opening are interface parts on the torso.
-HATCH_Z = (Z_BASE_TOP + 2.0, 398.0)          # 250 .. 398; the sled and the phone pass
+HATCH_Z = (Z_BASE_TOP + 2.0, 392.0)          # 250 .. 392; the phone's top (390.6) passes, the lip stops 2 mm under the deck
 HATCH_HALF_ANGLE = 33.0                      # degrees either side of +X; 110 mm wide at the belly
 HATCH_LIP_W = 6.0                            # lip inside the opening the panel rests on, all round
 HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -30.0), (HATCH_Z[0] + 10.0, 30.0), (HATCH_Z[1] - 10.0, -30.0), (HATCH_Z[1] - 10.0, 30.0)]   # (z, angle deg); at 30 deg the lower screw clears the window by 7.5 mm
@@ -195,11 +195,11 @@ Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
 # --- pan drive: the servo hangs under the deck, shaft pointing down, and the parallelogram
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
-PAN_SERVO_XY = (5.0, -58.0)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -68 .. -48). The statue's right side at the crank's height is 96 out
+PAN_SERVO_XY = (5.0, -60.1)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -70.1 .. -50.1): 1 mm outside the column's sweep
 PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.21
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
-Z_PAN_SHAFT_FACE = 345.0       # the servo's output face, looking down; body top 385.5, under the deck; low enough that the link sweeps where the coat is still wide
+Z_PAN_SHAFT_FACE = 340.0       # the servo's output face, looking down; body top 380.5, under the deck; low enough that the link sweeps where the coat is 98 wide
 CRANK_T = 5.0
 LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
@@ -392,4 +392,4 @@ MICRO_HORN_D = 14.0
 Z_MOUTH = 424.0                             # the statue's mouth (0.603 H)
 NOZZLE_PIVOT = (62.0, 0.0, 424.0)           # tilt axis of the nozzle arm, along Y, just inside the beard
 NOZZLE_ARM_L = 20.0                         # pivot to the nozzle's tip at the mouth's skin, x 82
-NOZZLE_SLOT_W = 12.0                        # the parting in the beard the nozzle swings through
+NOZZLE_SLOT_W = 14.0                        # the parting in the beard the nozzle arm (12 wide) swings through
