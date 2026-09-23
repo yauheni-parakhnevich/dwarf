@@ -15,6 +15,8 @@ twenty-eight prints, since the stop pin is printed twice - none wider than the 2
 
 *Renders from `build.py preview`, reduced. The full set is written to `out/preview/`.*
 
+**To look at the assembly in Blender:** `.venv-cad/bin/python cad/build.py scene` writes `out/gnome.blend` with every section and part as its own object, in collections (Shell; Mechanism split into fixed / turns with the head / nods with the head / interface; bought-part envelopes as wireframes). `open -a Blender cad/out/gnome.blend`.
+
 ## Build
 
 ```bash

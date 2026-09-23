@@ -49,7 +49,24 @@ def preview():
     blender("preview.py")
 
 
-STAGES = {"mech": mech, "shell": shell, "assemble": assemble, "preview": preview}
+def scene():
+    """Write out/placements.json from the registry, then build out/gnome.blend: every section and
+    part as its own object, in collections, in assembled position. Open it in Blender to inspect."""
+    import json
+    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
+    from mech import ALL, INTERFACES
+    from mech.common import OUT
+    interface = {n: sec for sec, names in INTERFACES.items() for n in names}
+    placements = {}
+    for spec in ALL:
+        t = spec.placement.wrapped.Transformation()
+        rows = [[t.Value(r, c) for c in range(1, 5)] for r in range(1, 4)] + [[0, 0, 0, 1]]
+        placements[spec.name] = {"matrix": rows, "section": interface.get(spec.name)}
+    (OUT / "placements.json").write_text(json.dumps(placements, indent=1))
+    blender("scene.py")
+
+
+STAGES = {"mech": mech, "shell": shell, "assemble": assemble, "preview": preview, "scene": scene}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(STAGES)
