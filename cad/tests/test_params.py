@@ -2,8 +2,13 @@ import math
 import params as P
 
 
-def test_total_height_is_589():
+def test_the_stack_adds_up_from_the_floor_to_the_hat():
     assert P.Z_TOP == 589.0
+    order = [0.0, P.Z_FLOOR, P.Z_BELT, P.Z_BASE_TOP, P.Z_CHASSIS, P.PHONE_BOTTOM_Z, P.Z_DECK, P.Z_PLATE_TOP,
+             P.Z_HEAD - P.HEAD_R, P.Z_HEAD, P.Z_HAT, P.Z_HAT + P.HAT_BRIM_T, P.Z_TOP]
+    assert order == sorted(order), order
+    for name, (lo, hi) in P.SECTION_Z.items():
+        assert 0.0 <= lo < hi <= P.Z_TOP, name
 
 
 def test_every_section_fits_the_bed():
@@ -51,11 +56,7 @@ def test_phone_corners_clear_the_torso_wall():
         assert corner < inner - 1.0, (z, corner, inner)
 
 
-def crank_pins(deg):
-    """Plate pin and servo pin at a pan angle: both cranks are CRANK_L at CRANK_REST_DEG + deg."""
-    a = math.radians(P.CRANK_REST_DEG + deg)
-    v = (P.CRANK_L * math.cos(a), P.CRANK_L * math.sin(a))
-    return v, (P.PAN_SERVO_XY[0] + v[0], P.PAN_SERVO_XY[1] + v[1])
+crank_pins = P.crank_pins
 
 
 def _segment_distance_from_origin(p, q):
@@ -116,12 +117,13 @@ def test_plate_column_slot_misses_the_bearing_the_screws_and_the_hangers():
         assert abs(a) > half + 8 or inner_corner > r1 + 2.0, (hx, hy, inner_corner)
 
 
-def test_pan_foot_and_column_stay_off_the_stop_posts():
-    # the plate's column at the front sweeps ±PAN_STOP_DEG; the stop posts must sit outside its arc
-    half_col = math.degrees(math.atan2(P.PAN_COLUMN[2] / 2, P.PAN_COLUMN[0]))
-    for sign in (1, -1):
-        post = sign * (P.PAN_STOP_DEG + math.degrees(math.atan2(P.STOP_TAB_W / 2, P.PLATE_R)) + math.degrees(math.atan2(P.STOP_POST_D / 2, P.STOP_POST_R)))
-        assert abs(post) > P.PAN_STOP_DEG + half_col
+def test_pan_column_and_stop_pins_never_meet():
+    # the plate's column sweeps an annulus in front of the deck; the stop pins stand outside it
+    column_outer = math.hypot(P.PAN_COLUMN[1], P.PAN_COLUMN[2] / 2)
+    pin_inner = P.STOP_POST_R - P.STOP_POST_D / 2
+    assert pin_inner - column_outer > 2.0
+    # and the pins do sit where the tab meets them at the stop, not before
+    assert P.stop_pin_deg() > P.PAN_STOP_DEG
 
 
 def test_deck_screws_keep_clear_of_the_servo_hangers():
@@ -145,7 +147,12 @@ def tilt(point, deg):
     return dx * math.cos(a) - dz * math.sin(a), P.Z_HEAD + dx * math.sin(a) + dz * math.cos(a)
 
 
-def test_tilt_helper_lifts_the_nose_for_positive_angles():
+def test_tilt_stops_bracket_the_firmware_range_with_margin():
+    # the machine's convention is nose-up positive; the stops must sit at least 3 degrees outside cfg
+    import json
+    from pathlib import Path
+    cfg = json.loads(json.load(open(Path(__file__).resolve().parents[2] / "protocol/fixtures/commands.json"))["cfg"])
+    assert P.TILT_STOP[0] <= cfg["tiltMin"] - 3 and P.TILT_STOP[1] >= cfg["tiltMax"] + 3
     x, z = tilt((P.HEAD_R, P.Z_HEAD), P.TILT_STOP[1])
     assert z > P.Z_HEAD and x < P.HEAD_R
 
@@ -199,3 +206,10 @@ def test_tilt_servo_passes_the_face_opening():
 def test_coupler_hex_is_its_widest_section():
     assert P.COUPLER_HEX_AF >= P.COUPLER_D + 2 * P.CLEAR
     assert P.YOKE_ARM_W >= 2 * P.COUPLER_HEX_AF / math.sqrt(3) + 6.0
+
+
+def test_shaft_passes_the_bearings_opening_and_the_shroud_fits_its_band():
+    assert P.SHAFT_OD + 2 * P.CLEAR < P.BEARING_OPEN
+    arms = math.hypot(P.YOKE_ARM_W / 2, P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T)
+    assert arms + 2.0 < P.SHROUD_R_OUT - P.WALL
+    assert P.SHROUD_R_OUT + 2.0 < P.TORSO_R_TOP - P.WALL

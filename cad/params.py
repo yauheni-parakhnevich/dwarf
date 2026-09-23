@@ -6,6 +6,8 @@ Both build123d and Blender import this module, so it must stay plain Python.
 Bought parts that have not been measured yet carry listing-typical defaults; the README
 lists which ones to re-measure on arrival.
 """
+import math
+
 # --- printer and fits ------------------------------------------------------------------
 BED = 256.0
 WALL = 2.4                 # shell wall, two 0.6 mm perimeters
@@ -17,8 +19,6 @@ INSERT_DEPTH_SHORT = 4.0       # for 5 mm parts: a short M3 insert, still blind
 M3_CLEAR = 3.4
 M4_PIN = 4.0
 M2_5_CLEAR = 2.8
-NUT_M3_AF = 5.5            # across flats
-NUT_M3_T = 2.4
 SCREW_HEAD_H = 3.0
 
 # --- heights ---------------------------------------------------------------------------
@@ -93,7 +93,6 @@ def ring_r_out(profile, z0, z1=None):
 # --- belt joint ---------------------------------------------------------------------------
 FLANGE_R_IN = 80.0
 FLANGE_SCREW_R = 86.0
-FLANGE_SCREWS = 4
 FLANGE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
 DIVIDER_PROUD = 0.3        # the divider stands this much above the base's rim so the belt screws load the PU bead, not the rim
 GLAND_D = 12.5             # an M12 cable gland's thread, with clearance
@@ -102,7 +101,7 @@ CHASSIS_T = 4.0
 CHASSIS_R = 90.0
 CHASSIS_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]   # off the belt screws, the sled and the electronics deck
 CHASSIS_SCREW_R = FLANGE_SCREW_R - 2.0
-Z_CHASSIS = Z_BASE_TOP + RING_T   # 226, sits on the torso flange
+Z_CHASSIS = Z_BASE_TOP + RING_T   # 246, sits on the torso flange
 
 # --- belly hatch: the coat's front between the belt and the shoulders is a screwed-on panel that
 #     carries the window and the hood. The phone sled slides out forward through it, and every
@@ -123,13 +122,12 @@ ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 48.0
 WINDOW_Z_BIAS = 10.0           # window centre above the lens: the view needed is mostly above horizontal, and the hatch's lip is just below
-HOOD_DEPTH = 15.0
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
 # calibration absorbs like every other fixed offset
 PHONE_Y_OFFSET = 0.0
 CAM_Y = PHONE_Y_OFFSET + PHONE_W / 2 - PHONE_CAM_FROM_SIDE   # 22.55
-PHONE_BOTTOM_Z = Z_LENS - PHONE_CAM_FROM_END           # 234
+PHONE_BOTTOM_Z = Z_LENS - PHONE_CAM_FROM_END           # 254
 LENS_FRONT_X = shell_r(TORSO_PROFILE, Z_LENS) - WALL - ACRYLIC_T - LENS_GAP
 PHONE_BACK_X = LENS_FRONT_X - LENS_CLIP_T              # back glass
 PHONE_FRONT_X = PHONE_BACK_X - PHONE_T                 # screen
@@ -160,8 +158,7 @@ EDECK_LAYOUT = {
 # under its back corners would stand off the chassis and into the wall
 EDECK_HOLES = [(51.0, -41.0), (51.0, 41.0), (-17.0, 12.0)]
 EDECK_POSTS = [(-50.0, -28.0), (-50.0, 28.0)]
-MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival
-ESP32_HOLES = None                # devkit boards vary; it sits in a printed cradle (two rails + tie slots)
+MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
@@ -184,7 +181,7 @@ DECK_SCREW_R = 58.0
 DECK_SCREW_ANGLES = [30.0, 150.0, 210.0, 330.0]   # off the pan servo's hangers and the phone
 PLATE_R = 50.0
 PLATE_T = 5.0
-Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 391
+Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
 # --- pan drive: the servo hangs under the deck, shaft pointing down, and the parallelogram
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
@@ -193,16 +190,15 @@ PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
 Z_PAN_SHAFT_FACE = 353.0       # the servo's output face, looking down; body top 393.5, under the deck
-Z_PAN_HORN_BOTTOM = Z_PAN_SHAFT_FACE - 2.5
 CRANK_T = 5.0
 LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
 PIN_BOSS_H = 0.5
 PIN_BOSS_D = 8.0
-Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 333; the crank's top is the shaft face, the horn sits in its pocket
-Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 328
-Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 327.5; a boss on crank and foot takes the screw's clamp, not the link
-Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 324.5
+Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 353; the crank's top is the shaft face, the horn sits in its pocket
+Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 348
+Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 347.5; a boss on crank and foot takes the screw's clamp, not the link
+Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 344.5
 SHAFT_BOTTOM = Z_LINK_BOTTOM - 5.0           # the tube leaves the shaft below the link's plane
 LINK_EYE_R = PIN_BORE / 2 + 3.0
 PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
@@ -213,6 +209,18 @@ PAN_SERVO_FIT = 0.5                          # the body slides up between the ha
 PAN_STOP_DEG = 65.0
 STOP_POST_R = 60.0
 STOP_POST_D = 6.0
+
+
+def stop_pin_deg():
+    """Where a stop pin's centre sits so the plate's tab meets it at exactly PAN_STOP_DEG."""
+    return PAN_STOP_DEG + math.degrees(math.asin((STOP_TAB_W / 2) / STOP_POST_R)) + math.degrees(math.asin((STOP_POST_D / 2) / STOP_POST_R))
+
+
+def crank_pins(deg):
+    """Plate pin and servo pin at a pan angle: both cranks are CRANK_L at CRANK_REST_DEG + deg."""
+    a = math.radians(CRANK_REST_DEG + deg)
+    v = (CRANK_L * math.cos(a), CRANK_L * math.sin(a))
+    return v, (PAN_SERVO_XY[0] + v[0], PAN_SERVO_XY[1] + v[1])
 STOP_PIN_TOP = Z_PLATE_TOP - 1.5          # separate pins glued into the deck: 3.5 mm of the tab's 5, 1.5 under the yoke
 STOP_PIN_DEPTH = 6.0
 STOP_TAB_W = 6.0
@@ -284,11 +292,13 @@ TILT_STOP_TAB_R = 15.0
 # --- neck shroud: a body of revolution on the plate that turns with the head, hiding the yoke
 #     inside the collar and closing the gap around the head to a few millimetres
 SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
-SHROUD_R_OUT = 70.4                                  # over the arms' outer corners (65.5), inside the torso's neck (73.6)
+SHROUD_R_OUT = 70.4                                  # between the arms' corners and the neck's inner wall; asserted below
 SHROUD_SKIRT_Z = SHROUD_BASE_Z + 8.0                 # where the cone from the base reaches SHROUD_R_OUT
 SHROUD_SHOULDER_Z = BEARD_TOP_Z + 11.0               # 454: the cone starts high enough that the nose clears it at full nose-down
 SHROUD_TOP_Z = Z_HEAD - 17.6                         # 460.4: the rim passes under the ear's stop tab
-SHROUD_TOP_R = 54.0                                  # 9 mm to the head's 44.7 at this height; the nose at -35 needs it
+SHROUD_TOP_R = 54.0                                  # 9.3 mm to the head's 44.7 at this height; the nose at -35 needs it
+JET_D = NOZZLE_D + 4.0                               # the jet's keep-out: nozzle bore plus spread over 30 mm
+JET_NOTCH_HALF_DEG = 9.0                             # the shroud's front is notched for the jet over the whole tilt range
 TUBE_OD = 6.0
 TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's barb faces -X so one such bend reaches the axis
 
