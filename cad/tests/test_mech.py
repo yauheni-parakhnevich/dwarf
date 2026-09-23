@@ -187,6 +187,48 @@ def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
     assert coupler.bounding_box().max.Y >= P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T - 1e-6
 
 
+def test_neck_shroud_turns_clear_of_everything_it_passes(parts):
+    shroud = parts["neck_shroud"]
+    for other in ("yoke", "plate", "shaft", "coupler", "ear_boss", "stop_pin", "deck", "deck_ring"):
+        assert (shroud & parts[other]).volume < 1e-3, other
+    below = shroud & box(-120, 120, -120, 120, 0, P.Z_TORSO_TOP)
+    assert (below - skin_solid(P.TORSO_PROFILE, P.WALL)).volume < 1e-6          # inside the neck
+    for a in P.YOKE_SCREW_ANGLES:                                              # the four ring screws
+        x, y = polar(P.YOKE_SCREW_R, a)
+        shank = cyl_z(P.M3_CLEAR / 2 - 0.05, P.SHROUD_BASE_Z - 1, P.SHROUD_BASE_Z + 3, x, y)
+        assert (shank & shroud).volume < 1e-6, a                               # ... pass right through
+        assert math.isclose(P.SHROUD_BASE_Z, P.Z_PLATE_TOP + P.YOKE_RING_T, abs_tol=1e-6)
+
+
+def test_neck_shroud_lets_the_yoke_arms_through(parts):
+    from mech.turntable import _shroud_profile
+    shroud = parts["neck_shroud"]
+    r_corner = math.hypot(P.YOKE_ARM_W / 2, P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T)
+    # the cylinder's inner face, between the two cones: where the wall is closest to the arms
+    zs = sorted(z for r, z in _shroud_profile() if math.isclose(r, P.SHROUD_R_OUT - P.WALL, abs_tol=1e-6))
+    assert len(zs) == 2, zs
+    band = cyl_z(r_corner + 2.0, zs[0], zs[1])                                 # 2 mm off the corners
+    assert (band & shroud).volume < 1e-6
+    w = P.YOKE_ARM_W / 2 + P.CLEAR - 0.01                                      # the slot is CLEAR wider
+    for sy in (1, -1):
+        y0, y1 = sorted((sy * (P.EAR_OUT_Y + P.YOKE_GAP), sy * (P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T)))
+        grown = box(-w, w, y0, y1, P.SHROUD_BASE_Z, P.SHROUD_TOP_Z)
+        assert (grown & shroud).volume < 1e-6, sy
+
+
+def test_neck_shroud_clears_the_head_at_every_tilt(parts):
+    """The head is a sphere, so one test covers every pan and tilt; its nose and brim are not."""
+    shroud = parts["neck_shroud"]
+    tilt_axis = Axis((0, 0, P.Z_HEAD), (0, 1, 0))
+    assert (shroud & (Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R))).volume < 1e-6
+    # build123d's +deg about +Y lowers the nose, so the machine's tilt is -deg here
+    nose = box(48, 64, -14, 14, 470, 490).rotate(tilt_axis, -P.TILT_STOP[0])
+    assert (shroud & nose).volume < 1e-6
+    for deg in P.TILT_STOP:
+        brim = cyl_z(P.HAT_BRIM_R + 1, P.Z_HAT, P.Z_HAT + P.HAT_BRIM_T).rotate(tilt_axis, -deg)
+        assert (shroud & brim).volume < 1e-6, deg
+
+
 def test_ear_tab_meets_the_pegs_only_at_the_stops(parts):
     """The stops must engage nose-up at TILT_STOP[1] and nose-down at TILT_STOP[0].
 
@@ -351,8 +393,8 @@ def test_assembly_step_exists_after_build(tmp_path):
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
     from mech import ALL
     comp = assembly({spec.name: spec.build() for spec in ALL})
-    # 30 parts; the hatch bosses are four solids and the nozzle bosses two
-    assert len(comp.solids()) == 35
+    # 31 parts; the hatch bosses are four solids and the nozzle bosses two
+    assert len(comp.solids()) == 36
     labels = [c.label for c in comp.children]
     assert all(labels) and len(labels) == len(ALL) + 1           # the stop pin is fitted twice
     assert labels.count("stop_pin") == 1 and "stop_pin_mirrored" in labels
@@ -391,7 +433,7 @@ def test_no_two_parts_in_a_group_overlap(placed):
     """
     from mech import INTERFACES
     section = {n: s for s, names in INTERFACES.items() for n in names}
-    pan = {"plate", "shaft", "yoke"}
+    pan = {"plate", "shaft", "yoke", "neck_shroud"}
     head = {"coupler", "ear_boss", "tilt_cradle", "cradle_rails", "face_stop", "head_lip",
             "nozzle_holder", "nozzle_bosses"}
     linkage = {"servo_crank", "pan_link", "stop_pin"}

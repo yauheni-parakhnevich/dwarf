@@ -1,6 +1,7 @@
 """The neck: what the head stands on and what turns it."""
 import math
-from build123d import Sphere, Pos, Rot, RegularPolygon, SkipClean, Location, extrude, Axis
+from build123d import (Sphere, Pos, Rot, Plane, Polygon, RegularPolygon, SkipClean, Location,
+                       extrude, revolve, Axis)
 import params as P
 from mech import part
 from mech.common import cyl_z, cyl_y, box, insert_holes, polar, servo_body
@@ -223,6 +224,87 @@ def yoke():
         pz = P.Z_HEAD + P.TILT_STOP_TAB_R * math.sin(math.radians(a))
         y = y + cyl_y(peg_r, y1 - 0.01, -(P.HEAD_R + 1.0), px, pz)   # inward from the arm's inner face
     return y
+
+
+def _offset(p, q, d):
+    """The segment p->q shifted d to its left: for this profile, into the shroud's cavity."""
+    dr, dz = q[0] - p[0], q[1] - p[1]
+    n = math.hypot(dr, dz)
+    nr, nz = -dz / n, dr / n
+    return (p[0] + d * nr, p[1] + d * nz), (q[0] + d * nr, q[1] + d * nz)
+
+
+def _meet(a, b, c, d):
+    """Where the line through a, b crosses the line through c, d."""
+    (ar, az), (br, bz), (cr, cz), (dr_, dz_) = a, b, c, d
+    u, v = (br - ar, bz - az), (dr_ - cr, dz_ - cz)
+    det = u[0] * v[1] - u[1] * v[0]
+    t = ((cr - ar) * v[1] - (cz - az) * v[0]) / det
+    return (ar + t * u[0], az + t * u[1])
+
+
+def _shroud_profile():
+    """The shroud's wall as a closed (r, z) loop: up the outside, round the rim, down the inside.
+
+    The path the brief names - base ring, cone out, cylinder, cone in - is the OUTER surface,
+    and the wall lies WALL inside it. The skirt is shallow enough that its inner surface runs
+    into the base ring rather than onto its top face, which is why the base is thicker than
+    three millimetres at its rim; the screws' counterbores are sunk to leave exactly three.
+    """
+    base_top = P.SHROUD_BASE_Z + 3.0
+    a1 = (P.PLATE_R, P.SHROUD_BASE_Z)
+    a2 = (P.PLATE_R, base_top)
+    a3 = (P.SHROUD_R_OUT, P.SHROUD_SKIRT_Z)
+    a4 = (P.SHROUD_R_OUT, P.SHROUD_SHOULDER_Z)
+    a5 = (P.SHROUD_TOP_R, P.SHROUD_TOP_Z)
+    l1 = _offset(a2, a3, P.WALL)                       # skirt cone, inner face
+    l2 = _offset(a3, a4, P.WALL)                       # cylinder, inner face
+    l3 = _offset(a4, a5, P.WALL)                       # top cone, inner face
+    b5 = l3[1]
+    b4 = _meet(*l3, *l2)
+    b3 = _meet(*l2, *l1)
+    t = (P.YOKE_RING_R_IN - l1[0][0]) / (l1[1][0] - l1[0][0])
+    b2 = (P.YOKE_RING_R_IN, l1[0][1] + t * (l1[1][1] - l1[0][1]))
+    # a rolled rim: a half-round on the top edge, away from the material
+    mid = ((a5[0] + b5[0]) / 2, (a5[1] + b5[1]) / 2)
+    rad = math.hypot(a5[0] - mid[0], a5[1] - mid[1])
+    start = math.atan2(a5[1] - mid[1], a5[0] - mid[0])
+    roll = [(mid[0] + rad * math.cos(start + i * math.pi / 6),
+             mid[1] + rad * math.sin(start + i * math.pi / 6)) for i in range(1, 6)]
+    return [(P.YOKE_RING_R_IN, P.SHROUD_BASE_Z), a1, a2, a3, a4, a5, *roll, b5, b4, b3, b2]
+
+
+def _arm_slots():
+    """The channels the yoke's arms travel down as the shroud is lowered onto the ring.
+
+    A straight prism of the arm's section: the arms cross the skirt as well as the top cone,
+    so the slot runs the shroud's whole height, open at the top.
+    """
+    w = P.YOKE_ARM_W / 2 + P.CLEAR
+    cut = None
+    for sy in (1, -1):
+        y0, y1 = _arm_y(sy)
+        band = box(-w, w, y0 - P.CLEAR, y1 + P.CLEAR, P.SHROUD_BASE_Z - 1, P.SHROUD_TOP_Z + 5)
+        cut = band if cut is None else cut + band
+    return cut
+
+
+@part("neck_shroud")
+def neck_shroud():
+    """Turns with the head, hiding the yoke inside the collar and closing the gap around the head.
+
+    A body of revolution on the yoke's ring, held by the same four screws: base ring, a skirt
+    out to SHROUD_R_OUT clear of the arms, a cylinder up past the collar's rim, then a cone in
+    to a rolled rim SHROUD_TOP_R from the pan axis, a few millimetres off the head.
+    """
+    s = revolve(Plane.XZ * Polygon(*_shroud_profile()), axis=Axis.Z)
+    s = s - _arm_slots()
+    head_d = P.M3_CLEAR + 2.6                                  # an M3 socket head is 5.5 across
+    for a in P.YOKE_SCREW_ANGLES:
+        x, y = polar(P.YOKE_SCREW_R, a)
+        s = s - cyl_z(P.M3_CLEAR / 2, P.SHROUD_BASE_Z - 1, P.SHROUD_BASE_Z + 6, x, y)
+        s = s - cyl_z(head_d / 2, P.SHROUD_BASE_Z + 3.0, P.SHROUD_BASE_Z + 8, x, y)   # head, 3 mm of base left
+    return s
 
 
 @part("ear_boss", section="head_back")
