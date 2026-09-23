@@ -316,9 +316,9 @@ def ear_boss():
     """
     y_out, y_in = -P.EAR_OUT_Y, -(P.HEAD_R - 10.0)
     boss = cyl_y(P.EAR_R, y_out, y_in, 0, P.Z_HEAD)
-    boss = boss - cyl_y(P.INSERT_M4_D / 2, y_out - 1, y_out + P.INSERT_M4_DEPTH, 0, P.Z_HEAD)
     tab = box(-P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, y_out + 1, y_out + 5, P.Z_HEAD - P.TILT_STOP_TAB_R - 2, P.Z_HEAD)
-    return boss + tab
+    # drilled last: the tab reaches across the bore's mouth, so it has to be there to be cut
+    return (boss + tab) - cyl_y(P.INSERT_M4_D / 2, y_out - 1, y_out + P.INSERT_M4_DEPTH, 0, P.Z_HEAD)
 
 
 @part("coupler")
@@ -427,13 +427,24 @@ def cradle_rails():
 
 
 def _lip_band(grow=0.0):
-    """The spherical band the face cap seats on; `grow` inflates it into a clearance cutter."""
-    r_out = P.HEAD_R - P.WALL - P.CLEAR + grow
-    band = box(P.FACE_SPLIT_X - P.FACE_LIP_L - grow, P.FACE_SPLIT_X + P.FACE_LIP_L + grow,
-               -P.HEAD_R, P.HEAD_R, P.Z_HEAD - P.HEAD_R, P.Z_HEAD + P.HEAD_R)
+    """The spherical band the face cap seats on, straddling the split.
+
+    Behind the split it is body, reaching 1.2 mm into the wall like every other interface part,
+    so it welds to the head's back half instead of floating inside it. In front of the split the
+    cap slides over it, so there it stops CLEAR short of the cap's inner face. `grow` inflates
+    the whole ring into a clearance cutter.
+    """
+    r_in = P.HEAD_R - P.WALL - P.CLEAR - P.FACE_LIP_T - grow
+    core = Pos(0, 0, P.Z_HEAD) * Sphere(r_in)
+
+    def band(r, x0, x1):
+        window = box(x0, x1, -P.HEAD_R, P.HEAD_R, P.Z_HEAD - P.HEAD_R, P.Z_HEAD + P.HEAD_R)
+        return ((Pos(0, 0, P.Z_HEAD) * Sphere(r)) - core) & window
+
     with SkipClean():                      # build123d corrupts a sphere's boolean when it tidies it
-        shell = (Pos(0, 0, P.Z_HEAD) * Sphere(r_out)) - (Pos(0, 0, P.Z_HEAD) * Sphere(r_out - P.FACE_LIP_T - 2 * grow))
-        return shell & band
+        back = band(P.HEAD_R - P.WALL + 1.2 + grow, P.FACE_SPLIT_X - P.FACE_LIP_L - grow, P.FACE_SPLIT_X)
+        front = band(P.HEAD_R - P.WALL - P.CLEAR + grow, P.FACE_SPLIT_X, P.FACE_SPLIT_X + P.FACE_LIP_L + grow)
+        return back + front
 
 
 @part("face_stop", section="face")

@@ -187,6 +187,26 @@ def test_coupler_passes_the_head_wall_and_seats_in_the_arm(parts):
     assert coupler.bounding_box().max.Y >= P.EAR_OUT_Y + P.YOKE_GAP + P.YOKE_ARM_T - 1e-6
 
 
+def test_head_lip_is_welded_behind_the_split_and_clears_the_cap_in_front(parts):
+    """Body where it joins the head's back half, a clearance where the cap slides over it."""
+    from build123d import SkipClean
+    lip, r = parts["head_lip"], P.HEAD_R
+    with SkipClean():                    # build123d corrupts a sphere's boolean when it tidies it
+        back = lip & box(-r, P.FACE_SPLIT_X, -r, r, P.Z_HEAD - r, P.Z_HEAD + r)
+        front = lip & box(P.FACE_SPLIT_X, r, -r, r, P.Z_HEAD - r, P.Z_HEAD + r)
+        assert math.isclose(back.volume + front.volume, lip.volume, rel_tol=1e-9)
+        deep = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1)
+        assert (back - deep).volume > 1e-3                 # behind the split it reaches into the wall
+        assert (lip - (Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.2))).volume < 1e-6   # never through it
+        cap = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL - P.CLEAR)
+        assert (front - cap).volume < 1e-6                 # in front of it the cap slides over
+
+
+def test_ear_boss_m4_bore_is_open_to_its_full_depth(parts):
+    probe = cyl_y(P.INSERT_M4_D / 2 - 0.05, -P.EAR_OUT_Y - 1, -P.EAR_OUT_Y + P.INSERT_M4_DEPTH, 0, P.Z_HEAD)
+    assert (probe & parts["ear_boss"]).volume < 1e-6       # the stop tab is drilled through, not around
+
+
 def test_neck_shroud_turns_clear_of_everything_it_passes(parts):
     shroud = parts["neck_shroud"]
     for other in ("yoke", "plate", "shaft", "coupler", "ear_boss", "stop_pin", "deck", "deck_ring"):
