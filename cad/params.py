@@ -104,15 +104,6 @@ CHASSIS_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]   # off the belt screws, the 
 CHASSIS_SCREW_R = FLANGE_SCREW_R - 2.0
 Z_CHASSIS = Z_BASE_TOP + RING_T   # 246, sits on the torso flange
 
-# --- belly hatch: the coat's front between the belt and the shoulders is a screwed-on panel that
-#     carries the window and the hood. The phone sled slides out forward through it, and every
-#     screw in the dry zone is driven through it. The panel is cut from the torso's raw mesh by the
-#     assembler; four bosses and a lip around the opening are interface parts on the torso.
-HATCH_Z = (Z_BASE_TOP + 2.0, 392.0)          # 250 .. 392; the phone's top (390.6) passes, the lip stops 2 mm under the deck
-HATCH_HALF_ANGLE = 33.0                      # degrees either side of +X; 110 mm wide at the belly
-HATCH_LIP_W = 6.0                            # lip inside the opening the panel rests on, all round
-HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -30.0), (HATCH_Z[0] + 10.0, 30.0), (HATCH_Z[1] - 10.0, -30.0), (HATCH_Z[1] - 10.0, 30.0)]   # (z, angle deg); at 30 deg the lower screw clears the window by 7.5 mm
-
 # --- phone and window ---------------------------------------------------------------------
 PHONE_L, PHONE_W, PHONE_T = 138.3, 67.1, 7.1
 PHONE_CAM_FROM_END = 11.0      # rear camera centre from the phone's end
@@ -122,7 +113,7 @@ LENS_CLIP_W = 28.0             # the clip's width across the phone; measure the 
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 48.0
-WINDOW_Z_BIAS = 18.0           # window centre above the lens: the view needed is mostly above horizontal, and the hatch's lip is just below
+WINDOW_Z_BIAS = 18.0           # window centre above the lens: the view needed is mostly above horizontal, and the belt joint is just below
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
 # calibration absorbs like every other fixed offset
@@ -171,8 +162,7 @@ EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
-Z_FAN = 368.0                  # the whole 50 mm frame stays inside the shoulder; the exhaust sits on the back below the collar
-VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 275.0   # above the torso flange
+VENT_IN_W, VENT_IN_H = 40.0, 20.0
 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
@@ -340,7 +330,7 @@ PUMP_TIE_SLOTS = True                       # cable-tie slots hold the pump to i
 FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
-FILLER_VIA_HATCH = True                     # a hose from the tank head's port to a filler neck in the divider's front, under the hatch
+FILLER_VIA_TOP = True                       # a hose from the tank head's port to a filler neck in the divider's front, reached from the top with the bell off
 FILLER_NECK_XY = (60.0, -58.0)              # on the divider, beside the sled's path: at y 0 the cap would
                                             # stand inside the sled's tray. See the note in mech/torso.py
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
@@ -362,16 +352,28 @@ STATUE_FEATURES = {                         # fraction of height, from the fit a
     "beard_bottom": 0.441, "chin": 0.589, "mouth": 0.603, "nose": 0.645, "eye": 0.679,
     "ear": 0.684, "brim_side": 0.713, "brim_front": 0.735,
 }
-Z_TURN = 309.0                              # the turning unit starts at the beard's bottom (0.441 H)
-R_TURN = 70.0                               # cylinder about the pan axis: inside it, above Z_TURN, everything turns
-TURN_GAP = 2.0                              # air between the turning unit's edge and the fixed shoulders
+Z_TURN = 309.0                              # the turning bell starts at the beard's bottom (0.441 H)
+TURN_GAP = 2.0                              # air between the bell's rim and the fixed coat below it
+# The bell is everything above Z_TURN except the sleeves: the coat's side panels with the mittens,
+# |y| >= PANEL_Y, stay fixed up to PANEL_TOP so the arms do not twist with the head. The bell
+# sweeps +-PAN_STOP_DEG inside them; where its lower front (the beard's ends) would touch a
+# panel, the statue stage lathes the bell there and reports it.
+PANEL_Y = 95.0
+PANEL_TOP = 400.0
+PANEL_BOTTOM = 196.0                        # the mittens' lower edge; below Z_BELT the panel belongs to the base halves
 SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed
-    "base_left": (0.0, Z_BELT), "base_right": (0.0, Z_BELT),      # split at y = 0, sand ballast inside
-    "torso": (Z_BELT, 420.0),                                       # the coat, hands removed, belly panel cut out
-    "belly": (HATCH_Z[0], HATCH_Z[1]),
-    "hand_left": (200.0, 300.0), "hand_right": (200.0, 300.0),      # glued on after the torso is in
-    "beard": (Z_TURN, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),   # the turning unit, glued
+    "base_left": (0.0, Z_BELT), "base_right": (0.0, Z_BELT),        # split at y = 0, sand ballast inside
+    "hand_left": (PANEL_BOTTOM, Z_BELT), "hand_right": (PANEL_BOTTOM, Z_BELT),   # mitten caps glued to the base halves
+    "torso": (Z_BELT, Z_TURN - TURN_GAP),                             # the coat's belt ring, fixed
+    "panel_left": (Z_BELT, PANEL_TOP), "panel_right": (Z_BELT, PANEL_TOP),      # sleeves and shoulders' sides, fixed, glued to the ring
+    "beard": (Z_TURN, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),    # the turning bell, glued
 }
+# With the bell off, everything inside is reached from the top: there is no belly hatch. The
+# window is cut in the ring; the exhaust fan sits on the left panel's inner face, the intake
+# in the ring's back.
+FAN_PANEL = "left"
+FAN_XZ = (-20.0, 370.0)                     # the fan's centre on the panel (x, z); its axis along Y
+Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
 BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
