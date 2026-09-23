@@ -25,6 +25,20 @@ def test_every_part_fits_the_bed(parts):
         assert max(s.X, s.Y, s.Z) <= P.BED, (name, s)
 
 
+def test_the_fan_hole_clears_the_bearing_and_the_deck_rim(parts):
+    """The hole is between the bearing's square and the deck's trimmed back, and misses both."""
+    fx, fy = P.FAN_XY
+    edge = abs(fx) - P.BEARING_SQ / 2 - P.FAN_HOLE_D / 2
+    assert edge >= 1.0, edge                                    # the bearing's corner is fully seated
+    reach = math.hypot(fx, fy) + P.FAN_HOLE_D / 2
+    assert reach <= P.DECK_BACK_R - 1.0, reach                  # ... and the rim is still there
+    deck = parts["deck"]
+    for a in (45, 135, 225, 315):                               # the bearing's own four screws
+        bx, by = polar(P.BEARING_PITCH / 2 * math.sqrt(2), a)
+        probe = cyl_z(P.BEARING_HOLE / 2 - 0.05, P.Z_DECK - P.DECK_T - 1, P.Z_DECK + 1, bx, by)
+        assert (probe & deck).volume < 1e-6, a                  # still drilled, not swallowed
+
+
 def test_the_deck_cage_stands_inside_the_bells_bore(parts):
     """It is the deck's only support now, and every millimetre of it is inside the turning bore."""
     cage = parts["deck_ring"]
