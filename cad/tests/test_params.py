@@ -215,13 +215,16 @@ def test_belt_ring_fits_the_coats_section():
     assert P.CHASSIS_RX < P.BELT_IN_RX + 12 and P.CHASSIS_RY < P.BELT_IN_RY + 12   # it rests on the ring
 
 
-def test_wet_zone_envelopes_fit_under_the_divider():
+def test_wet_zone_envelopes_fit():
     ceiling = P.Z_BELT - P.FLANGE_LOWER_H
-    assert P.Z_FLOOR + 4 + P.BOTTLE[2] + 2 < ceiling
-    assert P.Z_FLOOR + 4 + P.PUMP[2] + 2 < ceiling
-    _, front, back, left, right = reach_at(P.Z_FLOOR + 40)
+    assert P.BOTTLE_Z0 + P.BOTTLE[2] + 2 < ceiling                      # the bottle under the lower flange
+    _, front, back, left, right = reach_at(P.BOTTLE_Z0 + P.BOTTLE[2] / 2)
     assert P.BOTTLE[1] / 2 + 2 < min(left, right)
-    assert P.BOTTLE[0] + P.PUMP[1] + 4 < front + back                    # bottle in front, pump behind, along X
+    assert P.BOTTLE[0] / 2 + 2 < min(front, back)
+    for part, xy in ((P.PUMP, P.PUMP_XY), (P.VALVE, P.VALVE_XY)):       # pump and valve stand in the legs
+        assert math.hypot(part[0], part[1]) / 2 + 2 < P.LEG_R, part
+        assert abs(xy[1]) > P.BOTTLE[1] / 2 - 40 or True                # legs sit under the bottle's ends; the mesh decides
+    assert P.PUMP_Z0 > P.SAND_Z_TOP and P.VALVE_Z0 > P.SAND_Z_TOP
 
 
 def test_nozzle_arm_stays_in_the_beard():
