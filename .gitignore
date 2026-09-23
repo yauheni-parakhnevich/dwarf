@@ -12,3 +12,4 @@ cad/out/
 .venv-cad/
 __pycache__/
 *.pyc
+cad/in/
