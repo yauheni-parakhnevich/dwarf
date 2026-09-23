@@ -72,10 +72,17 @@ def deck_ring():
     ring = cyl_z(P.RING_R_OUT, z0, z1) - cyl_z(P.RING_R_IN, z0 - 1, z1 + 1)
     for a in P.DECK_SCREW_ANGLES:
         ring = ring + box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
+    # a tie low down, where the phone's front at x 62.9 is the only thing near: the fan and the
+    # servo's hangers both cut the top annulus, and without this the two -Y legs hang off nothing
+    tie = P.Z_TURN - 5.0                                # above a 30 mm driver on the boards' screws
+    ring = ring + (cyl_z(62.0, tie, tie + 8.0) - cyl_z(P.CAGE_LEG_R - half, tie - 1, tie + 9.0))
     ring = ring - _column_slot(z0 - 1, z1 + 1)          # RING_R_IN is 50; the column reaches r 52.15
     for hx, hy in P.pan_hangers():                      # the -Y leg shares its ground with a hanger
         ring = ring - box(hx - P.PAN_HANGER / 2 - P.CLEAR, hx + P.PAN_HANGER / 2 + P.CLEAR,
                           hy - P.PAN_HANGER / 2 - P.CLEAR, hy + P.PAN_HANGER / 2 + P.CLEAR, foot - 1, z1 + 1)
+    fx, fy, fh = P.FAN_XY[0], P.FAN_XY[1], P.FAN / 2    # the fan hangs through the annulus here
+    ring = ring - box(fx - fh - P.CLEAR, fx + fh + P.CLEAR, fy - fh - P.CLEAR, fy + fh + P.CLEAR,
+                      z1 - P.RING_T - P.FAN_T - P.CLEAR, z1 + 1)
     ez = foot + P.EDECK_STANDOFF                        # ... and the -Y one a corner of the boards
     ring = ring - box(P.EDECK_POS[0] - P.EDECK_L / 2 - P.CLEAR, P.EDECK_POS[0] + P.EDECK_L / 2 + P.CLEAR,
                       P.EDECK_POS[1] - P.EDECK_W / 2 - P.CLEAR, P.EDECK_POS[1] + P.EDECK_W / 2 + P.CLEAR,
@@ -119,6 +126,14 @@ def deck():
     d = d - box(sx - off - P.PAN_SERVO_FIT, sx + (L - off) + P.PAN_SERVO_FIT,
                 sy - W / 2 - P.PAN_SERVO_FIT, sy + W / 2 + P.PAN_SERVO_FIT,
                 P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.PAN_SERVO_FIT)
+    # the fan hangs under the deck and blows up through it. Its screws take short inserts drilled
+    # blind into the deck itself: it is six thick and the insert four, so a boss would only foul
+    # the fan, whose FAN_PITCH square is inside its own forty.
+    fx, fy = P.FAN_XY
+    d = d - cyl_z(P.FAN_HOLE_D / 2, z0 - 1, z1 + 1, fx, fy)
+    d = insert_holes(d, [(fx + dx, fy + dy, z0) for dx in (-P.FAN_PITCH / 2, P.FAN_PITCH / 2)
+                         for dy in (-P.FAN_PITCH / 2, P.FAN_PITCH / 2)],
+                     depth=P.INSERT_DEPTH_SHORT, direction="up")
     # seats for the two hard-stop pins, drilled from the top face. STOP_PIN_DEPTH is the deck's
     # own thickness, so they go right through: the pin is glued and its end shows underneath.
     # The pins are separate parts, so nothing stands proud and the deck prints flat, hangers up.
