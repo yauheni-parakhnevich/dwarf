@@ -142,7 +142,12 @@ def test_the_vents_are_open(sections):
     x, z = P.FAN_XZ
     side = 1.0 if P.FAN_PANEL == "left" else -1.0
     panel = sections[f"panel_{P.FAN_PANEL}"]
-    assert hits(panel, (x, 0.0, z), (0.0, side, 0.0)) is None, "the exhaust is blocked"
+    # From the fan's own plane out through the sleeve's skin. There is no second probe beside it
+    # here, as there is at the window: the sleeve is not a flat. Over the fan's own disc the skin
+    # wanders between y 91 and 114 and the panel does not cover all of it, so a ray four
+    # millimetres to the side of the bore misses the statue rather than proving anything.
+    assert hits(panel, (x, side * P.FAN_Y, z), (0.0, side, 0.0)) is None, "the exhaust is blocked"
+    assert abs(P.FAN_Y) > P.PANEL_Y, "the fan sits inboard of the panel's own edge"
 
 
 def test_the_mouth_and_the_parting_are_open(sections):

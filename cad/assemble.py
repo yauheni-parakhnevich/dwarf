@@ -249,9 +249,13 @@ def openings(name, mesh):
                      P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
         return cut(mesh, window, intake)
     if name == f"panel_{P.FAN_PANEL}":
+        # Out through the sleeve's outer skin, from the fan's own plane outward. Starting at
+        # y = 0 would have taken the face the fan bolts to with it: the fan now sits in the
+        # bulge at FAN_Y, outside the bell's sweep, and its blank reaches inboard of that to
+        # carry the inserts.
         x, z = P.FAN_XZ
         side = 1.0 if P.FAN_PANEL == "left" else -1.0
-        return cut(mesh, cyl_y((P.FAN - 4.0) / 2, 0.0, side * FAR, x, z))
+        return cut(mesh, cyl_y((P.FAN - 4.0) / 2, side * P.FAN_Y, side * FAR, x, z))
     if name in ("beard", "head"):
         # the parting the nozzle arm swings through, and the mouth it points out of
         mesh = cut(mesh, parting(), cyl_x(P.MOUTH_D / 2, 0.0, FAR, 0.0, P.Z_MOUTH))
