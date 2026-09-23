@@ -289,3 +289,17 @@ renders are inspected after every change to the shell scripts.
   image-to-3D reconstruction of the user's reference photos (`cad/in/`, not committed), scaled to
   the mechanism's envelope, hollowed, and fed to the same assembler. The mechanism, its tests and
   the assembler stand.
+- **2026-09-23, the statue build (branch `cad/statue`).** The reconstruction is scaled to **700 mm**,
+  sheared straight (its sagittal plane drifts 4–16 mm with height) and mirrored. Its legs have no
+  cavity, its hat is a quarter of its height and its chin is 66 mm below the ear line, so: the floor
+  is at 150 with sand ballast in the boots; **the head does not nod** — everything above the beard
+  line (309) turns as one **bell** (beard, head, hat and the coat's shoulders) on a 52 mm shroud,
+  the sleeves staying fixed as **side panels** with their mittens so the arms do not twist; the
+  **nozzle tilts** on a micro servo inside the beard, through the beard's parting under the mouth,
+  with printed stops; the belt joint is an ellipse at 240 following the coat; the tank is a
+  rectangular 1 L bottle (its shoulder is what fits the coat's draw-in) lying across the belly, the
+  micro pump and the valve standing in the legs under the floor plate; the phone stands on the
+  divider through a cutout in the chassis; **no belly hatch** — with the bell off, the deck, the
+  phone and the filler are reached from the top; the window is cut in the belt ring, the fan sits on
+  the left panel. Interface parts are oversize blanks the assembler clips to the cavity, so the
+  shell's shape is typed nowhere. Ten printed shell pieces.
