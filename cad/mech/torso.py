@@ -1,4 +1,4 @@
-"""The dry zone: the belt joint, the belly hatch, the floor plate, and what hangs off the chassis.
+"""The dry zone: the belt joint, the floor plate, and everything that hangs off the chassis.
 
 The shell is the statue now, so no part in here is shaped to a profile of revolution any more.
 Every interface part - anything the assembler unions into a printed section - is built as an
@@ -7,9 +7,9 @@ the assembler clips it to the statue's grown cavity. Only the loose parts (the d
 chassis, the sled, the deck, the floor plate) are drawn to their finished size, and those are
 sized from the belt ellipse and the cavity reach table in the fit report.
 
-The coat's front between the belt and the shoulders is a screwed-on panel. Everything dry-side
-goes in and out through that opening: the chassis bolts through it, the phone sled slides out of
-it along +X, and the electronics deck's screws are driven down through it.
+There is no belly hatch any more. Everything dry-side is reached from the top with the turning
+bell lifted off: the sled drops into its cutout through the chassis, the deck's screws are driven
+down, and the filler's cap is turned where it stands on the divider.
 """
 import json
 import math
@@ -17,7 +17,7 @@ from pathlib import Path
 from build123d import Axis, Ellipse, Pos, extrude
 import params as P
 from mech import part
-from mech.common import box, cyl_x, cyl_z, insert_holes, polar
+from mech.common import box, cyl_y, cyl_z, insert_holes
 
 # --- numbers this module chooses, which params does not ----------------------------------
 BLANK = 15.0                 # how far past the nominal skin every interface blank runs
@@ -34,8 +34,7 @@ CHASSIS_SCREW_ANGLES = [10.0, 170.0, 190.0, 350.0]
 # The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
 # stood inside the sled's tray, which is at x 59.9 .. 73 from z 249.3 up; beside the tray it
 # needs |y| >= 36.55 + 18 (the cap's grip) and it sits at y -58. That is 44 degrees round from
-# the front, so it is 11 degrees outside the belly hatch's own wedge - reached by hand through
-# the opening rather than seen down it.
+# the front. With the turning bell off, the cap is turned from straight above it.
 NECK_FLANGE_R = 16.0
 NECK_BASE_Z = P.Z_BASE_TOP + P.DIVIDER_PROUD          # the divider's top face
 NECK_TOP_Z = NECK_BASE_Z + 15.0
@@ -123,11 +122,6 @@ def cradle_bolts():
     return [(dx * bx, dy * by) for dx in (-1, 1) for dy in (-1, 1)]
 
 
-def _wedge(half_deg, z0, z1, r=220.0):
-    """The solid wedge |atan2(y, x)| < half_deg between z0 and z1."""
-    ahead = box(0, r, -r, r, z0, z1)
-    return ahead & ahead.rotate(Axis.Z, half_deg - 90) & ahead.rotate(Axis.Z, 90 - half_deg)
-
 
 def _edeck(points):
     ex, ey = P.EDECK_POS
@@ -145,12 +139,6 @@ def _rect_centre(name):
     return (x0 + x1) / 2, (y0 + y1) / 2
 
 
-def _window_prism():
-    """Everything behind the camera window's opening in the panel."""
-    y = P.CAM_Y
-    z = P.Z_LENS + P.WINDOW_Z_BIAS
-    return box(0.0, 220.0, y - P.WINDOW_W / 2, y + P.WINDOW_W / 2, z - P.WINDOW_H / 2, z + P.WINDOW_H / 2)
-
 
 def _sled_locks():
     return [(SLED_LOCK_X, P.PHONE_Y_OFFSET + dy) for dy in (-SLED_FOOT_Y, SLED_FOOT_Y)]
@@ -162,20 +150,6 @@ def sled_pocket(grow=0.0):
     return (P.PHONE_FRONT_X - w, P.PHONE_BACK_X + w,
             yc - P.PHONE_W / 2 - w, yc + P.PHONE_W / 2 + P.CLEAR + w)
 
-
-def _sled_envelope(grow=0.0):
-    """Everything the sled and the phone in it sweep as the sled slides +X out of the hatch."""
-    yc, w, out = P.PHONE_Y_OFFSET, P.SLED_WALL, 220.0
-    y0 = yc - P.PHONE_W / 2 - w - grow
-    y1 = yc + P.PHONE_W / 2 + P.CLEAR + w + grow
-    tray = box(P.PHONE_FRONT_X - w - grow, out, y0, y1,
-               P.SLED_FLOOR_Z - grow, P.PHONE_BOTTOM_Z + P.PHONE_L - SLED_OPEN_TOP + grow)
-    phone = box(P.PHONE_FRONT_X - grow, out, yc - P.PHONE_W / 2 - grow, yc + P.PHONE_W / 2 + P.CLEAR + grow,
-                P.PHONE_BOTTOM_Z - grow, P.PHONE_BOTTOM_Z + P.PHONE_L + grow)
-    z_top = P.Z_CHASSIS + P.CHASSIS_T
-    feet = box(SLED_LOCK_X - BOSS_R - grow, out, -SLED_FOOT_Y - 5 - grow, SLED_FOOT_Y + 5 + grow,
-               z_top, z_top + P.SLED_FOOT_H + 4 + grow)
-    return tray + phone + feet
 
 
 # --- the belt joint ---------------------------------------------------------------------------
@@ -310,10 +284,11 @@ def chassis():
 
 @part("phone_sled")
 def phone_sled():
-    """Tray the phone drops into: screen to -X, camera end down, sliding out of the belly hatch.
+    """Tray the phone drops into: screen to -X, camera end down, lowered in from above.
 
     Its floor is at SLED_FLOOR_Z, just above the divider and below the chassis, so the tray hangs
-    through the chassis's pocket and the phone sits as low as the divider allows. The pocket is
+    through the chassis's pocket and the phone sits as low as the divider allows. With no hatch
+    it goes in from the top, down through that same pocket, and its lugs lock on the chassis. The pocket is
     the phone plus CLEAR across its width, taken off the +Y face: the -Y face is the datum the
     camera's offset is measured from.
     """
@@ -389,69 +364,37 @@ def electronics_deck():
     fx0, fy0, fx1, fy1 = _rect(P.EDECK_LAYOUT["fuse"])               # two ties over the fuse holder
     for lo, hi in ((fy0 + 0.5, fy0 + 4.0), (fy1 - 4.0, fy1 - 0.5)):
         d = d - box(fx1 + 1.0, fx1 + 1.0 + TIE_SLOT_W, lo, hi, zc0, zc1)
-    return d
+    # a bite out of the near corner so a hand comes straight down onto the filler's cap, which
+    # stands on the divider below it; the corner is outside every board's rectangle anyway
+    nx, ny = P.FILLER_NECK_XY
+    return d - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 4 + 2.0, zc0, zc1 + ESP32_RAIL_H, nx, ny)
 
 
-# --- interface blanks round the belly opening and the fan -----------------------------------------
+# --- the fan's blank in the left side panel -------------------------------------------------------
 
-@part("hatch_lip", section="torso")
-def hatch_lip():
-    """The ledge the belly panel rests on, round the bottom and both sides of the opening.
-
-    A blank: a slab of the wedge from BLANK inside the nominal skin to BLANK outside it, less the
-    wedge the opening itself takes. The assembler clips it to the cavity, which is what makes it
-    the wall's inner face rather than a slab. None along the top edge - the panel shingles under
-    the torso's cut edge there and a lip would stand in the phone's way as the sled comes out.
-    """
-    z0, z1 = P.HATCH_Z
-    inset = math.degrees(P.HATCH_LIP_W / R_FRONT)
-    band = (_wedge(P.HATCH_HALF_ANGLE, z0, z1) - _wedge(P.HATCH_HALF_ANGLE - inset, z0 + P.HATCH_LIP_W, z1 + 1))
-    shell = _ell_z(R_FRONT + BLANK, R_FRONT + BLANK, z0 - 1, z1 + 1) \
-        - _ell_z(R_FRONT - BLANK, R_FRONT - BLANK, z0 - 1, z1 + 1)
-    return band & shell
-
-
-@part("hatch_bosses", section="torso")
-def hatch_bosses():
-    """Four brackets inside the opening's edges that the belly panel screws into.
-
-    Each reaches from BLANK inside the nominal skin to BLANK outside it, so whatever the statue's
-    wall turns out to be at that height, the clip leaves a full blind insert facing the panel.
-    Two cuts keep them honest: the sled's slide envelope and the window's opening.
-    """
-    bosses = None
-    trim = _sled_envelope(P.CLEAR) + _window_prism()
-    for z, a in P.HATCH_SCREWS:
-        s = 1.0 if a > 0 else -1.0
-        t_out = 16.0                                            # out past the opening's edge
-        b = box(R_FRONT - BLANK, R_FRONT + BLANK, min(-5.0 * s, t_out * s), max(-5.0 * s, t_out * s),
-                z - 5, z + 5)
-        b = b - cyl_x(P.INSERT_D / 2, R_FRONT - P.INSERT_DEPTH, R_FRONT + BLANK + 1, 0.0, z)
-        bosses = b.rotate(Axis.Z, a) if bosses is None else bosses + b.rotate(Axis.Z, a)
-    return bosses - trim
-
-
-@part("fan_frame", section="torso")
+@part("fan_frame", section="panel_left")
 def fan_frame():
-    """Four insert bosses inside the torso's back wall around the exhaust; the fan screws to them.
+    """Four insert bosses round the exhaust bore, for the assembler to clip into the left panel.
 
-    A blank again: the slab runs from BLANK outside the nominal back skin to BLANK inside it, and
-    the four bosses stand proud of its inner face so the clip cannot take the inserts away - that
-    is what went wrong when this part was shaped to a profile.
+    With the belly hatch gone the fan moved off the back and onto the side, where the coat has a
+    flat the statue's own arm leaves: FAN_XZ is its centre and its axis is +Y. The blank reaches
+    from y 80 out to y 115, well past the panel's inner wall at about 95 to 100, so however the
+    clip falls there is a full blind insert facing the fan on the inside of it.
     """
-    z = P.Z_FAN
-    x_wall = -R_BACK
+    x, z = P.FAN_XZ
+    y0, y1 = 80.0, 115.0
     half = P.FAN / 2 + 5
-    x_boss = x_wall + 10                                                   # the face the fan bolts to
-    frame = box(x_wall - BLANK, x_wall + 6, -half, half, z - half, z + half)
-    frame = frame - cyl_x(P.FAN / 2 - 2, x_wall - BLANK - 1, x_wall + 7, 0.0, z)
-    for dy in (-1, 1):
+    y_boss = y0 + 10.0                                                     # the face the fan bolts to
+    frame = box(x - half, x + half, y0, y1, z - half, z + half)
+    frame = frame - cyl_y(P.FAN / 2 - 2, y0 - 1, y1 + 1, x, z)             # the exhaust, round
+    for dx in (-1, 1):
         for dz in (-1, 1):
-            frame = frame + cyl_x(4.0, x_wall + 4, x_boss, dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
-    for dy in (-1, 1):
+            frame = frame + cyl_y(4.0, y0 - 4.0, y_boss, x + dx * P.FAN_PITCH / 2,
+                                  z + dz * P.FAN_PITCH / 2)
+    for dx in (-1, 1):
         for dz in (-1, 1):
-            frame = frame - cyl_x(P.INSERT_D / 2, x_boss - P.INSERT_DEPTH, x_boss + 1,
-                                  dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
+            frame = frame - cyl_y(P.INSERT_D / 2, y_boss - P.INSERT_DEPTH, y_boss + 1,
+                                  x + dx * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
     return frame
 
 
@@ -459,9 +402,10 @@ def fan_frame():
 def filler_neck():
     """The filler's neck, bonded into the divider's front: the cap screws onto this.
 
-    The tank head's port feeds it by a hose, so the bottle is topped up through the belly hatch
-    and nothing shows on the coat's back. Its spigot passes through the divider and its flange
-    sits on the divider's top face; the thread is the same M22 the cap is cut to.
+    The tank head's port feeds it by a hose, so the bottle is topped up without taking the
+    divider off - reached from the top now that there is no belly hatch. Its spigot passes
+    through the divider and its flange sits on the divider's top face; the thread is the same
+    M22 the cap is cut to.
     """
     from bd_warehouse.thread import IsoThread
     nx, ny = P.FILLER_NECK_XY

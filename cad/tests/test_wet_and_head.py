@@ -93,14 +93,14 @@ def test_the_tank_head_sits_on_the_bottles_neck(placed):
     assert (head & bottle_body()).volume < 1e-6                        # it screws on, it does not bite
 
 
-# --- the filler, under the belly hatch ------------------------------------------------------------
+# --- the filler, reached from the top ---------------------------------------------------------
 
 def test_filler_cap_screws_onto_the_divider_neck(parts, placed):
     """The cap takes the neck on the divider: crests at FILLER_CAP_THREAD_MAJOR over a FILLER_D bore."""
     from mech.base import CAP_THREAD_LEN, CAP_THREAD_Z
     cap = parts["filler_cap"]
     neck = placed["filler_neck"]
-    assert P.FILLER_VIA_HATCH
+    assert P.FILLER_VIA_TOP
     bb = neck.bounding_box()
     assert math.isclose(bb.max.Y - bb.min.Y, 2 * 16.0, abs_tol=0.01)             # its bonding flange
     grip = cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 - 0.05, CAP_THREAD_Z, CAP_THREAD_Z + CAP_THREAD_LEN)
@@ -110,25 +110,27 @@ def test_filler_cap_screws_onto_the_divider_neck(parts, placed):
     assert (bore & neck).volume < 1e-6                                 # open all the way down
 
 
-def test_the_filler_is_reached_beside_the_sled(parts, placed):
-    """The cap stands above the divider, out of the sled's slide path, inside the belly opening.
+def test_the_filler_is_reached_from_above(parts, placed):
+    """The cap stands above the divider, beside the sled, with nothing over it.
 
     At FILLER_NECK_XY's first value - y 0 - the cap stood inside the sled's tray. Beside it the
-    cap needs the tray's half width plus its own grip, which is what put it where it is; that is
-    round from the front by more than the hatch's own wedge, so it is reached by hand rather
-    than seen down the middle of the opening.
+    cap needs the tray's half width plus its own grip, which is what put it where it is. With
+    the turning bell lifted off it is turned from straight above.
     """
     from mech.torso import sled_pocket
     cap = placed["filler_cap"]
     bb = cap.bounding_box()
+    assert P.FILLER_VIA_TOP
     assert bb.min.Z >= P.Z_BASE_TOP + P.DIVIDER_PROUD                  # it clears the divider's face
-    assert bb.max.Z < P.HATCH_Z[1]                                     # ... and is inside the opening
     _, _, py0, py1 = sled_pocket()
     assert bb.max.Y < py0 - 2.0 or bb.min.Y > py1 + 2.0, (bb.min.Y, bb.max.Y)
     assert (cap & placed["phone_sled"]).volume < 1e-6
     assert (cap & placed["chassis"]).volume < 1e-6                     # the chassis is notched for it
-    nx, ny = P.FILLER_NECK_XY
-    assert math.degrees(math.atan2(abs(ny), nx)) > P.HATCH_HALF_ANGLE   # ... which this records
+    # nothing of the dry zone stands over it: a driver comes straight down onto the cap
+    above = cyl_z((bb.max.X - bb.min.X) / 2 + 1.0, bb.max.Z, P.Z_DECK,
+                  (bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2)
+    for name in ("chassis", "electronics_deck", "phone_sled"):
+        assert (above & placed[name]).volume < 1e-6, name
 
 
 def test_the_filler_hose_reaches_the_neck(placed):
@@ -164,13 +166,18 @@ def test_the_bottle_sits_in_its_cradle_on_the_floor_plate(parts, placed):
     assert (bottle.moved(Pos(0, 0, 40)) & cradle).volume < 1e-6
 
 
-def test_the_bottle_comes_out_through_the_belt_not_the_hatch():
-    """The service note, as an assertion: it does not pass the opening in any orientation."""
-    hatch_w = 2 * P.shell_r(P.BASE_PROFILE, sum(P.HATCH_Z) / 2) * math.sin(math.radians(P.HATCH_HALF_ANGLE)) \
-        if hasattr(P, "BASE_PROFILE") else 110.0
-    opening = sorted((hatch_w, P.HATCH_Z[1] - P.HATCH_Z[0]))
+def test_the_bottle_comes_out_through_the_belt(placed):
+    """The service note, as an assertion: it lifts straight up once the divider is off.
+
+    There is no hatch to take it through any more, so the only question left is whether the belt
+    joint's own bore passes it - and the divider is what has to come off for that.
+    """
+    from mech.base import bottle_envelope
     plan = sorted(P.BOTTLE[:2])
-    assert plan[0] > opening[0] or plan[1] > opening[1], (plan, opening)
+    assert plan[1] > 2 * P.BELT_IN_RX, (plan, 2 * P.BELT_IN_RX)        # not through the ring's bore
+    lifted = bottle_envelope().moved(Pos(0, 0, 60))
+    for name in ("tank_cradle", "floor_plate", "pump_bracket", "valve_bracket"):
+        assert (lifted & placed[name]).volume < 1e-6, name             # nothing holds it down
 
 
 def test_the_floor_plate_carries_the_sand_and_the_ports(parts):
