@@ -164,7 +164,7 @@ EDECK_STANDOFF = 8.0
 FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
-VENT_IN_W, VENT_IN_H = 40.0, 20.0
+VENT_IN_W, VENT_IN_H = 40.0, 20.0          # the intake, cut in the belt ring's back at Z_VENT_IN
 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
@@ -375,10 +375,11 @@ SECTIONS_STATUE = {                         # printable pieces, each within the 
 # With the bell off, everything inside is reached from the top: there is no belly hatch. The
 # window is cut in the ring; the exhaust fan sits on the left panel's inner face, the intake
 # in the ring's back.
-FAN_PANEL = "left"
-FAN_XZ = (-20.0, 370.0)                     # the fan's centre on the panel (x, z); its axis along Y
-FAN_Y = 112.0                               # the fan's centre in y: inside the sleeve's bulge (the cavity between |y| 107 and 134), outside the bell's sweep (r 103)
-# the exhaust leaves through the sleeve's outer skin; the frame's blank spans y 106..130 and the assembler clips it to the sleeve's cavity
+# The fan hangs under the deck and blows upward through a hole in it; the intake is in the belt
+# ring's back and the air leaves through the bell's turning gap and the beard's parting, a chimney.
+# The sleeves are too thin to hold a fan and everything else above the belt turns.
+FAN_XY = (-45.0, -20.0)                     # the fan's axis, under the deck: clear of the bearing, the cage's legs, the servo and the deck's trimmed back
+FAN_HOLE_D = FAN - 4.0
 Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
