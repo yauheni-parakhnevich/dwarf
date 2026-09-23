@@ -112,7 +112,7 @@ LENS_CLIP_T = 12.0             # clip-on lens in front of the back glass
 LENS_CLIP_W = 28.0             # the clip's width across the phone; measure the clip on arrival
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
-WINDOW_W, WINDOW_H = 40.0, 48.0
+WINDOW_W, WINDOW_H = 40.0, 44.0            # 3.7 mm of coat left above the window under the ring's top
 WINDOW_Z_BIAS = 18.0           # window centre above the lens: the view needed is mostly above horizontal, and the belt joint is just below
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
@@ -138,7 +138,6 @@ XL4015_HOLES = (43.0, 15.0)
 XL4015_HOLE_D = 3.2
 MOSFET = (34.0, 27.0)
 EDECK_T = 4.0                               # EDECK_L and EDECK_W are with the statue's numbers
-EDECK_POS = (-30.0, 0.0)       # centre, x-y; it stands on the chassis
 # board footprints on the deck, (x0, y0, x1, y1) relative to EDECK_POS: two columns, A at the back
 # Two columns on the 100 x 92 deck: the wide boards down the back, the three MOSFET modules up
 # the front, three millimetres between every pair. The ESP32 is the awkward one at 55 mm - it
@@ -155,8 +154,11 @@ EDECK_LAYOUT = {
 # deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
 # the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
 # under its back corners would stand off the chassis and into the wall
-EDECK_HOLES = [(46.0, -30.0), (46.0, 30.0), (-8.0, 10.0)]   # in the free strip and the gap over the fuse
+EDECK_HOLES = [(46.0, -30.0), (46.0, 30.0), (-8.0, 6.0)]    # in the free strip and the gap over the
+                                                            # fuse, under the ESP32 cradle's near rail
 EDECK_POSTS = [(-46.0, -34.0), (-46.0, 34.0)]               # bare posts under the deck's back end
+EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: it clears the deck cage's
+                                            # 235 and 250 degree legs without a notch in either
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
 FAN = 40.0
@@ -360,7 +362,7 @@ TURN_GAP = 2.0                              # air between the bell's rim and the
 # |y| >= PANEL_Y, stay fixed up to PANEL_TOP so the arms do not twist with the head. The bell
 # sweeps +-PAN_STOP_DEG inside them; where its lower front (the beard's ends) would touch a
 # panel, the statue stage lathes the bell there and reports it.
-PANEL_Y = 95.0
+PANEL_Y = 105.0                             # at 95 the beard's front had to be lathed 12 mm and 14 mm slots opened beside the chest; at 105 it loses 2.3 mm
 PANEL_TOP = 400.0
 PANEL_BOTTOM = 196.0                        # the mittens' lower edge; below Z_BELT the panel belongs to the base halves
 SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed
@@ -384,7 +386,8 @@ CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
 # the dry zone, re-stacked
 FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
 EDECK_L, EDECK_W = 100.0, 92.0             # its corner sits at 0.68 of the chassis ellipse
-EDECK_POS = (0.0, 0.0)
+EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: it clears the deck cage's
+                                            # 235 and 250 degree legs without a notch in either
 # the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
 SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
 SHROUD_TOP_Z = 454.0                        # closed top with a hole for the tube and wires
