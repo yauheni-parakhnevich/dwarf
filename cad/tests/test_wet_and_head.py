@@ -1,25 +1,12 @@
 """The head's nozzle and tube, and the wet zone: the tank, the pump's bridge and the valve."""
 import itertools
 import math
-import pytest
 from build123d import Pos, Sphere
 import params as P
 from mech.common import box, cyl_x, cyl_z, servo_body, skin_solid
 
-
-@pytest.fixture(scope="session")
-def parts():
-    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
-    from mech import ALL
-    return {spec.name: spec.build() for spec in ALL}
-
-
-@pytest.fixture(scope="session")
-def placed(parts):
-    """The same parts carried to where they sit in the machine."""
-    from mech import ALL
-    at = {spec.name: spec.placement for spec in ALL}
-    return {name: at[name] * p for name, p in parts.items()}
+# `parts` and `placed` come from conftest: every registered part in its print frame, and the
+# same parts carried to where they sit in the machine.
 
 
 def _iso_crest_r(major, pitch):
