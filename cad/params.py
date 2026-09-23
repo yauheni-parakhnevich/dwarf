@@ -154,7 +154,7 @@ EDECK_LAYOUT = {
 # deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
 # the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
 # under its back corners would stand off the chassis and into the wall
-EDECK_HOLES = [(46.0, -30.0), (46.0, 30.0), (-8.0, 6.0)]    # in the free strip and the gap over the
+EDECK_HOLES = [(46.0, -34.0), (46.0, 34.0), (-8.0, 6.0)]    # in the free strip and the gap over the
                                                             # fuse, under the ESP32 cradle's near rail
 EDECK_POSTS = [(-46.0, -34.0), (-46.0, 34.0)]               # bare posts under the deck's back end
 EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: it clears the deck cage's
@@ -377,6 +377,8 @@ SECTIONS_STATUE = {                         # printable pieces, each within the 
 # in the ring's back.
 FAN_PANEL = "left"
 FAN_XZ = (-20.0, 370.0)                     # the fan's centre on the panel (x, z); its axis along Y
+FAN_Y = 112.0                               # the fan's centre in y: inside the sleeve's bulge (the cavity between |y| 107 and 134), outside the bell's sweep (r 103)
+# the exhaust leaves through the sleeve's outer skin; the frame's blank spans y 106..130 and the assembler clips it to the sleeve's cavity
 Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
