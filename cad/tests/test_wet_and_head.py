@@ -1,4 +1,6 @@
-"""The head's nozzle and tube, and the wet zone: the tank, the pump's bridge and the valve."""
+"""The wet zone: the tank, the pump's bridge and the valve.
+
+The nozzle's own tests went with the nozzle, which is now an arm on the turning unit."""
 import itertools
 import math
 from build123d import Pos, Sphere
@@ -21,125 +23,6 @@ def _iso_crest_r(major, pitch):
 def _grown(body, by=1.0):
     bb = body.bounding_box()
     return box(bb.min.X - by, bb.max.X + by, bb.min.Y - by, bb.max.Y + by, bb.min.Z - by, bb.max.Z + by)
-
-
-# --- the nozzle and its holder ----------------------------------------------------------------
-
-def test_nozzle_holder_bore_is_on_the_mouth_axis(parts):
-    """On the axis, the size of the nozzle, and pointed at where the mouth breaks the sphere."""
-    from mech.head import BORE_X0, NOSE_X, SKIN_X
-    holder = parts["nozzle_holder"]
-    assert (cyl_x(P.NOZZLE_D / 2 - 0.05, BORE_X0, P.HEAD_R, 0, P.Z_MOUTH) & holder).volume < 1e-6
-    # ... and no wider: a nozzle a fifth of a millimetre over size would not go in
-    assert (cyl_x(P.NOZZLE_D / 2 + 0.2, BORE_X0 + 0.1, NOSE_X - 0.1, 0, P.Z_MOUTH) & holder).volume > 1e-3
-    # the axis runs out to the mouth, which is where the sphere is at Z_MOUTH
-    assert math.isclose(SKIN_X, math.sqrt(P.HEAD_R ** 2 - (P.Z_HEAD - P.Z_MOUTH) ** 2), abs_tol=1e-9)
-    aimed = cyl_x(0.1, BORE_X0, SKIN_X, 0, P.Z_MOUTH)
-    assert (aimed & holder).volume < 1e-6                              # nothing stands in the jet
-
-
-def test_the_nozzle_is_held_at_both_ends(parts):
-    """A press fit in the nose and the mouth the assembler cuts, a nozzle's length apart.
-
-    A press fit on its own would let the jet wander: the review measured plus or minus eight
-    degrees on nine millimetres of grip. The mouth is the outboard bearing and the bore's rear
-    the inboard one, and what matters is how far apart they are.
-    """
-    from mech.head import (BORE_X0, NOZZLE_BACK, NOZZLE_L, NOSE_X, SKIN_X, WALL_X,
-                           press_fit_length)
-    assert press_fit_length() >= 15.0, press_fit_length()
-    tip = NOZZLE_BACK + NOZZLE_L
-    assert 1.0 <= tip - SKIN_X <= 2.0, tip - SKIN_X          # through the wall and no further
-    assert SKIN_X - WALL_X > 2.0                             # ... and the mouth is real bearing
-    assert BORE_X0 <= NOZZLE_BACK                            # the bore takes it
-    # the holder's nose runs out to its own clip sphere, a clearance short of the face's lip
-    assert NOSE_X > P.NOZZLE_HOLDER_X[1] + 8.0
-    holder = parts["nozzle_holder"]
-    bore = cyl_x(P.NOZZLE_D / 2 - 0.05, BORE_X0 + 0.05, NOSE_X - 0.05, 0, P.Z_MOUTH)
-    assert (bore & holder).volume < 1e-6                     # the bore is clear the whole way
-
-
-def test_nozzle_holder_keeps_clear_of_the_head(parts):
-    """A loose part inside the face: inside the wall, off the seating lip, off the cradle's rails."""
-    holder = parts["nozzle_holder"]
-    inner = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)
-    assert (holder - inner).volume < 1e-6                              # never into the shell
-    for name in ("head_lip", "cradle_rails", "tilt_cradle", "face_stop", "nozzle_bosses"):
-        assert (holder & parts[name]).volume < 1e-6, name
-
-
-def test_nozzle_bosses_reach_the_faces_inner_wall(parts):
-    """Each boss runs out to the skin, 1.2 mm into the wall like every other interface part."""
-    from mech.head import HOLDER_BOSS_R, screw_points
-    bosses = parts["nozzle_bosses"]
-    assert len(bosses.solids()) == 2                                   # joined only through the face
-    assert (bosses - Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)).volume > 1e-3          # into the wall
-    assert (bosses - Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.2)).volume < 1e-6    # and no further
-    for y, z in screw_points():
-        probe = cyl_x(0.2, P.NOZZLE_HOLDER_X[1] + P.INSERT_DEPTH, P.HEAD_R + 10, y, z)
-        tip = (probe & bosses).bounding_box().max.X
-        reach = math.sqrt((P.HEAD_R - P.WALL) ** 2 - y ** 2 - (z - P.Z_HEAD) ** 2)
-        assert tip >= reach, (y, z, tip, reach)                        # it meets the inner wall
-        blind = cyl_x(P.INSERT_D / 2, P.NOZZLE_HOLDER_X[1] + P.INSERT_DEPTH,
-                      P.NOZZLE_HOLDER_X[1] + P.INSERT_DEPTH + 1.0, y, z)
-        assert (blind & bosses).volume > 1e-3, (y, z)                  # the insert stops short
-
-
-def test_the_holders_screws_can_be_driven_from_behind(parts):
-    """A stubby driver on each screw head, 30 mm of it, meets nothing on its way in.
-
-    With the mouth eight millimetres under the tilt axis the screws cannot sit at its height:
-    the tilt servo's body starts at Z_HEAD - shaft_off and a driver there would bore into it.
-    They drop just under it, and the bosses come down with them, clear of the face stop.
-    """
-    from mech.head import DRIVER_R, SCREW_Z, screw_points
-    assert SCREW_Z + DRIVER_R <= P.Z_HEAD - P.MG996R["shaft_off"] - 1.0      # under the servo
-    assert SCREW_Z <= P.Z_MOUTH
-    bosses = parts["nozzle_bosses"]
-    assert bosses.bounding_box().max.Z < P.FACE_STOP_Z[0], bosses.bounding_box().max.Z
-    for name in ("face_stop", "cradle_rails", "tilt_cradle", "head_lip"):
-        assert (bosses & parts[name]).volume < 1e-6, name
-    servo = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
-    x0 = P.NOZZLE_HOLDER_X[0]
-    inside = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)
-    for y, z in screw_points():
-        driver = cyl_x(DRIVER_R, x0 - 30.0, x0, y, z)
-        assert (driver - inside).volume < 1e-6, (y, z)                 # stays in the cavity
-        assert (driver & servo).volume < 1e-6, (y, z)
-        for name in ("nozzle_holder", "nozzle_bosses", "tilt_cradle", "cradle_rails",
-                     "head_lip", "face_stop", "coupler", "ear_boss", "yoke"):
-            assert (driver & parts[name]).volume < 1e-6, (y, z, name)
-
-
-def test_the_tube_reaches_the_shaft_in_one_bend(parts):
-    """The barb faces -X on the centreline; one TUBE_BEND_R turn puts the tube down the pan axis.
-
-    The bend radius is what fixes the barb's x: NOZZLE_HOLDER_X[0] is 15 and so is TUBE_BEND_R,
-    which is why the arc lands on the axis rather than beside it. Its height is fixed from
-    below by the cradle rails, which the tube has to pass under.
-    """
-    from mech.head import BARB_Z, tube_route
-    route = tube_route()
-    bb = route.bounding_box()
-    assert math.isclose(bb.min.X, -P.TUBE_OD / 2, abs_tol=1e-6)        # it ends on the pan axis
-    assert bb.max.X <= P.NOZZLE_HOLDER_X[0] + 1.0 + 1e-6
-    assert math.isclose(bb.min.Z, P.Z_PLATE_TOP + 6.0, abs_tol=1e-6)   # down to the shaft's flare
-    assert BARB_Z + P.TUBE_OD / 2 <= P.CRADLE_Z[0] - P.RAIL_H          # under the rails
-    assert BARB_Z - P.TUBE_BEND_R >= P.Z_HEAD - P.HEAD_R               # on the axis before it leaves
-    servo = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
-    assert (route & servo).volume < 1e-6
-    for name in ("nozzle_holder", "nozzle_bosses", "tilt_cradle", "cradle_rails", "head_lip",
-                 "face_stop", "coupler", "ear_boss", "yoke", "plate", "shaft", "deck"):
-        assert (route & parts[name]).volume < 1e-6, name
-    # inside the head's cavity until it drops through the bottom opening, and no further out
-    cavity = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)
-    opening = cyl_z(P.HEAD_OPENING_R, 300.0, P.Z_HEAD - (P.HEAD_R - P.WALL) + 1.0)
-    assert (route - (cavity + opening)).volume < 1e-6
-
-
-def test_the_holder_prints_on_its_back_face(parts):
-    """Nothing behind x = NOZZLE_HOLDER_X[0]: it stands on that face and everything grows forward."""
-    assert math.isclose(parts["nozzle_holder"].bounding_box().min.X, P.NOZZLE_HOLDER_X[0], abs_tol=1e-6)
 
 
 # --- the tank head ------------------------------------------------------------------------------
