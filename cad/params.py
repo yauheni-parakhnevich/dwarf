@@ -24,8 +24,9 @@ SCREW_HEAD_H = 3.0
 # --- heights ---------------------------------------------------------------------------
 Z_FLOOR = 150.0            # the statue has no cavity below its coat hem; the boots and legs below are sand ballast
 SAND_PLUG_D = 30.0         # a plugged hole in the floor plate to pour the sand through
-Z_BELT = 250.0             # the split, under the statue's belt strap (234..282)
-Z_BASE_TOP = 258.0         # the lower flange's tongue rises to here inside the torso
+Z_BELT = 240.0             # the split, under the statue's belt strap (234..282); any higher and the phone no longer fits under the deck
+Z_BASE_TOP = 248.0         # the lower flange's tongue rises to here inside the torso
+FLANGE_LOWER_H = 8.0       # the lower flange ring below the split; its tongue above it is RING_T
 Z_TORSO_TOP = 420.0        # the coat's neck opening
 Z_DECK = 400.0             # top face of the turntable deck
 DECK_T = 6.0
@@ -34,7 +35,6 @@ Z_HEAD = 478.0             # tilt axis and head centre
 HEAD_R = 40.0              # the statue's head is 44 mm deep in front of the ear line; nothing nods now, this only sizes the shroud's top
 Z_HAT = 500.0              # the statue's brim at the sides (0.713 H); the head and hat turn together, nothing nods
 Z_TOP = 700.0              # the statue's height: its ear line then lands on the tilt axis
-Z_LENS = 285.0
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
 # outer skins only; shell_r walks these. The base's raised floor is a separate revolve row.
@@ -108,7 +108,7 @@ Z_CHASSIS = Z_BASE_TOP + RING_T   # 246, sits on the torso flange
 #     carries the window and the hood. The phone sled slides out forward through it, and every
 #     screw in the dry zone is driven through it. The panel is cut from the torso's raw mesh by the
 #     assembler; four bosses and a lip around the opening are interface parts on the torso.
-HATCH_Z = (Z_BASE_TOP + 6.0, 398.0)          # 244 .. 398; the sled (250 .. 372) and the phone pass
+HATCH_Z = (Z_BASE_TOP + 2.0, 398.0)          # 250 .. 398; the sled and the phone pass
 HATCH_HALF_ANGLE = 33.0                      # degrees either side of +X; 110 mm wide at the belly
 HATCH_LIP_W = 6.0                            # lip inside the opening the panel rests on, all round
 HATCH_SCREWS = [(HATCH_Z[0] + 10.0, -30.0), (HATCH_Z[0] + 10.0, 30.0), (HATCH_Z[1] - 10.0, -30.0), (HATCH_Z[1] - 10.0, 30.0)]   # (z, angle deg); at 30 deg the lower screw clears the window by 7.5 mm
@@ -122,17 +122,21 @@ LENS_CLIP_W = 28.0             # the clip's width across the phone; measure the 
 ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 48.0
-WINDOW_Z_BIAS = 10.0           # window centre above the lens: the view needed is mostly above horizontal, and the hatch's lip is just below
+WINDOW_Z_BIAS = 18.0           # window centre above the lens: the view needed is mostly above horizontal, and the hatch's lip is just below
 HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
 # calibration absorbs like every other fixed offset
 PHONE_Y_OFFSET = 0.0
 CAM_Y = PHONE_Y_OFFSET + PHONE_W / 2 - PHONE_CAM_FROM_SIDE   # 22.55
-PHONE_BOTTOM_Z = Z_LENS - PHONE_CAM_FROM_END           # 254
-LENS_FRONT_X = shell_r(TORSO_PROFILE, Z_LENS) - WALL - ACRYLIC_T - LENS_GAP
+SLED_WALL = 3.0
+# the sled's tray hangs through a cutout in the chassis and stands just above the divider: that is
+# the only way 138 mm of phone fits between the belt and the deck in this statue
+SLED_FLOOR_Z = Z_BASE_TOP + DIVIDER_PROUD + 1.0        # 249.3
+PHONE_BOTTOM_Z = SLED_FLOOR_Z + SLED_WALL              # 252.3
+Z_LENS = PHONE_BOTTOM_Z + PHONE_CAM_FROM_END           # 263.3
+LENS_FRONT_X = 89.4 - WALL - ACRYLIC_T - LENS_GAP      # 82: the statue's front skin at the window is 89.4
 PHONE_BACK_X = LENS_FRONT_X - LENS_CLIP_T              # back glass
 PHONE_FRONT_X = PHONE_BACK_X - PHONE_T                 # screen
-SLED_WALL = 3.0
 SLED_FOOT_H = 5.0              # the feet are runners on the chassis; one screw from above locks the sled at home
 SLED_GUIDE_H = 3.0             # ribs on the chassis either side of the feet
 
@@ -165,7 +169,7 @@ FAN = 40.0
 FAN_T = 10.0
 FAN_PITCH = 32.0
 Z_FAN = 368.0                  # the whole 50 mm frame stays inside the shoulder; the exhaust sits on the back below the collar
-VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 265.0   # above the torso flange (246)
+VENT_IN_W, VENT_IN_H, Z_VENT_IN = 40.0, 20.0, 275.0   # above the torso flange
 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
@@ -174,23 +178,25 @@ BEARING_OPEN = 32.0
 BEARING_PITCH = 48.0
 BEARING_HOLE = 3.4
 SHAFT_OD, SHAFT_ID = 21.0, 13.0   # bore: tube + three wires + 2 mm, spec section 6
-DECK_R = 84.0                  # the wall's inner radius here is about 87
+DECK_R = 80.0                  # the statue's front cavity at the deck is 85; a lobe towards -Y covers the servo hangers
+DECK_LOBE = dict(angle=270.0, half=45.0, r=86.0)   # the hangers' corners reach 83.3; the cavity there is 95
+DECK_BACK_R = 72.0             # over 140..220 degrees the coat's back is only 74..80 out
 RING_R_IN = 50.0
-RING_R_OUT = 66.0              # the ring is a narrow annulus; four webs reach the wall
+RING_R_OUT = 58.0              # the ring is a narrow annulus; four webs reach the wall; the phone's top passes outside it
 RING_WEB_W = 8.0
-DECK_SCREW_R = 58.0
-DECK_SCREW_ANGLES = [30.0, 150.0, 210.0, 330.0]   # off the pan servo's hangers and the phone
+DECK_SCREW_R = 54.0
+DECK_SCREW_ANGLES = [90.0, 150.0, 210.0, 240.0]   # off the column's arc slot (front +-76), the hangers (250..300) and the phone
 PLATE_R = 50.0
 PLATE_T = 5.0
 Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
 # --- pan drive: the servo hangs under the deck, shaft pointing down, and the parallelogram
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
-PAN_SERVO_XY = (5.0, -60.0)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -70 .. -50)
+PAN_SERVO_XY = (5.0, -58.0)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -68 .. -48). The statue's right side at the crank's height is 96 out
 PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.21
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
-Z_PAN_SHAFT_FACE = 353.0       # the servo's output face, looking down; body top 393.5, under the deck
+Z_PAN_SHAFT_FACE = 345.0       # the servo's output face, looking down; body top 385.5, under the deck; low enough that the link sweeps where the coat is still wide
 CRANK_T = 5.0
 LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
@@ -362,16 +368,16 @@ BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
 BELT_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]
 CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
 # the dry zone, re-stacked
-FRONT_SKIN_X_AT_WINDOW = 89.0               # the statue's front at Z_LENS + WINDOW_Z_BIAS
+FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
 EDECK_L, EDECK_W = 96.0, 76.0
 EDECK_POS = (0.0, 0.0)
 # the wet zone: a bought 1 L wide-mouth bottle lying across the belly, a compact pump beside it
-BOTTLE_D, BOTTLE_L = 92.0, 200.0            # e.g. Nalgene 1 L wide-mouth; measure the one bought
-BOTTLE_THREAD = "63-415"                    # its neck; the tank head's thread follows CAN_THREAD_MAJOR
+BOTTLE = (97.0, 210.0, 71.0)                # a rectangular 1 L HDPE lab bottle lying on its wide face: x, y (along the belly), z. Measure the one bought
+BOTTLE_THREAD_MAJOR = 38.0                  # its neck; CAN_THREAD_MAJOR follows it
 PUMP = (120.0, 65.0, 60.0)                  # a compact 12 V diaphragm pump; the 160 x 100 one no longer fits. Re-measure
 FILLER_VIA_HATCH = True                     # the filler cap sits on the tank head inside the belly hatch; nothing on the coat's back
 # the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
-SHROUD_R_OUT = 54.0                         # no arms to clear any more; inside the chin's cavity (57)
+SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
 SHROUD_TOP_Z = 454.0
 SHROUD_SCREWS_Z = 440.0                     # four radial M3 from outside, hidden in the beard's locks
 SHROUD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
