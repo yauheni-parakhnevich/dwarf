@@ -19,7 +19,7 @@ disclaimer at the top of a README; it is most of the engineering below it.
 | `firmware/lib/dwarf` | **Done.** Protocol, servos, shot state machine, safety watchdog, 92 tests |
 | `firmware/src` | **Runs on real hardware.** Serial console; BLE is next |
 | `ios/DwarfApp` | **Planned, not written.** Camera, CoreML, the radio, the web UI |
-| The gnome itself | **Not built.** Parts not ordered, nothing printed |
+| The gnome itself | **Modelled, not printed.** `cad/` generates every part from one parameters file; bought parts still unmeasured |
 
 So: the brain works and is heavily tested, the body exists on paper, and no cat has ever been
 squirted.
@@ -38,7 +38,7 @@ watches its own safety timers. It knows nothing about cats. If the phone stops t
 for three seconds it disarms itself, closes the valve and centres the head — so every
 interesting failure ends with the water off.
 
-**The gnome** is a printed shell about 55 cm tall. The head nods on a yoke; a hollow shaft
+**The gnome** is a printed shell 59 cm tall. The head nods on a yoke; a hollow shaft
 carries water and wiring up through the rotating neck, so nothing has to seal against a
 turning joint. Everything that holds pressure is bought, never printed.
 
@@ -74,6 +74,7 @@ ios/DwarfCore/      Swift package: every decision, no frameworks, 162 tests
 ios/DwarfApp/       the iOS app — planned, not yet written
 firmware/           PlatformIO project for the ESP32
 protocol/fixtures/  wire-format examples both test suites assert against
+cad/                every printed part, generated from one parameters file
 hardware/           bill of materials, wiring, bench checklists
 docs/               the design spec, the mechanical design, and the plans
 tools/              fixture generation, model export, PDF rendering
@@ -95,6 +96,9 @@ cd firmware && pio test -e native
 
 # the firmware itself
 cd firmware && pio run -e esp32dev
+
+# every printed part, from one parameters file — 93 tests
+.venv-cad/bin/python cad/build.py && .venv-cad/bin/pytest cad/tests -q
 ```
 
 ## A few things learned the hard way

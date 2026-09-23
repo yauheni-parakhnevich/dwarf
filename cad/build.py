@@ -13,8 +13,8 @@ BLENDER = os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Bl
 def mech():
     import mech  # noqa: F401  (registers builders)
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
-    from build123d import export_step
-    from mech.common import assembly, export, STEP
+    from build123d import export_step, export_stl
+    from mech.common import assembly, export, STEP, STL
     from mech import ALL
     built = {}
     for spec in ALL:                       # export() writes the print frame, not the assembly
@@ -22,8 +22,12 @@ def mech():
         built[spec.name] = spec.build()
         export(built[spec.name], spec.name)
     print("mech  mechanism_assembly")
-    if not export_step(assembly(built), str(STEP / "mechanism_assembly.step")):
+    whole = assembly(built)
+    if not export_step(whole, str(STEP / "mechanism_assembly.step")):
         raise RuntimeError("STEP export failed: mechanism_assembly")
+    # and as a mesh, because the preview renders in Blender and Blender cannot read STEP
+    if not export_stl(whole, str(STL / "mechanism_assembly.stl"), tolerance=0.05, angular_tolerance=0.1):
+        raise RuntimeError("STL export failed: mechanism_assembly")
 
 
 def blender(script):

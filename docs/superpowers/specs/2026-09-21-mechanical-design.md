@@ -1,7 +1,7 @@
 # Dwarf — Mechanical Design
 
 - **Date:** 2026-09-21
-- **Status:** Approved design, pre-CAD
+- **Status:** Approved design; modelled in `cad/` per `2026-09-22-cad-parts-design.md`
 - **Parent spec:** `2026-09-18-dwarf-cat-deterrent-design.md`
 - **Sourcing:** `hardware/bom.md`
 
