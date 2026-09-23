@@ -146,23 +146,26 @@ XL4015 = (54.0, 23.0)
 XL4015_HOLES = (43.0, 15.0)
 XL4015_HOLE_D = 3.2
 MOSFET = (34.0, 27.0)
-EDECK_L, EDECK_W, EDECK_T = 110.0, 90.0, 4.0
+EDECK_T = 4.0                               # EDECK_L and EDECK_W are with the statue's numbers
 EDECK_POS = (-30.0, 0.0)       # centre, x-y; it stands on the chassis
 # board footprints on the deck, (x0, y0, x1, y1) relative to EDECK_POS: two columns, A at the back
+# Two columns on the 100 x 92 deck: the wide boards down the back, the three MOSFET modules up
+# the front, three millimetres between every pair. The ESP32 is the awkward one at 55 mm - it
+# sets the back column's width and the front column starts three millimetres past it.
 EDECK_LAYOUT = {
-    "xl4015_a": (-50.0, -43.0, 4.0, -20.0),
-    "xl4015_b": (-50.0, -17.0, 4.0, 6.0),
-    "fuse": (-50.0, 7.0, -20.0, 17.0),
-    "mosfet_c": (-50.0, 18.0, -16.0, 45.0),
-    "esp32": (-8.0, 16.0, 47.0, 44.0),
-    "mosfet_a": (6.0, -45.0, 40.0, -18.0),
-    "mosfet_b": (6.0, -16.0, 40.0, 11.0),
+    "xl4015_a": (-50.0, -46.0, 4.0, -23.0),
+    "xl4015_b": (-50.0, -20.0, 4.0, 3.0),
+    "fuse": (-50.0, 6.0, -20.0, 15.0),
+    "esp32": (-50.0, 18.0, 5.0, 46.0),
+    "mosfet_b": (8.0, -46.0, 42.0, -19.0),
+    "mosfet_c": (8.0, -16.0, 42.0, 11.0),
+    "mosfet_a": (8.0, 18.0, 42.0, 45.0),
 }
 # deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
 # the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
 # under its back corners would stand off the chassis and into the wall
-EDECK_HOLES = [(51.0, -41.0), (51.0, 41.0), (-17.0, 12.0)]
-EDECK_POSTS = [(-50.0, -28.0), (-50.0, 28.0)]
+EDECK_HOLES = [(46.0, -30.0), (46.0, 30.0), (-8.0, 10.0)]   # in the free strip and the gap over the fuse
+EDECK_POSTS = [(-46.0, -34.0), (-46.0, 34.0)]               # bare posts under the deck's back end
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
 FAN = 40.0
@@ -332,7 +335,8 @@ FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
 FILLER_VIA_HATCH = True                     # a hose from the tank head's port to a filler neck in the divider's front, under the hatch
-FILLER_NECK_XY = (60.0, 0.0)                # on the divider, inside the hatch's wedge; its cap is the filler_cap
+FILLER_NECK_XY = (60.0, -58.0)              # on the divider, beside the sled's path: at y 0 the cap would
+                                            # stand inside the sled's tray. See the note in mech/torso.py
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 SAND_Z_TOP = Z_FLOOR - PUMP[2] - 12.0       # sand fills the boots up to here, under the pump and the valve

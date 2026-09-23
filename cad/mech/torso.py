@@ -11,7 +11,9 @@ The coat's front between the belt and the shoulders is a screwed-on panel. Every
 goes in and out through that opening: the chassis bolts through it, the phone sled slides out of
 it along +X, and the electronics deck's screws are driven down through it.
 """
+import json
 import math
+from pathlib import Path
 from build123d import Axis, Ellipse, Pos, extrude
 import params as P
 from mech import part
@@ -25,6 +27,18 @@ R_BACK = 74.0                # the statue's back at the fan, from the fit report
 # section and its bore. At BELT_SCREW_ANGLES that is (51.3, 63.0) and its three mirrors.
 BELT_MID_RX = (P.BELT_RX + P.BELT_IN_RX) / 2          # 67
 BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
+# The chassis has its own four on the same mid-line, between the belt's: the belt joint has to
+# open without the chassis coming off first. Nearest pair is 48.3 mm apart. (params' own
+# CHASSIS_SCREW_ANGLES is the belt's set and is not used here.)
+CHASSIS_SCREW_ANGLES = [10.0, 170.0, 190.0, 350.0]
+# The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
+# stood inside the sled's tray, which is at x 59.9 .. 73 from z 249.3 up; beside the tray it
+# needs |y| >= 36.55 + 18 (the cap's grip) and it sits at y -58. That is 44 degrees round from
+# the front, so it is 11 degrees outside the belly hatch's own wedge - reached by hand through
+# the opening rather than seen down it.
+NECK_FLANGE_R = 16.0
+NECK_BASE_Z = P.Z_BASE_TOP + P.DIVIDER_PROUD          # the divider's top face
+NECK_TOP_Z = NECK_BASE_Z + 15.0
 # The floor plate's blank: the cavity at Z_FLOOR is 54 front, 93 back, 118/102 across (T8). A
 # full BLANK past the widest of those would be 266 across and the bed is 256, so the +Y side
 # gets 7 mm of blank instead of 15 and every other direction keeps at least 13.
@@ -63,14 +77,39 @@ def _ell_ring(rx, ry, rx_in, ry_in, z0, z1):
     return _ell_z(rx, ry, z0, z1) - _ell_z(rx_in, ry_in, z0 - 1, z1 + 1)
 
 
+def _mid_ring(angles):
+    return [(BELT_MID_RX * math.cos(math.radians(a)), BELT_MID_RY * math.sin(math.radians(a)))
+            for a in angles]
+
+
 def belt_screws():
     """The four belt screws, on the ring's mid-line ellipse at BELT_SCREW_ANGLES."""
-    return [(BELT_MID_RX * math.cos(math.radians(a)), BELT_MID_RY * math.sin(math.radians(a)))
-            for a in P.BELT_SCREW_ANGLES]
+    return _mid_ring(P.BELT_SCREW_ANGLES)
+
+
+def chassis_screws():
+    """The chassis's own four, on the same ellipse between the belt's."""
+    return _mid_ring(CHASSIS_SCREW_ANGLES)
+
+
+def measured_legs():
+    """The statue stage's measured leg cavities if it has written them, else the parameters'.
+
+    LEG_LEFT_XY and LEG_RIGHT_XY are the fit report's estimate from a reach table; the statue
+    measures the real cavity and puts it in out/statue/features.json under "legs".
+    """
+    path = Path(__file__).resolve().parents[1] / "out" / "statue" / "features.json"
+    try:
+        legs = json.loads(path.read_text())["legs"]
+        return {"left": tuple(legs["left"][:2]), "right": tuple(legs["right"][:2]),
+                "r": float(legs["r"])}
+    except (OSError, KeyError, ValueError):
+        return {"left": tuple(P.LEG_LEFT_XY), "right": tuple(P.LEG_RIGHT_XY), "r": P.LEG_R}
 
 
 def leg_centres():
-    return [P.LEG_LEFT_XY, P.LEG_RIGHT_XY]
+    legs = measured_legs()
+    return [legs["left"], legs["right"]]
 
 
 def bracket_bolts(centre):
@@ -162,16 +201,17 @@ def belt_flange_lower():
 def belt_flange_upper():
     """The torso's half: a ring the belt screws pass down through, inside the skirt.
 
-    One screw makes the whole stack now - chassis, ring, divider, into the base's insert - so
-    there is nothing to counterbore here and nothing for the chassis to land on but this ring's
-    top face, which is what Z_CHASSIS is.
+    The belt screws pass down through it into the base's inserts, heads recessed in its top so
+    the chassis lands on the ring and not on four screw heads. The chassis's own four go into
+    inserts beside them, so the belt can be opened with the chassis still bolted down.
     """
     z0 = P.Z_BASE_TOP
     z1 = z0 + P.RING_T
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
-    return ring
+        ring = ring - cyl_z(3.2, z1 - (P.SCREW_HEAD_H + 0.5), z1 + 1, x, y)
+    return insert_holes(ring, [(x, y, z1) for x, y in chassis_screws()])
 
 
 @part("divider")
@@ -192,7 +232,8 @@ def divider():
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in P.GLAND_POS:
         d = d - cyl_z(P.GLAND_D / 2, z0 - 1, z1 + 1, x, y)
-    return d
+    nx, ny = P.FILLER_NECK_XY                                    # the filler neck's spigot
+    return d - cyl_z(P.FILLER_D / 2 + 2 + P.CLEAR, z0 - 1, z1 + 1, nx, ny)
 
 
 # --- the floor over the sand ---------------------------------------------------------------------
@@ -223,8 +264,8 @@ def sand_plug():
     z0, z1 = P.Z_FLOOR, P.Z_FLOOR + FLOOR_T
     r = P.SAND_PLUG_D / 2
     x, y = SAND_PLUG_XY
-    plug = cyl_z(r - P.CLEAR, z0, z1, x, y) + cyl_z(r + 4.0, z1 - 1.5, z1, x, y)
-    return plug - box(x - 2.0, x + 2.0, y - (r + 5), y + (r + 5), z1 - 1.0, z1 + 1)
+    plug = cyl_z(r - P.CLEAR, z0, z1, x, y) + cyl_z(r + 4.0, z1, z1 + 1.5, x, y)
+    return plug - box(x - 2.0, x + 2.0, y - (r + 5), y + (r + 5), z1 + 0.5, z1 + 2)
 
 
 # --- the chassis and what stands on it -----------------------------------------------------------
@@ -246,8 +287,10 @@ def chassis():
         c = c - cyl_z(GLAND_BORE_R, z0 - 1, z1 + 1, x, y)
     for y in (-CHASSIS_BORE_Y, CHASSIS_BORE_Y):                      # lightening, in the free lunes
         c = c - cyl_z(CHASSIS_BORE_R, z0 - 1, z1 + 1, 0.0, y)
-    for x, y in belt_screws():                                       # the one stack, all the way down
+    for x, y in chassis_screws():                                    # down into the torso ring
         c = c - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
+    for x, y in belt_screws():                                       # reach the belt screws below
+        c = c - cyl_z(3.5, z0 - 1, z1 + 1, x, y)
     for x, y in _sled_locks():                                       # the sled's lock bosses
         c = c + cyl_z(BOSS_R, z0, z1 + P.SLED_FOOT_H, x, y)
     c = insert_holes(c, [(x, y, z1 + P.SLED_FOOT_H) for x, y in _sled_locks()])
@@ -260,7 +303,9 @@ def chassis():
         c = insert_holes(c, [(x, y, z1 + P.EDECK_STANDOFF)])
     for x, y in _edeck(P.EDECK_POSTS):                               # ... and two posts under its back
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
-    return c
+    nx, ny = P.FILLER_NECK_XY                                        # the filler cap passes through,
+    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 4 + 1.0,    # last, so a rib cannot grow back
+                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)
 
 
 @part("phone_sled")
@@ -408,3 +453,25 @@ def fan_frame():
             frame = frame - cyl_x(P.INSERT_D / 2, x_boss - P.INSERT_DEPTH, x_boss + 1,
                                   dy * P.FAN_PITCH / 2, z + dz * P.FAN_PITCH / 2)
     return frame
+
+
+@part("filler_neck")
+def filler_neck():
+    """The filler's neck, bonded into the divider's front: the cap screws onto this.
+
+    The tank head's port feeds it by a hose, so the bottle is topped up through the belly hatch
+    and nothing shows on the coat's back. Its spigot passes through the divider and its flange
+    sits on the divider's top face; the thread is the same M22 the cap is cut to.
+    """
+    from bd_warehouse.thread import IsoThread
+    nx, ny = P.FILLER_NECK_XY
+    bore = P.FILLER_D / 2
+    thread = IsoThread(major_diameter=P.FILLER_CAP_THREAD_MAJOR, pitch=P.FILLER_CAP_PITCH,
+                       length=NECK_TOP_Z - NECK_BASE_Z - 4.0, external=True,
+                       end_finishes=("square", "square"))
+    core = thread.min_radius
+    neck = cyl_z(bore + 2.0, P.Z_BELT - 1.0, NECK_BASE_Z, nx, ny)          # spigot, through the divider
+    neck = neck + cyl_z(NECK_FLANGE_R, NECK_BASE_Z, NECK_BASE_Z + 3.0, nx, ny)
+    neck = neck + cyl_z(core, NECK_BASE_Z, NECK_TOP_Z, nx, ny)
+    neck = neck + Pos(nx, ny, NECK_BASE_Z + 3.0) * thread
+    return neck - cyl_z(bore, P.Z_BELT - 2.0, NECK_TOP_Z + 1.0, nx, ny)
