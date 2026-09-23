@@ -312,7 +312,7 @@ BOTTLE = (97.0, 195.0, 71.0)                # a rectangular 1 L HDPE lab bottle 
 # be 170 long at most, whatever its label says.
 BOTTLE_SHOULDER_H = 25.0                    # the top of the bottle tapers in over this height
 BOTTLE_SHOULDER_IN = (8.0, 16.0)            # ... by this much on each side (x) and each end (y)
-BOTTLE_XY = (-4.0, 0.0)                     # 4 mm back from centre: room in front of it for the filler hose; at 7 its rear shoulder corners left the coat
+BOTTLE_XY = (-3.0, 0.0)                     # 3 mm back from centre: the first value that keeps its rear shoulder corners inside the coat
 BOTTLE_Z0 = Z_FLOOR + 4.0 + 2.0             # on the floor plate's cradle
 BOTTLE_THREAD_MAJOR = 38.0                  # its neck, towards +Y; CAN_THREAD_MAJOR follows it
 CAN_THREAD_MAJOR = 38.0
@@ -335,7 +335,7 @@ FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
 FILLER_VIA_TOP = True                       # a hose from the tank head's port to a filler neck in the divider's front, reached from the top with the bell off
-FILLER_NECK_XY = (46.0, 57.0)               # on the divider inside the ring's bore (0.98 of it), on the bottle's neck side, beside the sled's path; the hose comes up the gap in front of the bottle's end
+FILLER_NECK_XY = (48.0, 54.0)               # on the divider at the ring's bore, on the bottle's neck side, beside the sled's path; the ring is notched for it, the hose comes up in front of the bottle's end
                                             # stand inside the sled's tray. See the note in mech/torso.py
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
@@ -384,7 +384,7 @@ Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
 BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
-BELT_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]
+BELT_SCREW_ANGLES = [55.0, 140.0, 220.0, 305.0]   # the front pair sits away from the filler neck at (48, 54)
 CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
 # the dry zone, re-stacked
 FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
