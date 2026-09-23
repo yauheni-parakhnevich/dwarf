@@ -11,7 +11,7 @@ the hatch opening is 110 x 154, so the bottle does not pass it - to change the b
 joint comes apart and the divider lifts off.
 """
 import math
-from build123d import Cone, Location, Plane, Pos, Rot
+from build123d import Cone, Location, Plane, Pos, Rectangle, Rot, loft
 from bd_warehouse.thread import IsoThread
 import params as P
 from mech import part
@@ -79,15 +79,33 @@ def _cone_z(r0, r1, z0, z1):
     return Pos(0, 0, (z0 + z1) / 2) * Cone(r0, r1, z1 - z0)
 
 
-def bottle_body():
-    """The bought bottle's body where it lies: on its wide face, neck to +Y.
+def _frustum(cx, cy, w0, h0, w1, h1, z0, z1):
+    """A rectangular frustum: the w0 x h0 section at z0 drawn in to w1 x h1 at z1."""
+    return loft([Pos(cx, cy, z0) * Rectangle(w0, h0), Pos(cx, cy, z1) * Rectangle(w1, h1)])
 
-    The neck is inside the bottle's 210 of length, not beyond it, so the body stops a tank
-    head's length short of BOTTLE_Y1 and the head stands in what is left.
+
+def bottle_envelope():
+    """The whole bought bottle as it lies: on its wide face, neck to +Y, shoulder and all.
+
+    Modelled with its shoulder rather than as a plain box, because that is what fits. The coat
+    draws in as it rises to the belt - at the bottle's top the belly takes a half-length of 84.5
+    against a square corner's 97.5 - and the taper is what pulls the corner back inside.
     """
     cx, cy = P.BOTTLE_XY
-    return box(cx - BOTTLE_W / 2, cx + BOTTLE_W / 2, cy - BOTTLE_L / 2, BOTTLE_Y1 - TANK_HEAD_L,
-               P.BOTTLE_Z0, P.BOTTLE_Z0 + BOTTLE_H)
+    z0 = P.BOTTLE_Z0
+    z1 = z0 + BOTTLE_H
+    zs = z1 - P.BOTTLE_SHOULDER_H
+    dx, dy = P.BOTTLE_SHOULDER_IN
+    barrel = box(cx - BOTTLE_W / 2, cx + BOTTLE_W / 2, cy - BOTTLE_L / 2, cy + BOTTLE_L / 2, z0, zs)
+    return barrel + _frustum(cx, cy, BOTTLE_W, BOTTLE_L, BOTTLE_W - 2 * dx, BOTTLE_L - 2 * dy, zs, z1)
+
+
+def bottle_body():
+    """The same, less the neck the tank head screws onto - which is inside its 195, not beyond it."""
+    cx, cy = P.BOTTLE_XY
+    neck = box(cx - BOTTLE_W, cx + BOTTLE_W, BOTTLE_Y1 - TANK_HEAD_L, cy + BOTTLE_L,
+               P.BOTTLE_Z0 - 1, P.BOTTLE_Z0 + BOTTLE_H + 1)
+    return bottle_envelope() - neck
 
 
 def can_thread():

@@ -76,7 +76,7 @@ def test_every_placed_part_is_inside_the_cavity(placed):
 
 
 def test_the_bought_parts_are_inside_the_cavity():
-    from mech.base import bottle_body
+    from mech.base import bottle_envelope
     from mech.common import box
     mesh = _cavity()
     lg = legs()
@@ -86,7 +86,7 @@ def test_the_bought_parts_are_inside_the_cavity():
     L, W, H = P.VALVE
     vx, vy = lg["right"]
     valve = box(vx - L / 2, vx + L / 2, vy - W / 2, vy + W / 2, P.VALVE_Z0, P.VALVE_Z0 + H)
-    for name, body in (("bottle", bottle_body()), ("pump", pump), ("valve", valve)):
+    for name, body in (("bottle", bottle_envelope()), ("pump", pump), ("valve", valve)):
         pts = [(v.X, v.Y, v.Z) for v in body.vertices()]
         outside = [q for q in pts if not mesh.contains([q])[0]]
         assert not outside, (name, outside)
