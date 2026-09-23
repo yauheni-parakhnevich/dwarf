@@ -418,12 +418,12 @@ def test_assembly_step_exists_after_build(tmp_path):
     at = {c.label: c.bounding_box() for c in comp.children}
     raw = {spec.name: spec.build().bounding_box() for spec in ALL if spec.placement != Location()}
     neck_x = P.CANISTER_XY[0] - P.CANISTER[0] / 2
-    assert math.isclose(raw["tank_head"].min.X, 0.0, abs_tol=1e-6)            # drawn mouth at the origin
+    assert math.isclose(raw["tank_head"].min.Z, 0.0, abs_tol=1e-6)            # drawn upright, bore along Z
     assert math.isclose(at["tank_head"].max.X, neck_x, abs_tol=1e-6)          # fitted on the neck
     assert math.isclose(at["tank_head"].min.X, neck_x - TANK_HEAD_L, abs_tol=1e-6)
     assert math.isclose(at["tank_head"].max.Z, P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_OUT, abs_tol=1e-6)
     skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
-    assert math.isclose(raw["filler_cap"].min.X, 0.0, abs_tol=1e-6)
+    assert math.isclose(raw["filler_cap"].min.Z, 0.0, abs_tol=1e-6)           # ... and so is the cap
     assert math.isclose(at["filler_cap"].max.X, -skin, abs_tol=1e-6)          # mouth on the skin
     assert math.isclose(at["filler_cap"].min.X, -skin - CAP_L, abs_tol=1e-6)  # ... closed end outboard
     assert math.isclose((at["filler_cap"].min.Z + at["filler_cap"].max.Z) / 2, P.Z_FILLER, abs_tol=1e-6)
