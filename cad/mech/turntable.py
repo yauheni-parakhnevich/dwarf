@@ -278,11 +278,32 @@ def neck_shroud():
 SERVO_SHAFT_Y = -8.0    # the micro servo's output face; its body runs on to -Y, beside the arm
 CHEEK_Y = (-17.5, -15.5)   # the servo's tabs land here: tab_z up the body from its far end
 FAR_CHEEK_Y = (6.5, 9.5)   # the far end of the pivot runs in this one
+LUG_R = 8.0             # the stop lug's radius from the pivot, along the arm
+LUG_D = 4.0
 
 
 def _tilt_servo():
     """The MG92B where it sits: shaft along +Y at the pivot's height, body out to -Y."""
     return servo_body(P.MG92B, (P.NOZZLE_PIVOT[0], SERVO_SHAFT_Y, P.NOZZLE_PIVOT[2]), axis="y")
+
+
+def _pivot_sector(a0, a1, y0, y1):
+    """The wedge between two tilt angles about the nozzle's pivot; a1 - a0 must be under 180."""
+    px, pz = P.NOZZLE_PIVOT[0], P.NOZZLE_PIVOT[2]
+    axis = Axis((px, 0, pz), (0, 1, 0))
+    far = 60.0
+    ahead = box(px, px + far, y0, y1, pz - far, pz + far)      # machine angles -90 .. +90
+    return ahead.rotate(axis, -(a1 - 90.0)) & ahead.rotate(axis, -(a0 + 90.0))
+
+
+def stop_slot_angles():
+    """Where the bracket's slot ends, so the lug's flank meets them at exactly TILT_STOP.
+
+    The lug is a peg of LUG_D at LUG_R from the pivot; a radial end face is its own half-angle
+    past the lug's centre when they touch, and asin gives that half-angle exactly.
+    """
+    half = math.degrees(math.asin((LUG_D / 2) / LUG_R))
+    return P.TILT_STOP[0] - half, P.TILT_STOP[1] + half
 
 
 def nozzle_tip(deg):
@@ -304,17 +325,22 @@ def tilt_bracket():
     y0, y1 = CHEEK_Y[0], FAR_CHEEK_Y[1]
     back = (cyl_z(r + 3.0, P.SHROUD_BASE_Z + 3.0, 446.0) - cyl_z(r + P.CLEAR, P.SHROUD_BASE_Z + 2.0, 447.0)) \
         & _sector(-30.0, 30.0, 0, 600, r + 10.0)
+    back = back - _arm_swing()                                     # the arm's tail swings through it
     b = back + box(50.0, 70.0, *CHEEK_Y, 412.0, 446.0)             # the servo's cheek
-    b = b + box(50.0, 70.0, *FAR_CHEEK_Y, 416.0, 432.0)            # ... and the far bearing's
+    b = b + box(50.0, 74.0, *FAR_CHEEK_Y, 412.0, 436.0)            # ... and the far bearing's,
+    a0, a1 = stop_slot_angles()                                    # which carries the arm's stops
+    y0, y1 = FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1
+    slot = (cyl_y(LUG_R + LUG_D / 2 + P.CLEAR, y0, y1, px, pz)
+            - cyl_y(LUG_R - LUG_D / 2 - P.CLEAR, y0 - 1, y1 + 1, px, pz))
+    b = b - (slot & _pivot_sector(a0, a1, y0, y1))
     bb = _tilt_servo().bounding_box()
-    b = b - box(bb.min.X - P.CLEAR, bb.max.X + P.CLEAR, y0 - 1, y1 + 1,
-                bb.min.Z - P.CLEAR, bb.max.Z + P.CLEAR)            # the body drops through the cheek
+    b = b - box(bb.min.X - P.CLEAR, bb.max.X + P.CLEAR, CHEEK_Y[0] - 1, 0.0,
+                bb.min.Z - P.CLEAR, bb.max.Z + P.CLEAR)            # the body drops through its cheek
     along = P.MG92B["holes"][0]
     zc = (bb.min.Z + bb.max.Z) / 2
     for dz in (-along / 2, along / 2):                             # the tabs' two M2 screws
         b = b - cyl_y(2.4 / 2, y0 - 1, y1 + 1, px, zc + dz)
     b = b - cyl_y(3.2 / 2, FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1, px, pz)   # the pivot pin
-    b = b - _arm_swing()                                           # the arm's tail swings through it
     for a in BRACKET_SCREW_ANGLES:                                 # a pocket over the shroud's boss,
         b = b - _radial_span(r - 1, r + BOSS_OUT + P.CLEAR, a, pz, BOSS_D / 2 + P.CLEAR)
         b = b - _radial_span(r - 1, r + 20, a, pz, P.M3_CLEAR / 2)          # ... and the screw through it
@@ -339,4 +365,6 @@ def nozzle_arm():
     a = a - cyl_y(P.MICRO_HORN_D / 2 + P.CLEAR / 2, -ARM_W / 2 - 1, -ARM_W / 2 + 2.0, px, pz)   # horn pocket
     for dz in (-5.0, 5.0):                                                       # the horn's two M2
         a = a - cyl_y(2.4 / 2, -ARM_W / 2 - 1, ARM_W / 2 + 1, px, pz + dz)
-    return a
+    # the stop lug, on the face away from the servo: it runs in the bracket's slot and meets
+    # its ends at exactly TILT_STOP, so a runaway command finds plastic, not the servo's limit
+    return a + cyl_y(LUG_D / 2, ARM_W / 2 - 1, FAR_CHEEK_Y[1] - 0.5, px + LUG_R, pz)

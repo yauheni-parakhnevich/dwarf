@@ -165,6 +165,20 @@ def test_the_nozzle_arm_swings_its_whole_range_untouched(parts):
         assert (parts["nozzle_arm"].rotate(axis, -deg) & fixed).volume < 1e-6, deg
 
 
+def test_the_nozzle_arm_meets_plastic_past_its_stops(parts):
+    """The spec's rule: a runaway command finds a printed stop, not the servo's own limit.
+
+    A lug on the arm's far face runs in a slot in the bracket's cheek, and the slot's ends are
+    an asin of the lug's radius past TILT_STOP, so the flank lands there exactly.
+    """
+    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
+    arm, bracket = parts["nozzle_arm"], parts["tilt_bracket"]
+    for deg in (P.TILT_STOP[0] + 1, 0.0, P.TILT_STOP[1] - 1):
+        assert (arm.rotate(axis, -deg) & bracket).volume < 1e-6, deg
+    for deg in (P.TILT_STOP[0] - 1, P.TILT_STOP[1] + 1):
+        assert (arm.rotate(axis, -deg) & bracket).volume > 1e-3, deg
+
+
 def test_the_jet_leaves_the_nozzle_untouched(parts):
     """A JET_D column from the tip, along the arm, at every degree of the arm's travel."""
     from mech.turntable import _tilt_servo, nozzle_tip
