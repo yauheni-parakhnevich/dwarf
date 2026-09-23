@@ -52,6 +52,7 @@ BEARD_TOP_Z = 443.0
 BEARD_BOTTOM_FRONT_Z = 350.0
 BEARD_BOTTOM_BACK_Z = 340.0    # the collar's back hangs over the exhaust fan (348..388) as the spec asks
 BEARD_T = 3.0
+BEARD_GAP = 5.5            # air over the torso's shoulders: the collar's three screw bosses stand in it
 BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
 BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
 
@@ -283,7 +284,7 @@ HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
 FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
 FACE_LIP_T = 2.0
 FACE_LIP_L = 5.0
-Z_MOUTH = Z_HEAD - 22.0        # 436
+Z_MOUTH = Z_HEAD - 8.0         # 470: high enough that the jet at full nose-down clears the turntable
 NOZZLE_D = 8.0
 MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
 NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
