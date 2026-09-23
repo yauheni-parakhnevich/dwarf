@@ -19,7 +19,7 @@ disclaimer at the top of a README; it is most of the engineering below it.
 | `firmware/lib/dwarf` | **Done.** Protocol, servos, shot state machine, safety watchdog, 92 tests |
 | `firmware/src` | **Runs on real hardware.** Serial console; BLE is next |
 | `ios/DwarfApp` | **Planned, not written.** Camera, CoreML, the radio, the web UI |
-| The gnome itself | **Modelled, not printed.** `cad/` generates every part from one parameters file; bought parts still unmeasured |
+| The gnome itself | **Modelled, not printed.** `cad/` generates all 33 printed pieces from one parameters file and a 3D scan of a real garden gnome; bought parts still unmeasured |
 
 So: the brain works and is heavily tested, the body exists on paper, and no cat has ever been
 squirted.
@@ -38,9 +38,14 @@ watches its own safety timers. It knows nothing about cats. If the phone stops t
 for three seconds it disarms itself, closes the valve and centres the head — so every
 interesting failure ends with the water off.
 
-**The gnome** is a printed shell 59 cm tall. The head nods on a yoke; a hollow shaft
-carries water and wiring up through the rotating neck, so nothing has to seal against a
-turning joint. Everything that holds pressure is bought, never printed.
+**The gnome** is a printed shell 70 cm tall, and it is a real garden gnome: an image-to-3D
+reconstruction of the user's own, hollowed to a 2.4 mm wall and cut into ten pieces around what
+has to move. The coat stays still; everything above the beard's bottom edge - beard, face, ears
+and hat - is one bell that turns on the neck shroud. The head does not nod. Only the nozzle
+tilts, on a micro servo inside the beard, and its jet leaves through the beard's own parting
+under the mouth. A hollow shaft carries water and wiring up through the turning neck, so nothing
+has to seal against a rotating joint, and everything that holds pressure is bought, never
+printed.
 
 Between the phone and the ESP32 is a small JSON protocol over Bluetooth. Both sides' test
 suites assert against the same message fixtures in `protocol/fixtures/`, so they cannot drift
@@ -74,7 +79,8 @@ ios/DwarfCore/      Swift package: every decision, no frameworks, 162 tests
 ios/DwarfApp/       the iOS app — planned, not yet written
 firmware/           PlatformIO project for the ESP32
 protocol/fixtures/  wire-format examples both test suites assert against
-cad/                every printed part, generated from one parameters file
+cad/                every printed part: the mechanism from one parameters file,
+                    the shell from a 3D scan of the gnome itself
 hardware/           bill of materials, wiring, bench checklists
 docs/               the design spec, the mechanical design, and the plans
 tools/              fixture generation, model export, PDF rendering
@@ -97,7 +103,7 @@ cd firmware && pio test -e native
 # the firmware itself
 cd firmware && pio run -e esp32dev
 
-# every printed part, from one parameters file — 93 tests
+# every printed part, from one parameters file — 163 tests
 .venv-cad/bin/python cad/build.py && .venv-cad/bin/pytest cad/tests -q
 ```
 
