@@ -108,7 +108,7 @@ rebuild, and only then print anything that has to fit it.
 
 | Parameter | Measure |
 |---|---|
-| `BOTTLE`, `BOTTLE_SHOULDER_H`, `BOTTLE_SHOULDER_IN`, `BOTTLE_THREAD_MAJOR` | the 1 L rectangular bottle lying on its wide face, **and the taper of its shoulder**: its rear top corners pass the coat's wall with 0.1 mm. A squarer bottle does not go in |
+| `BOTTLE`, `BOTTLE_SHOULDER_H`, `BOTTLE_SHOULDER_IN`, `BOTTLE_THREAD_MAJOR` | the 1 L rectangular bottle lying on its wide face, **and the taper of its shoulder**: its shoulder corners pass the coat's wall with about 2.5 mm at both ends. A squarer bottle does not go in |
 | `PUMP`, `PUMP_FEET` | the micro diaphragm pump's body and the pitch of its feet — it stands in the left trouser leg, hanging under the floor plate |
 | `VALVE`, `VALVE_STRAP` | the solenoid's body, and how tall the strap has to arch over it |
 | `DS3218` | the pan servo as delivered: body, tab span, tab thickness, tab height, shaft offset, hole pitch |
@@ -325,10 +325,12 @@ tilt** from −35° to +45°, in a `JET_D` envelope.
   leaves through the neck gap and the beard's parting. Nothing is filtered and nothing is
   sealed: rain that falls straight into the gap goes inside, and the deck under it is solid but
   the phone is not far below.
-- **The tightest bought part is the bottle.** Its rear top corners pass the coat's inner wall
-  with **0.1 mm**; `BOTTLE_SHOULDER_IN` is what saves them, so a squarer 1 L bottle does not go
-  in at all. Next tightest: the fan's hole in the deck clears the lazy susan's bolt circle by
-  **1.0 mm**, and the plate's hanging column passes the pan servo by about a millimetre.
+- **The tightest bought part is the bottle.** Its shoulder corners pass the coat's inner wall
+  with **2.5 mm** at the back and a little more at the front (`BOTTLE_XY` sits it 2 mm forward
+  of centre, the balance point); `BOTTLE_SHOULDER_IN` is what saves them, so a squarer 1 L
+  bottle does not go in at all. Tighter still inside: the fan's hole in the deck clears the lazy
+  susan's bolt circle by **1.0 mm**, and the plate's hanging column passes the pan servo by
+  about a millimetre.
 - **The bell is 573 g and turns on a 52 mm shroud.** Nothing in this repository has checked what
   that does to the pan servo's duty cycle or to the bearing over a season outdoors.
 - `NUT_M3_AF` and `NUT_M3_T` are in `params.py` and nothing uses them: the lazy susan's eight

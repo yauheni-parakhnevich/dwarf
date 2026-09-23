@@ -312,7 +312,7 @@ BOTTLE = (97.0, 195.0, 71.0)                # a rectangular 1 L HDPE lab bottle 
 # be 170 long at most, whatever its label says.
 BOTTLE_SHOULDER_H = 25.0                    # the top of the bottle tapers in over this height
 BOTTLE_SHOULDER_IN = (8.0, 16.0)            # ... by this much on each side (x) and each end (y)
-BOTTLE_XY = (-3.0, 0.0)                     # 3 mm back from centre: the first value that keeps its rear shoulder corners inside the coat
+BOTTLE_XY = (2.0, 0.0)                      # 2 mm forward of centre: rear and front shoulder corners each clear the coat by about 2 mm; the hose passes its end
 BOTTLE_Z0 = Z_FLOOR + 4.0 + 2.0             # on the floor plate's cradle
 BOTTLE_THREAD_MAJOR = 38.0                  # its neck, towards +Y; CAN_THREAD_MAJOR follows it
 CAN_THREAD_MAJOR = 38.0
