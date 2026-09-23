@@ -2,9 +2,9 @@
 import itertools
 import math
 import pytest
-from build123d import Axis, Plane, Polygon, Pos, Sphere, revolve
+from build123d import Pos, Sphere
 import params as P
-from mech.common import box, cyl_x, cyl_z, servo_body
+from mech.common import box, cyl_x, cyl_z, servo_body, skin_solid
 
 
 @pytest.fixture(scope="session")
@@ -22,11 +22,13 @@ def placed(parts):
     return {name: at[name] * p for name, p in parts.items()}
 
 
-def _base_inner():
-    """The base's cavity with a millimetre to spare: shell_r - WALL - 1 at every height."""
-    pts = [(P.shell_r(P.BASE_PROFILE, z) - P.WALL - 1.0, z) for _, z in P.BASE_PROFILE]
-    z0, z1 = P.BASE_PROFILE[0][1], P.BASE_PROFILE[-1][1]
-    return revolve(Plane.XZ * Polygon((0.0, z0), *pts, (0.0, z1)), axis=Axis.Z)
+def _iso_crest_r(major, pitch):
+    """Radius of an internal ISO thread's crest: the free bore it actually leaves.
+
+    Its minor diameter is the major less 2 x (5/8)H, so the radius loses (5/8)H - half of what
+    the diameter does, which is an easy factor of two to drop.
+    """
+    return major / 2 - 0.625 * pitch * math.sqrt(3) / 2
 
 
 def _grown(body, by=1.0):
@@ -37,9 +39,16 @@ def _grown(body, by=1.0):
 # --- the nozzle and its holder ----------------------------------------------------------------
 
 def test_nozzle_holder_bore_is_on_the_mouth_axis(parts):
-    from mech.head import BORE_X0
-    probe = cyl_x(P.NOZZLE_D / 2 - 0.05, BORE_X0, P.HEAD_R, 0, P.Z_MOUTH)
-    assert (probe & parts["nozzle_holder"]).volume < 1e-6
+    """On the axis, the size of the nozzle, and pointed at where the mouth breaks the sphere."""
+    from mech.head import BORE_X0, NOSE_X, SKIN_X
+    holder = parts["nozzle_holder"]
+    assert (cyl_x(P.NOZZLE_D / 2 - 0.05, BORE_X0, P.HEAD_R, 0, P.Z_MOUTH) & holder).volume < 1e-6
+    # ... and no wider: a nozzle a fifth of a millimetre over size would not go in
+    assert (cyl_x(P.NOZZLE_D / 2 + 0.2, BORE_X0 + 0.1, NOSE_X - 0.1, 0, P.Z_MOUTH) & holder).volume > 1e-3
+    # the axis runs out to the mouth, which is where the sphere is at Z_MOUTH
+    assert math.isclose(SKIN_X, math.sqrt(P.HEAD_R ** 2 - (P.Z_HEAD - P.Z_MOUTH) ** 2), abs_tol=1e-9)
+    aimed = cyl_x(0.1, BORE_X0, SKIN_X, 0, P.Z_MOUTH)
+    assert (aimed & holder).volume < 1e-6                              # nothing stands in the jet
 
 
 def test_the_nozzle_is_held_at_both_ends(parts):
@@ -74,7 +83,7 @@ def test_nozzle_holder_keeps_clear_of_the_head(parts):
 
 def test_nozzle_bosses_reach_the_faces_inner_wall(parts):
     """Each boss runs out to the skin, 1.2 mm into the wall like every other interface part."""
-    from mech.head import BOSS_R, screw_points
+    from mech.head import HOLDER_BOSS_R, screw_points
     bosses = parts["nozzle_bosses"]
     assert len(bosses.solids()) == 2                                   # joined only through the face
     assert (bosses - Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)).volume > 1e-3          # into the wall
@@ -90,8 +99,19 @@ def test_nozzle_bosses_reach_the_faces_inner_wall(parts):
 
 
 def test_the_holders_screws_can_be_driven_from_behind(parts):
-    """A stubby driver on each screw head, 30 mm of it, meets nothing on its way in."""
-    from mech.head import DRIVER_R, screw_points
+    """A stubby driver on each screw head, 30 mm of it, meets nothing on its way in.
+
+    With the mouth eight millimetres under the tilt axis the screws cannot sit at its height:
+    the tilt servo's body starts at Z_HEAD - shaft_off and a driver there would bore into it.
+    They drop just under it, and the bosses come down with them, clear of the face stop.
+    """
+    from mech.head import DRIVER_R, SCREW_Z, screw_points
+    assert SCREW_Z + DRIVER_R <= P.Z_HEAD - P.MG996R["shaft_off"] - 1.0      # under the servo
+    assert SCREW_Z <= P.Z_MOUTH
+    bosses = parts["nozzle_bosses"]
+    assert bosses.bounding_box().max.Z < P.FACE_STOP_Z[0], bosses.bounding_box().max.Z
+    for name in ("face_stop", "cradle_rails", "tilt_cradle", "head_lip"):
+        assert (bosses & parts[name]).volume < 1e-6, name
     servo = servo_body(P.MG996R, (0, P.TILT_SERVO_SHAFT_Y, P.Z_HEAD), axis="y")
     x0 = P.NOZZLE_HOLDER_X[0]
     inside = Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL)
@@ -138,11 +158,14 @@ def test_the_holder_prints_on_its_back_face(parts):
 # --- the tank head ------------------------------------------------------------------------------
 
 def test_tank_head_thread_matches_the_canister(parts):
-    th = parts["tank_head"]
-    bb = th.bounding_box()
-    # the cap's axis is X, so the wall around the thread is what its Y and Z spans show
-    assert bb.max.Y - bb.min.Y >= P.CAN_THREAD_MAJOR + 2 * 3 - 1e-6    # wall around the thread
-    assert bb.max.Z - bb.min.Z >= P.CAN_THREAD_MAJOR + 2 * 3 - 1e-6
+    """The neck goes in past the thread's crests, and there is wall left outside its roots."""
+    from mech.base import BORE_R, TANK_HEAD_R
+    crest = _iso_crest_r(P.CAN_THREAD_MAJOR + 0.4, P.CAN_THREAD_PITCH)
+    assert crest > P.CAN_NECK_ID / 2, crest                            # the neck's own bore passes
+    assert TANK_HEAD_R - BORE_R >= 2.5, TANK_HEAD_R - BORE_R           # ... and wall outside the roots
+    head = parts["tank_head"]
+    assert (cyl_z(crest - 0.05, -1, P.CAN_THREAD_LEN) & head).volume < 1e-6          # bore is clear
+    assert (cyl_z(crest + 0.2, 1.0, P.CAN_THREAD_LEN - 1.0) & head).volume > 1e-3    # crests are there
 
 
 def test_tank_head_thread_sits_wholly_inside_its_bore(parts):
@@ -150,14 +173,14 @@ def test_tank_head_thread_sits_wholly_inside_its_bore(parts):
     thread = can_thread()
     assert thread.volume > 1e-3
     bb = thread.bounding_box()
-    assert 0.0 < bb.min.X and bb.max.X < P.CAN_THREAD_LEN              # inside the bore's length
-    reach = max(abs(bb.min.Y), bb.max.Y, abs(bb.min.Z), bb.max.Z)
+    assert 0.0 < bb.min.Z and bb.max.Z < P.CAN_THREAD_LEN              # inside the bore's length
+    reach = max(abs(bb.min.X), bb.max.X, abs(bb.min.Y), bb.max.Y)
     # bd_warehouse sinks the roots a fraction into the bore so the union takes; past that the
     # thread would be cutting its own way out through the cap's three millimetres of wall
     assert BORE_R < reach <= BORE_R + 0.25, reach
     assert reach < TANK_HEAD_R - 2.0
     # ... and nothing narrower than the thread's own crest is left standing in the bore
-    free = cyl_x(P.CAN_THREAD_MAJOR / 2 - 1.25 * P.CAN_THREAD_PITCH * math.sqrt(3) / 2 - 0.05,
+    free = cyl_z(_iso_crest_r(P.CAN_THREAD_MAJOR + 0.4, P.CAN_THREAD_PITCH) - 0.05,
                  -1, P.CAN_THREAD_LEN)
     assert (free & parts["tank_head"]).volume < 1e-6
 
@@ -165,14 +188,20 @@ def test_tank_head_thread_sits_wholly_inside_its_bore(parts):
 def test_tank_head_ports_pass_the_canisters_neck(parts):
     """Every port opens inside the neck bore with a millimetre of rim, and none runs into another."""
     from mech.base import PORTS, TANK_HEAD_L
-    for name, (y, z, r) in PORTS.items():
-        assert math.hypot(y, z) + r <= P.CAN_NECK_ID / 2 - 1.0, name
-        probe = cyl_x(r - 0.05, P.CAN_THREAD_LEN, TANK_HEAD_L - 0.05, y, z)
+    for name, (x, y, r) in PORTS.items():
+        assert math.hypot(x, y) + r <= P.CAN_NECK_ID / 2 - 1.0, name
+        probe = cyl_z(r - 0.05, P.CAN_THREAD_LEN, TANK_HEAD_L - 0.05, x, y)
         assert (probe & parts["tank_head"]).volume < 1e-6, name        # drilled through
     for a, b in itertools.combinations(PORTS, 2):
-        ya, za, ra = PORTS[a]
-        yb, zb, rb = PORTS[b]
-        assert math.hypot(ya - yb, za - zb) >= ra + rb + 1.0, (a, b)
+        xa, ya, ra = PORTS[a]
+        xb, yb, rb = PORTS[b]
+        assert math.hypot(xa - xb, ya - yb) >= ra + rb + 1.0, (a, b)
+    # none of them is breached by the filler stub's bore, which crosses the same nose
+    from mech.base import STUB_Z, tank_head
+    for name, (x, y, r) in PORTS.items():
+        bore = cyl_x(P.FILLER_D / 2, 10.0, 60.0, 0.0, STUB_Z)
+        port = cyl_z(r, P.CAN_THREAD_LEN - 1, TANK_HEAD_L + 1, x, y)
+        assert (bore & port).volume < 1e-6, name
 
 
 def test_tank_head_closes_its_bore_with_a_cone(parts):
@@ -182,30 +211,31 @@ def test_tank_head_closes_its_bore_with_a_cone(parts):
     millimetre for every millimetre of x, so no layer overhangs the one under it by more than
     its own height.
     """
-    from mech.base import BORE_R, CONE_R1, CONE_X0, CONE_X1, TANK_HEAD_L
-    assert math.isclose(CONE_X1 - CONE_X0, BORE_R - CONE_R1, abs_tol=1e-9)       # 45 degrees
+    from mech.base import BORE_R, CONE_R1, CONE_Z0, CONE_Z1, TANK_HEAD_L
+    assert math.isclose(CONE_Z1 - CONE_Z0, BORE_R - CONE_R1, abs_tol=1e-9)       # 45 degrees
     head = parts["tank_head"]
-    for dx in (0.0, 4.0, 8.0, 12.0, 15.9):
-        x = CONE_X0 + dx
-        r = BORE_R - dx
-        assert (cyl_x(r - 0.2, x + 0.05, x + 0.1) & head).volume < 1e-6, x
-    assert CONE_X1 + 1.0 <= TANK_HEAD_L                                # a flat face for the ports
+    assert math.isclose(head.bounding_box().min.Z, 0.0, abs_tol=1e-6)            # mouth on the bed
+    for dz in (0.0, 4.0, 8.0, 12.0, 15.9):
+        z = CONE_Z0 + dz
+        r = BORE_R - dz
+        assert (cyl_z(r - 0.2, z + 0.05, z + 0.1) & head).volume < 1e-6, z
+    assert CONE_Z1 + 1.0 <= TANK_HEAD_L                                # a flat face for the ports
 
 
 def test_the_filler_stub_rises_and_a_hose_can_reach_the_neck(parts, placed):
     """The stub pointed -X into ten millimetres of room. It rises instead, under the neck."""
-    from mech.base import HOSE_R, STUB_R, STUB_TOP, STUB_X, hose_route, hose_turn
+    from mech.base import HOSE_R, STUB_OUT, STUB_R, STUB_Z, hose_route, hose_turn
     assert P.FILLER_STUB_DIR == "+z"
     head = placed["tank_head"]
-    top = P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_TOP
+    top = P.CANISTER_Z0 + P.CANISTER[2] / 2 + STUB_OUT
     assert math.isclose(head.bounding_box().max.Z, top, abs_tol=1e-6)
     assert math.isclose(2 * STUB_R, P.FILLER_CAP_THREAD_MAJOR, abs_tol=1e-9)     # Ø22 over Ø14
     bore = cyl_z(P.FILLER_D / 2 - 0.05, top - 16.0, top + 1.0,
-                 P.CANISTER_XY[0] - P.CANISTER[0] / 2 - STUB_X, P.CANISTER_XY[1])
+                 P.CANISTER_XY[0] - P.CANISTER[0] / 2 - STUB_Z, P.CANISTER_XY[1])
     assert (bore & head).volume < 1e-6                                 # open all the way down
     assert hose_turn() < 5.0, hose_turn()                              # the run is all but straight
     route = hose_route()
-    assert (route - _base_inner()).volume < 1e-6                       # inside the wall
+    assert (route - skin_solid(P.BASE_PROFILE, P.WALL + 1.0)).volume < 1e-6                       # inside the wall
     from mech.common import canister_body, pump_body, valve_body
     for name, body in (("canister", canister_body()), ("pump", pump_body()), ("valve", valve_body()),
                        ("tank_head", head), ("tank_cradle", placed["tank_cradle"]),
@@ -215,16 +245,19 @@ def test_the_filler_stub_rises_and_a_hose_can_reach_the_neck(parts, placed):
 
 def test_filler_cap_screws_onto_a_filler_neck(parts):
     """The cap takes a neck whose crests stand at FILLER_CAP_THREAD_MAJOR over a FILLER_D bore."""
-    from mech.base import CAP_THREAD_LEN, CAP_THREAD_X, filler_neck
+    from mech.base import CAP_SEAT_Z, CAP_THREAD_LEN, CAP_THREAD_Z, filler_neck
     cap = parts["filler_cap"]
     neck = filler_neck()
     assert neck.volume > 1e-3
+    assert math.isclose(cap.bounding_box().min.Z, 0.0, abs_tol=1e-6)   # mouth on the bed
     bb = neck.bounding_box()
     assert math.isclose(bb.max.Y - bb.min.Y, P.FILLER_CAP_THREAD_MAJOR, abs_tol=0.01)   # crests at the major
-    assert (cyl_x(P.FILLER_D / 2 - 0.05, bb.min.X - 1, bb.max.X + 1) & neck).volume < 1e-6   # FILLER_D bore
+    assert (cyl_z(P.FILLER_D / 2 - 0.05, bb.min.Z - 1, bb.max.Z + 1) & neck).volume < 1e-6   # FILLER_D bore
     assert (neck & cap).volume < 1e-3                                  # it screws on, it does not jam
-    grip = cyl_x(P.FILLER_CAP_THREAD_MAJOR / 2 - 0.05, CAP_THREAD_X, CAP_THREAD_X + CAP_THREAD_LEN)
+    grip = cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 - 0.05, CAP_THREAD_Z, CAP_THREAD_Z + CAP_THREAD_LEN)
     assert (grip & cap).volume > 1e-3                                  # ... and the cap's crests bite
+    # the bore runs straight up the axis: the seat is the only thing that closes it
+    assert (cyl_z(P.FILLER_D / 2 - 0.05, -1.0, CAP_SEAT_Z - 0.1) & cap).volume < 1e-6
 
 
 # --- the bridge over the canister ------------------------------------------------------------------
@@ -239,7 +272,7 @@ def test_wet_zone_parts_stand_on_the_floor_under_the_belt(placed):
 def test_canister_and_pump_fit_inside_the_base(placed):
     """The whole wet zone: nothing overlaps, nothing reaches the wall, nothing reaches the belt."""
     from mech.common import canister_body, pump_body, valve_body
-    inner = _base_inner()
+    inner = skin_solid(P.BASE_PROFILE, P.WALL + 1.0)
     bodies = {"canister": canister_body(), "pump": pump_body(), "valve": valve_body(),
               "pump_plate": placed["pump_plate"], "tank_cradle": placed["tank_cradle"],
               "tank_head": placed["tank_head"], "valve_strap": placed["valve_strap"]}
@@ -272,7 +305,8 @@ def test_the_cradles_towers_carry_the_pump_plate(placed):
 
 def test_the_pump_is_held_down_and_the_valve_strapped(placed):
     """Grommets alone only damp the pump; a tie through the slots beside each is what holds it."""
-    from mech.base import GROMMET_R, PLATE_Z0, PLATE_Z1, STRAP_X, TIE_SLOT, _feet_xy, _strap_xy
+    from mech.base import (GROMMET_R, PLATE_Z0, PLATE_Z1, STRAP_X, TIE_SLOT, _feet_xy,
+                           _strap_xy)
     plate, strap = placed["pump_plate"], placed["valve_strap"]
     assert P.PUMP_TIE_SLOTS
     for x, y in _feet_xy():
@@ -308,3 +342,37 @@ def test_the_bridge_prints_without_support(parts):
         bb = band.bounding_box()
         assert bb.min.X >= foot.min.X - 1e-6 and bb.max.X <= foot.max.X + 1e-6, z
         assert bb.min.Y >= foot.min.Y - 1e-6 and bb.max.Y <= foot.max.Y + 1e-6, z
+
+
+def test_the_threaded_parts_print_standing_up(parts):
+    """Both arrive at the slicer on their mouth with the axis vertical, not lying on their side.
+
+    It matters for more than tidiness: the tank head's roof is a 45 degree cone only if the
+    bore is the vertical one, and the cap's thread is a helix on a vertical wall.
+    """
+    from mech.base import CAP_SEAT_Z, CONE_Z1, TANK_HEAD_L
+    heads = (("tank_head", _iso_crest_r(P.CAN_THREAD_MAJOR + 0.4, P.CAN_THREAD_PITCH), P.CAN_THREAD_LEN),
+             ("filler_cap", _iso_crest_r(P.FILLER_CAP_THREAD_MAJOR + 0.4, P.FILLER_CAP_PITCH), CAP_SEAT_Z))
+    for name, r, z1 in heads:
+        p = parts[name]
+        bb = p.bounding_box()
+        assert math.isclose(bb.min.Z, 0.0, abs_tol=1e-6), name         # standing on its mouth
+        # the bore's axis is Z: a probe straight up it, inside the thread's crests, meets nothing
+        assert (cyl_z(r - 0.05, -1.0, z1 - 0.1) & p).volume < 1e-6, name
+        # ... and the same probe across it does not, which is what lying on its side would mean
+        assert (cyl_x(r - 0.05, -bb.max.X - 1, bb.max.X + 1, 0.0, z1 / 2) & p).volume > 1e-3, name
+    assert math.isclose(parts["tank_head"].bounding_box().max.Z, TANK_HEAD_L, abs_tol=1e-6)
+    assert CONE_Z1 < TANK_HEAD_L
+
+
+def test_the_pump_clears_the_belt_and_the_flange(parts):
+    """The bench risk the review put first: how little room is left over the pump.
+
+    Its length is the span the lower belt flange leaves, and its top is two millimetres under
+    that flange - not the eighteen an earlier reading of the numbers suggested.
+    """
+    assert P.PUMP[0] <= 2 * P.FLANGE_R_IN, P.PUMP[0]
+    gap = (P.Z_BELT - 2 * P.RING_T) - (P.PUMP_Z0 + P.PUMP[2])
+    assert gap >= 2.0, gap
+    from mech.common import pump_body
+    assert (pump_body() - skin_solid(P.BASE_PROFILE, P.WALL + 1.0)).volume < 1e-6

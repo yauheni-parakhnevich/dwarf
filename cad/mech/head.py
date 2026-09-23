@@ -5,7 +5,7 @@ import params as P
 from mech import part
 from mech.common import cyl_x, cyl_z, box
 
-BOSS_R = 4.0               # the bosses on the face's inner wall the holder screws into
+HOLDER_BOSS_R = 4.0               # the bosses on the face's inner wall the holder screws into
 DRIVER_R = 3.0             # the stubby driver that reaches the screw heads along -X
 SCREW_HEAD_R = 3.2         # counterbore for an M3 cheese head
 
@@ -14,6 +14,11 @@ SCREW_HEAD_R = 3.2         # counterbore for an M3 cheese head
 # driver. The pair moves out until a DRIVER_R shaft clears the rails by a millimetre.
 RAIL_Y_OUT = P.BULKHEAD_Y + P.CLEAR + P.RAIL_T                     # 9.4
 BOSS_Y = max(P.NOZZLE_BOSS_Y, RAIL_Y_OUT + DRIVER_R + 1.0)         # 13.4
+# The mouth has risen to eight millimetres under the tilt axis, which puts it level with the
+# tilt servo's body: a driver on a screw at the mouth's own height would go straight into it.
+# The pair drops to just under the servo instead - four millimetres, not a redesign.
+SERVO_BOTTOM = P.Z_HEAD - P.MG996R["shaft_off"]                    # 468
+SCREW_Z = min(P.Z_MOUTH, SERVO_BOTTOM - DRIVER_R - 1.0)            # 464
 
 # The holder is trimmed to a sphere a clearance inside the face cap's seating lip, so it can
 # neither touch the lip nor reach the shell however the corners of its block would fall.
@@ -51,7 +56,7 @@ RISER_X = BORE_X0 + RISER_R                                        # 19.96
 
 def screw_points():
     """(y, z) of the two screws that hold the nozzle holder onto the face's bosses."""
-    return [(-BOSS_Y, P.Z_MOUTH), (BOSS_Y, P.Z_MOUTH)]
+    return [(-BOSS_Y, SCREW_Z), (BOSS_Y, SCREW_Z)]
 
 
 def press_fit_length():
@@ -112,7 +117,7 @@ def nozzle_holder():
     """
     x0, x1 = P.NOZZLE_HOLDER_X
     z = P.Z_MOUTH
-    h = box(x0, x1, -BOSS_Y - 6, BOSS_Y + 6, BARB_Z - BARB_SEAT_R - 3.0, z + 10)
+    h = box(x0, x1, -BOSS_Y - 6, BOSS_Y + 6, BARB_Z - BARB_SEAT_R - 3.0, z + 10)   # down to the barb
     h = h + cyl_x(NOSE_R, x1 - 0.01, HOLDER_R, 0, z)                       # the nose, out to the wall
     h = h & (Pos(0, 0, P.Z_HEAD) * Sphere(HOLDER_R))
     h = h - _rail_relief()
@@ -137,7 +142,7 @@ def nozzle_bosses():
     x0 = P.NOZZLE_HOLDER_X[1]
     bosses = None
     for y, z in screw_points():
-        b = cyl_x(BOSS_R, x0, P.HEAD_R + 8, y, z)
+        b = cyl_x(HOLDER_BOSS_R, x0, P.HEAD_R + 8, y, z)
         b = b & (Pos(0, 0, P.Z_HEAD) * Sphere(P.HEAD_R - P.WALL + 1.2))
         b = b - cyl_x(P.INSERT_D / 2, x0 - 1, x0 + P.INSERT_DEPTH, y, z)
         bosses = b if bosses is None else bosses + b
