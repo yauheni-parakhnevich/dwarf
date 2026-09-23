@@ -8,6 +8,13 @@ into the shell and cut the openings out of it. Nothing generated is committed.
 The gnome stands 589 mm and prints as seven shell sections and twenty mechanism parts -
 twenty-eight prints, since the stop pin is printed twice - none wider than the 256 mm bed.
 
+
+![The gnome, front and three-quarter](docs/gnome_front.png) ![](docs/gnome_iso.png)
+
+![Cutaway through the assembled gnome](docs/cutaway_iso.png) ![The mechanism alone](docs/mechanism_iso.png)
+
+*Renders from `build.py preview`, reduced. The full set is written to `out/preview/`.*
+
 ## Build
 
 ```bash
