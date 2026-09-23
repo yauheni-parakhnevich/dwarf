@@ -1,6 +1,6 @@
 """The neck: what the head stands on and what turns it."""
 import math
-from build123d import Location, Axis
+from build123d import Location, Polygon, extrude, Pos, Axis
 import params as P
 from mech import part
 from mech.common import cyl_x, cyl_y, cyl_z, box, insert_holes, polar, servo_body
@@ -17,6 +17,24 @@ def _bearing_holes(part, z0, z1):
         x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
         part = part - cyl_z(P.BEARING_HOLE / 2, z0, z1, x, y)
     return part
+
+
+# The cavity's own section over the deck's band, measured from out/statue/cavity.stl at z 394,
+# 396, 398 and 400 and minimised: the nearest boundary in each ten degrees of azimuth. The mesh
+# is not an ellipse and features.json carries only four cardinals, so it is written out here;
+# move it there when the statue stage publishes a profile.
+NECK_SECTION = {0: 82.2, 10: 83.2, 20: 88.0, 30: 93.3, 40: 89.7, 50: 89.5, 60: 98.2, 70: 103.4,
+                80: 100.9, 90: 105.1, 100: 98.7, 110: 102.5, 120: 91.1, 130: 91.1, 140: 83.0,
+                150: 69.3, 160: 69.2, 170: 74.5, 180: 75.6, 190: 74.5, 200: 69.2, 210: 69.3,
+                220: 83.0, 230: 91.1, 240: 91.1, 250: 102.5, 260: 98.7, 270: 105.1, 280: 100.9,
+                290: 103.4, 300: 98.2, 310: 89.5, 320: 89.7, 330: 93.3, 340: 88.0, 350: 83.2}
+NECK_MARGIN = 1.0
+
+
+def _neck_prism(z0, z1):
+    """The measured section less NECK_MARGIN, as a prism: what the deck may occupy."""
+    pts = [polar(NECK_SECTION[a] - NECK_MARGIN, a) for a in sorted(NECK_SECTION)]
+    return Pos(0, 0, z0) * extrude(Polygon(*pts), z1 - z0)
 
 
 def _sector(a0, a1, z0, z1, far):
@@ -71,6 +89,7 @@ def deck():
              & _sector(lobe["angle"] - lobe["half"], lobe["angle"] + lobe["half"], z0 - 1, z1 + 1, far))
     back = _sector(140.0, 220.0, z0 - 1, z1 + 1, far) - cyl_z(P.DECK_BACK_R, z0 - 2, z1 + 2)
     d = d - back                                           # ... and cut back where the coat closes in
+    d = d & _neck_prism(z0 - 1, z1 + 1)                    # ... then trimmed to the measured section
     d = d - cyl_z(P.SHAFT_OD / 2 + P.CLEAR + 1.0, z0 - 1, z1 + 1)          # shaft passes with room
     d = _bearing_holes(d, z0 - 1, z1 + 1)
     for a in P.DECK_SCREW_ANGLES:                                          # down into the ring

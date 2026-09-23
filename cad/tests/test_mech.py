@@ -95,7 +95,7 @@ def test_linkage_sweeps_without_touching_anything(parts):
     fixed = parts["deck"] + parts["deck_ring"] + parts["shaft"] + servo
     interior = range(-int(P.PAN_STOP_DEG) + 1, int(P.PAN_STOP_DEG), 8)
     for deg in [-P.PAN_STOP_DEG, *interior, P.PAN_STOP_DEG]:      # the stops themselves as well
-        plate = (parts["plate"] + parts["yoke"]).rotate(Axis.Z, deg)
+        plate = (parts["plate"] + parts["neck_shroud"]).rotate(Axis.Z, deg)
         crank = parts["servo_crank"].rotate(servo_axis, deg)
         pin, _ = P.crank_pins(deg)
         link = parts["pan_link"].moved(Location((pin[0] - rest_plate[0], pin[1] - rest_plate[1], 0)))
@@ -108,10 +108,10 @@ def test_linkage_sweeps_without_touching_anything(parts):
 def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
     body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
     bearing = box(-P.BEARING_SQ / 2, P.BEARING_SQ / 2, -P.BEARING_SQ / 2, P.BEARING_SQ / 2, P.Z_DECK, P.Z_DECK + P.BEARING_T)
-    for other in (bearing, parts["deck"], parts["deck_ring"], parts["plate"], parts["yoke"], parts["shaft"]):
+    for other in (bearing, parts["deck"], parts["deck_ring"], parts["plate"], parts["neck_shroud"], parts["shaft"]):
         assert (body & other).volume < 1e-6
     # the hangers meet the tabs: a hanger's bottom face is at the tabs' upper face
-    hangers = parts["deck"] & box(-80, 80, -80, 80, P.Z_DECK - P.DECK_T - 30, P.Z_DECK - P.DECK_T - 0.01)
+    hangers = parts["deck"] & box(-120, 120, -120, 120, P.Z_PAN_SHAFT_FACE - 5, P.Z_DECK - P.DECK_T - 0.01)
     assert math.isclose(hangers.bounding_box().min.Z, P.Z_PAN_SHAFT_FACE + (P.DS3218["body"][2] - P.DS3218["tab_z"]) + P.DS3218["tab_t"], abs_tol=1e-6)
 
 
@@ -192,6 +192,25 @@ def test_the_jet_leaves_the_nozzle_untouched(parts):
         assert (shot & (fixed + parts["nozzle_arm"].rotate(axis, -deg))).volume < 1e-6, deg
         (tx, tz), _ = nozzle_tip(deg)
         assert math.hypot(tx, 0.0) > P.SHROUD_R_OUT, deg        # the tip is always outside the shroud
+
+
+def test_the_nozzle_arm_leaves_only_through_the_mouth(parts):
+    """The arm is the one part meant to break the cavity, and only its nozzle may.
+
+    test_fit exempts it for that reason; this is what the exemption is worth. Everything the
+    arm has beyond the face's skin must be the tip, and must lie inside the beard's parting.
+    """
+    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
+    skin = 76.0                                                  # the statue's face, front of it
+    beyond = box(skin, 200.0, -100.0, 100.0, 300.0, 600.0)
+    reach = math.hypot(P.NOZZLE_ARM_L, 14.0 / 2) + 1e-6          # pivot to the tip's far corner
+    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
+        out = parts["nozzle_arm"].rotate(axis, -deg) & beyond
+        assert out.volume > 1e-3, deg                            # the nozzle does reach the skin
+        bb = out.bounding_box()
+        assert max(abs(bb.min.Y), abs(bb.max.Y)) <= P.NOZZLE_SLOT_W / 2 + 1e-6, deg   # in the parting
+        far = max(math.hypot(v.X - P.NOZZLE_PIVOT[0], v.Z - P.NOZZLE_PIVOT[2]) for v in out.vertices())
+        assert far <= reach, (deg, far)                          # ... and it is the tip, not the arm
 
 
 def test_the_tube_reaches_the_barb_at_both_stops(parts):
@@ -321,7 +340,8 @@ def test_assembly_step_exists_after_build(tmp_path):
     from mech.common import assembly
     import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
     from mech import ALL
-    comp = assembly({spec.name: spec.build() for spec in ALL})
+    built = {spec.name: spec.build() for spec in ALL}
+    comp = assembly(built)
     expect = sum(len(p.solids()) for p in built.values()) + len(built["stop_pin"].solids())
     assert len(comp.solids()) == expect            # every part's solids, and the pin fitted twice
     labels = [c.label for c in comp.children]

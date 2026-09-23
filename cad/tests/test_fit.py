@@ -23,9 +23,14 @@ REACH = {150: (54, 93, 118, 102), 180: (103, 95, 115, 115), 212: (99, 83, 124, 1
          300: (86, 72, 115, 109), 340: (95, 74, 107, 98), 368: (100, 74, 103, 86),
          392: (92, 81, 114, 95), 400: (85, 79, 114, 95), 411: (72, 76, 106, 93)}
 def blanks():
-    """Every interface part, plus the floor plate: all are cut to the cavity by the assembler."""
+    """Every interface part, plus the floor plate: all are cut to the cavity by the assembler.
+
+    The nozzle arm is here for a different reason: its tip is meant to leave the cavity. It
+    exits through the mouth, which the assembler cuts, and through the beard's parting.
+    test_mech's test_the_nozzle_arm_leaves_only_through_the_mouth holds it to that.
+    """
     from mech import INTERFACES
-    return {n for names in INTERFACES.values() for n in names} | {"floor_plate"}
+    return {n for names in INTERFACES.values() for n in names} | {"floor_plate", "nozzle_arm"}
 
 
 def legs():
