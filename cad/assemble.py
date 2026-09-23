@@ -1,17 +1,20 @@
-"""Turn the raw Blender sections into printable ones: interface parts in, openings and splits out.
+"""Turn the statue's raw sections into printable ones: interface parts in, openings out.
 
-Every boolean here runs in manifold3d through trimesh. Blender's own exact boolean was measured
-to leave non-manifold results on remeshed meshes, which is why the sculpt never cuts anything:
-it hands over closed, walled solids and this module does the rest.
+The raw sections come from `statue.py` - the reconstruction's skin, hollowed and cut around a
+turning bell. This module does the rest, and every boolean runs in manifold3d through trimesh.
 
-The sculpt arrives heavy - the base is half a million triangles - and manifold3d takes it at
-that size in about a second a section, so nothing is decimated: `DECIMATE` is there for the day
-a section grows past what is comfortable, and is off.
+Each interface part is drawn in `mech/` as a blank that overshoots the shell: an elliptical
+flange wider than the coat, a floor plate bigger than the boots. That is deliberate. The skin is
+a 200 000-triangle reconstruction, not a profile anything can be dimensioned from, so instead of
+asking the mechanism to guess where the wall is, the blank is clipped here to `cavity_grown` -
+the cavity offset back to within 1.2 mm of the skin - and what is left lands inside the wall and
+fuses to it. A part that straddles a section's boundary is clipped again by that section's own
+region, so the deck ring's webs go to the panels and its hub to the ring, from one description.
 
-The belly panel is cut from the torso's own wall, so the two are the same surface either side
-of one seam. Everything the torso lets into that wall - the hatch lip, the screw bosses, the
-deck ring's webs where they reach it - is rebated out of the panel with CLEAR_SHELL, which is
-what makes the panel sit flush rather than stand proud of its own frame.
+What the openings are for: the window is the phone camera's, in the fixed ring so the view never
+turns; the intake is behind it, the exhaust is on the left panel where the fan sits; the parting
+and the mouth are the nozzle's, in the bell, so the jet's slot turns with the head and always
+faces where the head faces; the four radial holes in the head are the shroud's screws.
 """
 import math
 import sys
@@ -20,50 +23,30 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from build123d import Location
-from scipy.spatial import cKDTree
 
 CAD = Path(__file__).resolve().parent
 sys.path.insert(0, str(CAD))
 import params as P  # noqa: E402
-import mech.base, mech.head, mech.torso, mech.turntable  # noqa: E402,F401
-from mech import ALL, INTERFACES  # noqa: E402
+from statue import FAR, KERF, write  # noqa: E402
 
-RAW, STL = CAD / "out" / "raw", CAD / "out" / "stl"
+RAW = CAD / "out" / "statue" / "raw"
+STL = CAD / "out" / "stl"
 ENGINE = "manifold"
-DECIMATE = None           # a face count to reduce a sculpted section to first; see the note above
-SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
-SLIVER = 1.0              # mm3 under which a component is boolean litter, not a part
-FAR = 400.0               # long enough to pass through anything, short enough to stay readable
+SECTIONS = tuple(P.SECTIONS_STATUE)
+# Which section each interface blank is unioned into. A blank that spans two of them is named
+# in both and clipped by each one's region, which is the same cut the shell itself was given.
+INTO = {
+    "belt_flange_lower": ("base_left", "base_right"),
+    "floor_plate": ("base_left", "base_right"),
+    "belt_flange_upper": ("torso", "panel_left", "panel_right"),
+    "deck_ring": ("torso", "panel_left", "panel_right"),
+    "fan_frame": (f"panel_{P.FAN_PANEL}",),
+}
+STAKE_ANGLES = (45.0, 135.0, 225.0, 315.0)
+DRAIN_ANGLES = (55.0, 125.0, 235.0, 305.0)
 
 
-# --- loading ---------------------------------------------------------------------------------
-def load_raw(name, decimate=DECIMATE):
-    m = trimesh.load(RAW / f"{name}.stl")
-    if decimate and len(m.faces) > decimate:
-        m = m.simplify_quadric_decimation(face_count=decimate)
-        assert m.is_watertight, f"decimating {name} tore it"
-    return m
-
-
-def load_part(name):
-    """An interface part's STL, which `export` writes in its print frame.
-
-    Every interface part is drawn where it sits and declares no placement, so its print frame
-    is the machine's frame and the STL can be unioned straight in. Checked, not assumed.
-    """
-    spec = next(s for s in ALL if s.name == name)
-    ident = Location()
-    assert tuple(spec.placement.position) == tuple(ident.position), f"{name} is placed, not drawn in place"
-    assert tuple(spec.placement.orientation) == tuple(ident.orientation), f"{name} is rotated"
-    return trimesh.load(STL / f"{name}.stl")
-
-
-def interfaces(section):
-    return [load_part(n) for n in INTERFACES.get(section, [])]
-
-
-# --- booleans --------------------------------------------------------------------------------
+# --- booleans and cutters --------------------------------------------------------------------
 def union(*meshes):
     return trimesh.boolean.union([m for m in meshes if m is not None], engine=ENGINE)
 
@@ -76,33 +59,16 @@ def isect(*meshes):
     return trimesh.boolean.intersection(list(meshes), engine=ENGINE)
 
 
-# --- cutters ---------------------------------------------------------------------------------
 def box(x0, x1, y0, y1, z0, z1):
     b = trimesh.creation.box(extents=(x1 - x0, y1 - y0, z1 - z0))
     b.apply_translation(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2))
     return b
 
 
-def _aim(mesh, deg, at):
-    """Point a +Z solid outward along the meridian `deg` and stand it at `at` = (r, z)."""
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, (0.0, 1.0, 0.0)))
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.radians(deg), (0.0, 0.0, 1.0)))
-    th = math.radians(deg)
-    mesh.apply_translation((at[0] * math.cos(th), at[0] * math.sin(th), at[1]))
-    return mesh
-
-
 def cyl_z(r, z0, z1, x=0.0, y=0.0, sections=96):
     c = trimesh.creation.cylinder(radius=r, height=z1 - z0, sections=sections)
     c.apply_translation((x, y, (z0 + z1) / 2))
     return c
-
-
-def cyl_out(r, r0, r1, deg, z, sections=96):
-    """A cylinder lying along the meridian `deg`, from radius r0 to r1 at height z."""
-    c = trimesh.creation.cylinder(radius=r, height=r1 - r0, sections=sections)
-    c.apply_translation((0.0, 0.0, (r0 + r1) / 2))
-    return _aim(c, deg, (0.0, z))
 
 
 def cyl_x(r, x0, x1, y=0.0, z=0.0, sections=96):
@@ -119,28 +85,17 @@ def cyl_y(r, y0, y1, x=0.0, z=0.0, sections=96):
     return c
 
 
-def ball(r, at, subdivisions=4):
-    s = trimesh.creation.icosphere(subdivisions=subdivisions, radius=r)
-    s.apply_translation(at)
-    return s
-
-
-def wedge(half_deg, z0, z1, r=FAR):
-    """The solid |atan2(y, x)| <= half_deg between z0 and z1: the belly hatch's outline."""
-    ahead = box(0.0, r, -r, r, z0, z1)
-    a = ahead.copy().apply_transform(trimesh.transformations.rotation_matrix(
-        math.radians(half_deg - 90.0), (0.0, 0.0, 1.0)))
-    b = ahead.copy().apply_transform(trimesh.transformations.rotation_matrix(
-        math.radians(90.0 - half_deg), (0.0, 0.0, 1.0)))
-    return isect(ahead, a, b)
+def aim(mesh, deg, r, z):
+    """Point a +Z solid outward along the meridian `deg`, standing at radius r, height z."""
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, (0.0, 1.0, 0.0)))
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.radians(deg), (0.0, 0.0, 1.0)))
+    th = math.radians(deg)
+    mesh.apply_translation((r * math.cos(th), r * math.sin(th), z))
+    return mesh
 
 
 def skin_at(mesh, deg, z):
-    """The outermost radius of `mesh` on the meridian `deg` at height z, or None if it misses.
-
-    The sculpt's skin is not its profile - the coat swells and tucks - so a countersink placed
-    from `shell_r` sinks into thin air or into the wall. This is where the surface actually is.
-    """
+    """The outermost radius of `mesh` on the meridian `deg` at height z, or None if it misses."""
     th = math.radians(deg)
     loc, _, _ = mesh.ray.intersects_location(np.array([[0.0, 0.0, z]]),
                                              np.array([[math.cos(th), math.sin(th), 0.0]]))
@@ -148,287 +103,215 @@ def skin_at(mesh, deg, z):
 
 
 def countersunk(deg, z, r_skin, through=30.0):
-    """A screw hole drilled inward along a meridian: M3 clearance under a 6 mm sink, 2 deep.
-
-    `r_skin` is where the cone's mouth goes, so it has to be the panel's own outer surface.
-    """
+    """A screw hole drilled inward along a meridian: M3 clearance under a 6 mm sink, 2 deep."""
     line = [(0.0, -2.0), (3.0, -2.0), (3.0, 0.0), (P.M3_CLEAR / 2, 2.0),
             (P.M3_CLEAR / 2, through), (0.0, through)]
     c = trimesh.creation.revolve(np.array(line), sections=48)
     c.apply_transform(trimesh.transformations.rotation_matrix(math.pi, (1.0, 0.0, 0.0)))
-    return _aim(c, deg, (r_skin, z))
+    return aim(c, deg, r_skin, z)
 
 
-def dilate(mesh, d, name=""):
-    """`mesh` grown so its faces stand d millimetres off, for use as a clearance cutter.
+def parting(step=2.5):
+    """The beard's parting: the solid the jet sweeps out as the nozzle tilts.
 
-    Moving vertices along their own normals is not the same as moving faces: at a box's corner
-    the vertex normal is the body diagonal, so a vertex pushed d moves each of the three faces
-    it belongs to by only d / sqrt(3). These cutters are the build123d interface parts, which
-    are slabs, boxes and bands, so the vertex offset is scaled by sqrt(3) and the faces land
-    where they were asked to. On a sphere the same scaling would overshoot by the same factor -
-    there is none here, and a cutter that takes too much would say so in the wall check.
-
-    Falls back to the part itself if the offset tangles, and says so: a flush rebate is better
-    than a broken one, but it is not what was asked for.
+    The brief's slot was Z_MOUTH +- 22, and it is not enough. The nozzle's tip sits three
+    millimetres inside the skin at the mouth, but the face above the mouth is the nose, and by
+    the top of the tilt the jet has seventeen millimetres of statue to cross before it is out -
+    it would leave at z 455, nine above the slot's top. So the cutter is the swept envelope
+    itself: a JET_D-thick, NOZZLE_SLOT_W-wide slab through the pivot, turned through every tilt
+    the firmware allows, which is by construction exactly the parting the jet needs and no more.
     """
-    grown = mesh.copy()
-    grown.vertices = grown.vertices + grown.vertex_normals * (d * math.sqrt(3.0))
-    if grown.is_watertight and grown.volume > mesh.volume:
-        return grown
-    print(f"      dilate: {name or 'a part'} would not offset cleanly; rebated flush instead")
+    lo, hi = P.TILT_STOP
+    cutters = []
+    for deg in np.arange(lo, hi + 1e-9, step):
+        slab = box(0.0, FAR, -P.NOZZLE_SLOT_W / 2, P.NOZZLE_SLOT_W / 2, -P.JET_D / 2, P.JET_D / 2)
+        slab.apply_transform(trimesh.transformations.rotation_matrix(
+            math.radians(-float(deg)), (0.0, 1.0, 0.0)))     # about +Y, positive is nose-down
+        slab.apply_translation(P.NOZZLE_PIVOT)
+        cutters.append(slab)
+    return union(*cutters)
+
+
+def arch(deg, w, h, r0=0.0, r1=FAR):
+    """A drain arch through the sole's wall on the meridian `deg`.
+
+    Half an ellipse w wide and h tall, sitting on the ground: wider than it is tall, which a
+    circular arch of this width could not be, and no overhang for the printer to bridge.
+    """
+    top = trimesh.creation.cylinder(radius=1.0, height=r1 - r0, sections=64)
+    top.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, (0.0, 1.0, 0.0)))
+    top.apply_transform(np.diag([1.0, w / 2, h, 1.0]))
+    top.apply_translation(((r0 + r1) / 2, 0.0, 0.0))
+    both = union(top, box(r0, r1, -w / 2, w / 2, -2.0, 0.0))
+    both.apply_transform(trimesh.transformations.rotation_matrix(math.radians(deg), (0.0, 0.0, 1.0)))
+    return both
+
+
+# --- the sections' own regions ---------------------------------------------------------------
+def region(name):
+    """The solid a section was cut from, so a part that straddles a seam is split the same way.
+
+    The base halves are the one that is not a box: the mitten caps come out of them, and a belt
+    flange 210 mm across reaches into exactly that corner, so a flange clipped by the box alone
+    would be unioned into the base and into the cap both.
+    """
+    py, pt, pb = P.PANEL_Y, P.PANEL_TOP, P.PANEL_BOTTOM
+    top = P.Z_TURN - P.TURN_GAP
+    if name.startswith("base_"):
+        side = 1.0 if name.endswith("left") else -1.0
+        whole = box(*((-FAR, FAR, KERF / 2, FAR) if side > 0 else (-FAR, FAR, -FAR, -KERF / 2)),
+                    -1.0, P.Z_BELT)
+        return cut(whole, box(*region_box(f"hand_{'left' if side > 0 else 'right'}")))
+    return box(*region_box(name))
+
+
+def region_box(name):
+    py, pt, pb = P.PANEL_Y, P.PANEL_TOP, P.PANEL_BOTTOM
+    top = P.Z_TURN - P.TURN_GAP
+    return {
+        "base_left": (-FAR, FAR, KERF / 2, FAR, -1.0, P.Z_BELT),
+        "base_right": (-FAR, FAR, -FAR, -KERF / 2, -1.0, P.Z_BELT),
+        "hand_left": (-FAR, FAR, py, FAR, pb, P.Z_BELT),
+        "hand_right": (-FAR, FAR, -FAR, -py, pb, P.Z_BELT),
+        "torso": (-FAR, FAR, -py, py, P.Z_BELT, top),
+        "panel_left": (-FAR, FAR, py, FAR, P.Z_BELT, pt),
+        "panel_right": (-FAR, FAR, -FAR, -py, P.Z_BELT, pt),
+        "beard": (-FAR, FAR, -FAR, FAR, P.Z_TURN, P.SECTIONS_STATUE["beard"][1]),
+        "head": (-FAR, FAR, -FAR, FAR, P.SECTIONS_STATUE["head"][0], P.Z_HAT),
+        "hat": (-FAR, FAR, -FAR, FAR, P.Z_HAT, P.Z_TOP + 1.0),
+    }[name]
+
+
+def load_part(name):
+    """An interface part's STL, checked to be drawn where it sits rather than placed."""
+    try:
+        from build123d import Location
+        from mech import ALL
+        spec = next((s for s in ALL if s.name == name), None)
+        if spec is not None:
+            ident = Location()
+            assert tuple(spec.placement.position) == tuple(ident.position), f"{name} is placed"
+            assert tuple(spec.placement.orientation) == tuple(ident.orientation), f"{name} is rotated"
+    except Exception as exc:                      # the mechanism is being reworked next door
+        print(f"      {name}: could not check its placement ({exc.__class__.__name__}); trusting the STL")
+    return trimesh.load(STL / f"{name}.stl")
+
+
+def blanks(section, raw, grown):
+    """Every interface part that belongs to this section, clipped into its wall.
+
+    Clipping alone is not enough to belong. A blank drawn across the whole cavity - the deck
+    ring, whose hub stands in the middle and whose webs reach out to the panels - leaves pieces
+    inside a section's box that touch none of its wall, and unioning those would ship a section
+    with a lump rattling inside it. So each piece has to overlap the raw section itself, which is
+    what `cavity_grown` reaching 1.2 mm into the wall is for, and the rest is said aloud and left
+    to be its own part.
+    """
+    out = []
+    for name, targets in INTO.items():
+        if section not in targets:
+            continue
+        path = STL / f"{name}.stl"
+        if not path.exists():
+            print(f"      {section}: {name}.stl is not built; skipped")
+            continue
+        clipped = isect(load_part(name), grown, region(section))
+        if clipped.is_empty or abs(clipped.volume) < 1.0:
+            print(f"      {section}: {name} has nothing inside this section's wall; skipped")
+            continue
+        welded, loose = [], 0.0
+        for piece in clipped.split(only_watertight=False):
+            if abs(piece.volume) < 1.0:
+                continue
+            joined = isect(piece, raw)
+            if not joined.is_empty and abs(joined.volume) > 1.0:
+                welded.append(piece)
+            else:
+                loose += abs(piece.volume)
+        note = f", {loose / 1e3:.1f} cm3 of it standing free and left out" if loose else ""
+        if not welded:
+            print(f"      {section}: {name} touches no wall here ({clipped.volume / 1e3:.1f} cm3); skipped")
+            continue
+        print(f"      {section}: {name} {sum(abs(p.volume) for p in welded) / 1e3:.1f} cm3 in{note}")
+        out.extend(welded)
+    return out
+
+
+# --- what is cut out of each section ----------------------------------------------------------
+def openings(name, mesh):
+    if name == "torso":
+        window = box(0.0, FAR, P.CAM_Y - P.WINDOW_W / 2, P.CAM_Y + P.WINDOW_W / 2,
+                     P.Z_LENS + P.WINDOW_Z_BIAS - P.WINDOW_H / 2,
+                     P.Z_LENS + P.WINDOW_Z_BIAS + P.WINDOW_H / 2)
+        intake = box(-FAR, 0.0, -P.VENT_IN_W / 2, P.VENT_IN_W / 2,
+                     P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
+        return cut(mesh, window, intake)
+    if name == f"panel_{P.FAN_PANEL}":
+        x, z = P.FAN_XZ
+        side = 1.0 if P.FAN_PANEL == "left" else -1.0
+        return cut(mesh, cyl_y((P.FAN - 4.0) / 2, 0.0, side * FAR, x, z))
+    if name in ("beard", "head"):
+        # the parting the nozzle arm swings through, and the mouth it points out of
+        mesh = cut(mesh, parting(), cyl_x(P.MOUTH_D / 2, 0.0, FAR, 0.0, P.Z_MOUTH))
+        holes = []
+        for deg in P.SHROUD_SCREW_ANGLES:
+            r = skin_at(mesh, deg, P.SHROUD_SCREWS_Z)
+            if r is not None:
+                holes.append(countersunk(deg, P.SHROUD_SCREWS_Z, r, through=r - P.SHROUD_R_OUT + 6.0))
+        return cut(mesh, *holes) if holes else mesh
+    if name.startswith("base_"):
+        side = 1.0 if name.endswith("left") else -1.0
+        cutters = [arch(deg, P.DRAIN_ARCH_W, P.DRAIN_ARCH_H)
+                   for deg in DRAIN_ANGLES if math.sin(math.radians(deg)) * side > 0]
+        for deg in STAKE_ANGLES:
+            if math.sin(math.radians(deg)) * side <= 0:
+                continue
+            th = math.radians(deg)
+            cutters.append(cyl_z(P.STAKE_HOLE_D / 2, -1.0, P.STAKE_HOLE_D * 2,
+                                 P.STAKE_HOLE_R * math.cos(th), P.STAKE_HOLE_R * math.sin(th)))
+        return cut(mesh, *cutters)
     return mesh
 
 
-# --- finishing -------------------------------------------------------------------------------
-def unpinch(mesh, tol=2e-4, eps=2e-3):
-    """Pull apart vertices that sit on top of one another but belong to different surfaces.
+def debris(mesh, name, limit=5000.0):
+    """Drop the loose crumbs a cut frees inside a section.
 
-    manifold3d is entitled to leave two vertices in one place - a pinch, where a cutter grazed a
-    facet - and in memory that is a perfectly good solid. An STL carries no vertex identity, so
-    reading one back merges the pair, and what was a pinch becomes an edge with four faces on it:
-    not watertight, and no use to anything downstream. Two microns between the twins before the
-    file is written is two microns between them after it is read, and that is four orders of
-    magnitude below anything this shell is printed to.
-
-    `tol` is not a guess: a binary STL stores single-precision floats, which at this gnome's
-    top of the head are spaced six hundredths of a micron apart, so any two vertices closer
-    than that land on the same number whatever their history. Twins are anything inside three
-    times that.
-    """
-    v = np.asarray(mesh.vertices)
-    pairs = cKDTree(v).query_pairs(tol, output_type="ndarray")
-    if not len(pairs):
-        return mesh, 0
-    out = mesh.copy()
-    idx = np.unique(pairs[:, 0])
-    out.vertices[idx] = out.vertices[idx] + out.vertex_normals[idx] * eps
-    return out, len(idx)
-
-
-def tidy(mesh):
-    """Drop the zero-volume shells a boolean leaves where a cut plane grazes a sculpted skin.
-
-    The hatch's two radial faces run down a barrel that the remesh made out of thousands of
-    little facets, and every facet the plane nearly misses leaves a closed surface with no
-    volume behind. They pass every check in memory - a closed surface is watertight whatever
-    its volume - but an STL round trip merges their coincident vertices and what comes back is
-    not manifold. So they go before the file is written, and the count is reported.
+    The skin's inward offset folds on itself under the nose and behind the ears, and those folds
+    hang off the wall by a hair; cut the nozzle's parting past one and it comes away as a lump of
+    plastic floating in the head. Anything disconnected and under five cubic centimetres is that,
+    not a part - a real one is fifty at the smallest - and it is named as it goes.
     """
     parts = mesh.split(only_watertight=False)
     if len(parts) < 2:
-        return mesh, 0
-    solid = [c for c in parts if abs(c.volume) > SLIVER]
-    if len(solid) == len(parts):
-        return mesh, 0
-    kept = solid[0] if len(solid) == 1 else trimesh.util.concatenate(solid)
-    return kept, len(parts) - len(solid)
-
-
-def save(mesh, name, t0):
-    STL.mkdir(parents=True, exist_ok=True)
-    mesh, slivers = tidy(mesh)
-    mesh, pinches = unpinch(mesh)
-    assert mesh.is_watertight, f"{name} is not watertight"
-    assert mesh.is_winding_consistent, f"{name} has inconsistent winding"
-    assert mesh.volume > 0.0, f"{name} has no volume"
-    assert mesh.body_count == 1, f"{name} is {mesh.body_count} bodies, not one"
-    mesh.export(STL / f"{name}.stl")
-    # what the tests will load is the file, not the mesh in hand: check that one
-    back = trimesh.load(STL / f"{name}.stl")
-    assert back.is_watertight, f"{name} did not survive the round trip to STL"
-    bodies = back.body_count
-    notes = "".join([f", {slivers} slivers dropped" if slivers else "",
-                     f", {pinches} pinches opened" if pinches else ""])
-    print(f"stl   {name}: {len(mesh.faces)} faces, {mesh.volume / 1000:.1f} cm3, "
-          f"{bodies} {'body' if bodies == 1 else 'bodies'}{notes}, {time.time() - t0:.1f} s")
-    return mesh
-
-
-def probe(name, text):
-    print(f"      {name}: {text}")
-
-
-# --- sections --------------------------------------------------------------------------------
-def base():
-    t0 = time.time()
-    m = union(load_raw("base"), *interfaces("base"))
-    # Drain arches round the skirt, at the four angles the boots leave clear. Each is a cylinder
-    # lying along a diameter, dropped so its crown is DRAIN_ARCH_H above the ground.
-    cutters = [cyl_x(P.DRAIN_ARCH_W / 2, -FAR, FAR, 0.0, P.DRAIN_ARCH_H - P.DRAIN_ARCH_W / 2)]
-    cutters.append(cutters[0].copy().apply_transform(
-        trimesh.transformations.rotation_matrix(math.pi / 2, (0.0, 0.0, 1.0))))
-    # Stake holes through the raised floor, between the arches.
-    for a in (45.0, 135.0, 225.0, 315.0):
-        x, y = P.STAKE_HOLE_R * math.cos(math.radians(a)), P.STAKE_HOLE_R * math.sin(math.radians(a))
-        cutters.append(cyl_z(P.STAKE_HOLE_D / 2, P.Z_FLOOR - 20.0, P.Z_FLOOR + 20.0, x, y))
-    # The filler port through the back wall: the neck the cap screws onto is printed with the
-    # shell, so the hole is the neck's outside, not the tube's bore.
-    r_skin = P.shell_r(P.BASE_PROFILE, P.Z_FILLER)
-    cutters.append(cyl_out(P.FILLER_D / 2 + 2.5, r_skin - 30.0, r_skin + 20.0, 180.0, P.Z_FILLER))
-    # and the rim is trimmed to Z_BASE_TOP: solidify leaves the cut plane a tenth or two proud,
-    # and the torso's flange sits on exactly that plane
-    cutters.append(box(-FAR, FAR, -FAR, FAR, P.Z_BASE_TOP, FAR))
-    m = cut(m, *cutters)
-    m = save(m, "base", t0)
-    down = m.ray.intersects_location(np.array([[0.0, 0.0, P.Z_BASE_TOP + 60.0]]), np.array([[0.0, 0.0, -1.0]]))[0]
-    zs = sorted((float(p[2]) for p in down), reverse=True)
-    probe("open at the top", f"a ray down the axis first meets {zs[0]:.1f} "
-                             f"(the floor is at {P.Z_FLOOR}..{P.Z_FLOOR + P.WALL})")
-    assert zs[0] < P.Z_FLOOR + P.WALL + 1.0, "the base is lidded"
-    return m
-
-
-def _panel_rebate(skins):
-    """Everything the torso lets into the wall inside the hatch, grown by CLEAR_SHELL.
-
-    The panel is the wall, and every interface part bites the wall's inner 1.2 mm, so without
-    this the two would want the same millimetre. The lip's own note says the panel is rebated;
-    the screw bosses and the deck ring's webs need it for the same reason.
-
-    Except at the screws. A hatch boss is rebated out of the panel like everything else, but
-    the screw goes through the panel in the middle of that rebate, and a countersunk M3 in
-    0.8 mm of PETG tears out. So the rebate stops CLEAR_SHELL + 4 short of each screw's axis
-    and the panel keeps its full wall where the head pulls on it.
-    """
-    inside = [dilate(p, P.CLEAR_SHELL, n) for p, n in zip(interfaces("torso"), INTERFACES["torso"])]
-    keep = [cyl_out(P.CLEAR_SHELL + 4.0, r - 30.0, r + 20.0, a, z)
-            for (z, a), r in zip(P.HATCH_SCREWS, skins)]
-    return cut(union(*inside), *keep)
-
-
-def torso_and_belly():
-    t0 = time.time()
-    raw = load_raw("torso")
-    hatch = wedge(P.HATCH_HALF_ANGLE, *P.HATCH_Z)
-    panel = isect(raw, hatch)
-    m = union(cut(raw, hatch), *interfaces("torso"))
-    # measured on the panel before anything is cut out of it, so the ray meets a surface
-    skins = [skin_at(panel, a, zs) for zs, a in P.HATCH_SCREWS]
-    assert all(r is not None for r in skins), "a hatch screw misses the panel"
-
-    cutters = []
-    xb = P.shell_r(P.TORSO_PROFILE, P.Z_FAN)
-    cutters.append(cyl_out(P.FAN / 2 - 2.0, xb - 30.0, xb + 20.0, 180.0, P.Z_FAN))
-    xi = P.shell_r(P.TORSO_PROFILE, P.Z_VENT_IN)
-    vent = box(-xi - 20.0, -xi + 30.0, -P.VENT_IN_W / 2, P.VENT_IN_W / 2,
-               P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
-    cutters.append(vent)
-    # And the panel keeps its full wall at the four screws, so the boss gives way instead: the
-    # bracket is cut back over a disc round each screw to a CLEAR_SHELL inside the panel's own
-    # inner face. That disc is where the insert looks out and where the screw pulls, and 0.8 mm
-    # of PETG under a countersunk head is a part that tears rather than one that holds.
-    for (zs, a), r in zip(P.HATCH_SCREWS, skins):
-        # deep enough for the whole disc, so the shallowest corner of it still clears: the skin
-        # is sampled round the disc's rim, not just on the screw's line, because the shoulder
-        # draws in through here and a cut sized at the middle leaves the edges proud
-        rim = min([r] + [x for x in (skin_at(panel, a + d, zs + dz)
-                                     for d, dz in ((3.0, 0.0), (-3.0, 0.0), (0.0, 5.0), (0.0, -5.0)))
-                         if x is not None])
-        cutters.append(cyl_out(P.CLEAR_SHELL + 4.0, rim - P.WALL - P.CLEAR_SHELL, r + 20.0, a, zs))
-    m = cut(m, *cutters)
-    m = save(m, "torso", t0)
-
-    t1 = time.time()
-    zc = P.Z_LENS + P.WINDOW_Z_BIAS
-    xw = P.shell_r(P.TORSO_PROFILE, zc)
-    window = box(xw - 30.0, xw + 30.0, P.CAM_Y - P.WINDOW_W / 2, P.CAM_Y + P.WINDOW_W / 2,
-                 zc - P.WINDOW_H / 2, zc + P.WINDOW_H / 2)
-    probe("panel screws", "the sink's mouth on the skin at r " + ", ".join(f"{r:.2f}" for r in skins))
-    screws = [countersunk(a, zs, r) for (zs, a), r in zip(P.HATCH_SCREWS, skins)]
-    belly = cut(panel, _panel_rebate(skins), window, *screws)
-    belly = save(belly, "belly", t1)
-    return m, belly, panel
-
-
-def head():
-    t0 = time.time()
-    raw = load_raw("head")
-    z = P.Z_HEAD
-    openings = [
-        cyl_x(P.MOUTH_D / 2, 0.0, P.HEAD_R + 20.0, 0.0, P.Z_MOUTH),                  # the nozzle's bore
-        cyl_z(P.HEAD_OPENING_R, z - P.HEAD_R - 20.0, z - P.HEAD_R + 20.0),           # tube and wires
-        cyl_y(P.HEAD_BORE_D / 2, P.HEAD_R - 20.0, P.HEAD_R + 20.0, 0.0, z),          # the coupler, +Y
-    ]
-    raw = cut(raw, *openings)
-    front = box(P.FACE_SPLIT_X, FAR, -FAR, FAR, z - FAR, z + FAR)
-    back = box(-FAR, P.FACE_SPLIT_X, -FAR, FAR, z - FAR, z + FAR)
-    face = save(union(isect(raw, front), *interfaces("face")), "face", t0)
-    t1 = time.time()
-    # head_lip is drawn a CLEAR inside the wall's inner face, so unioned on its own it floats in
-    # the cavity - a ring the printer would drop on the bed. This band fills that gap, radially
-    # outward only, so the cap still seats on the lip's own surface; and it gives way to the face
-    # cap's stop block, which reaches back over the split plane.
-    r_in = P.HEAD_R - P.WALL
-    band = cut(ball(r_in + 0.3, (0.0, 0.0, z), 5), ball(r_in - P.CLEAR, (0.0, 0.0, z), 5))
-    bridge = isect(band, box(P.FACE_SPLIT_X - P.FACE_LIP_L, P.FACE_SPLIT_X, -FAR, FAR, z - FAR, z + FAR))
-    bridge = cut(bridge, dilate(face, P.CLEAR))
-    back_half = union(isect(raw, back), *interfaces("head_back"), bridge)
-    # The -Y ear's M4 bore is drilled here rather than in the part, because two things stand in
-    # it that the part cannot see: the head's own wall, which the union brings, and the stop
-    # tab, which ear_boss adds after cutting its hole. Drilled last, it clears both.
-    back_half = cut(back_half, cyl_y(P.INSERT_M4_D / 2, -P.EAR_OUT_Y - 1.0,
-                                     -P.EAR_OUT_Y + P.INSERT_M4_DEPTH, 0.0, z))
-    back_half = save(back_half, "head_back", t1)
-    hit = back_half.ray.intersects_location(np.array([[0.0, -FAR, z]]), np.array([[0.0, 1.0, 0.0]]))[0]
-    ys = sorted(float(p[1]) for p in hit)
-    probe("ear insert", f"a ray up -Y first meets {ys[0]:.1f}, so the bore is "
-                        f"{ys[0] + P.EAR_OUT_Y:.1f} mm deep from the boss's face at {-P.EAR_OUT_Y}")
-    assert ys[0] + P.EAR_OUT_Y >= P.INSERT_M4_DEPTH - 0.5, "the ear boss's insert is not open to the outside"
-    return face, back_half
-
-
-def hat():
-    t0 = time.time()
-    m = cut(load_raw("hat"), ball(P.HEAD_R + P.CLEAR, (0.0, 0.0, P.Z_HEAD), subdivisions=5))
-    return save(m, "hat", t0)
-
-
-# --- what the seam came out like --------------------------------------------------------------
-def report_seam(panel):
-    """How far the hatch lip stands off the panel it is meant to carry.
-
-    The lip is sized from TORSO_PROFILE; the panel's inner face is wherever the sculpt put the
-    skin, less a wall. Where the sculpt stands more than the lip's 1.2 mm bite proud of the
-    profile - the sleeve crossing the seam is the one place it comes close - the lip stops
-    touching and the panel's edge is carried by its neighbours instead.
-
-    Reported past the CLEAR_SHELL the rebate is meant to leave, so the number is what carries
-    no load rather than what was designed in. Sampled over the band the lip actually occupies,
-    and stopped a fifth of a degree short of the cut itself, where a ray grazes the radial face
-    and reports whatever is behind it.
-    """
-    z0, z1 = P.HATCH_Z
-    inset = math.degrees(P.HATCH_LIP_W / P.shell_r(P.TORSO_PROFILE, (z0 + z1) / 2))
-    gaps, worst = [], (-9e9, None)
-    for z in np.arange(z0 + 1.0, z1 - 1.0, 2.0):
-        for a in np.arange(P.HATCH_HALF_ANGLE - inset, P.HATCH_HALF_ANGLE - 0.19, 0.5):
-            for s in (1.0, -1.0):
-                th = math.radians(s * a)
-                hit = panel.ray.intersects_location(np.array([[0.0, 0.0, z]]),
-                                                    np.array([[math.cos(th), math.sin(th), 0.0]]))[0]
-                if not len(hit):
-                    continue
-                gap = (min(math.hypot(p[0], p[1]) for p in hit)
-                       - (P.shell_r(P.TORSO_PROFILE, z) - 1.2) - P.CLEAR_SHELL)
-                gaps.append(gap)
-                if gap > worst[0]:
-                    worst = (gap, (s * a, z))
-    gaps = np.array(gaps)
-    probe("hatch seam", f"panel unsupported over the lip, past its CLEAR_SHELL, in {len(gaps)} probes: "
-                        f"median {np.median(gaps):+.2f}, worst {worst[0]:+.2f} mm at "
-                        f"{worst[1][0]:+.1f}deg z {worst[1][1]:.0f}, over 1 mm: {(gaps > 1.0).sum()}")
-    return worst[0]
+        return mesh
+    main = max(parts, key=lambda c: abs(c.volume))
+    keep = [c for c in parts if c is main or abs(c.volume) >= limit]
+    for c in parts:
+        if c not in keep:
+            b = c.bounds.mean(axis=0)
+            print(f"       {name}: {abs(c.volume) / 1e3:.2f} cm3 of loose skin at "
+                  f"({b[0]:.0f}, {b[1]:.0f}, {b[2]:.0f}) dropped")
+    return keep[0] if len(keep) == 1 else union(*keep) if len(keep) > 1 else mesh
 
 
 def main():
-    t0 = time.time()
-    base()
-    _, belly, _ = torso_and_belly()
-    head()
-    hat()
-    report_seam(belly)
-    print(f"stl   {len(SECTIONS)} sections in {time.time() - t0:.1f} s")
+    STL.mkdir(parents=True, exist_ok=True)
+    grown = trimesh.load(CAD / "out" / "statue" / "cavity_grown.stl")
+    print(f"assemble cavity_grown {grown.volume / 1e6:.2f} L; sections from {RAW}")
+    for name in SECTIONS:
+        t0 = time.time()
+        mesh = trimesh.load(RAW / f"{name}.stl")
+        raw_volume = mesh.volume
+        parts = blanks(name, mesh, grown)
+        if parts:
+            mesh = union(mesh, *parts)
+        mesh = debris(openings(name, mesh), name)
+        back = write(mesh, STL / f"{name}.stl", quiet=True,
+                     label=f"  raw {raw_volume / 1e3:.1f} + {len(parts)} parts, {time.time() - t0:.1f} s")
+        if max(back.extents) > P.BED:
+            raise RuntimeError(f"{name} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
+        if back.body_count != 1:
+            print(f"       {name}: {back.body_count} bodies - it needs something to join them")
 
 
 if __name__ == "__main__":

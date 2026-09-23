@@ -24,11 +24,14 @@ SIZE = 900
 CLAY = (0.62, 0.60, 0.57)
 COLOURS = {
     "base_left": (0.45, 0.47, 0.52), "base_right": (0.34, 0.36, 0.40),
-    "torso": (0.66, 0.30, 0.26), "hand_left": (0.83, 0.66, 0.36), "hand_right": (0.83, 0.66, 0.36),
+    "hand_left": (0.83, 0.66, 0.36), "hand_right": (0.72, 0.56, 0.30),
+    "torso": (0.66, 0.30, 0.26), "panel_left": (0.40, 0.58, 0.40), "panel_right": (0.30, 0.48, 0.33),
     "beard": (0.78, 0.78, 0.80), "head": (0.80, 0.62, 0.52), "hat": (0.30, 0.45, 0.62),
 }
-LIFT = {"base_left": 0, "base_right": 0, "torso": 30, "hand_left": 30, "hand_right": 30,
-        "beard": 70, "head": 100, "hat": 130}
+LIFT = {"base_left": 0, "base_right": 0, "hand_left": 20, "hand_right": 20,
+        "torso": 45, "panel_left": 45, "panel_right": 45,
+        "beard": 85, "head": 115, "hat": 145}
+SPREAD = {"hand_left": 40.0, "hand_right": -40.0, "panel_left": 55.0, "panel_right": -55.0}
 
 
 def mat(name, rgb, rough=0.75):
@@ -118,12 +121,22 @@ sc, co = scene()
 obs = []
 for name, rgb in COLOURS.items():
     ob = load(RAW / f"{name}.stl", rgb)
-    ob.location = (0.0, 0.0, float(LIFT[name]))
-    if name.startswith("hand"):
-        ob.location = (0.0, 60.0 * (1 if name.endswith("left") else -1), float(LIFT[name]))
+    ob.location = (0.0, SPREAD.get(name, 0.0), float(LIFT[name]))
     obs.append(ob)
 shoot(sc, co, "sections", obs, 75.0, 45.0, pad=1.2)
 
 sc, co = scene()
 ob = halve(load(OUT / "shell.stl", CLAY))
 shoot(sc, co, "cut", [ob], 90.0, 0.0)
+
+# the bell alone, front and three-quarter: this is where the lathe shows
+for view, (rx, rz) in {"bell": (80.0, 90.0), "bell_iso": (75.0, 50.0)}.items():
+    sc, co = scene()
+    obs = [load(RAW / f"{n}.stl", COLOURS[n]) for n in ("beard", "head", "hat")]
+    shoot(sc, co, view, obs, rx, rz)
+
+# the statue as it stands: the fixed shell in clay, the bell in a colour, so the seams read
+sc, co = scene()
+obs = [load(RAW / f"{n}.stl", CLAY if n not in ("beard", "head", "hat") else (0.72, 0.42, 0.34))
+       for n in COLOURS]
+shoot(sc, co, "assembled", obs, 80.0, 70.0)

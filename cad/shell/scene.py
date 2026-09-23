@@ -16,7 +16,7 @@ sys.path.insert(0, str(CAD))
 import params as P  # noqa: E402
 
 STL = CAD / "out" / "stl"
-SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
+SECTIONS = tuple(P.SECTIONS_STATUE)         # the statue's sections, from params
 placements = json.load(open(CAD / "out" / "placements.json"))
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -57,12 +57,12 @@ groups = {
 NODS = {"nozzle_arm"}                       # only the nozzle tilts now; the head is one shell
 TURNS = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank", "pan_link"}
 
-tint = {"base": (0.55, 0.6, 0.75, 1), "torso": (0.55, 0.6, 0.75, 1), "belly": (0.6, 0.7, 0.8, 1),
-        "head_back": (0.9, 0.75, 0.65, 1), "face": (0.9, 0.75, 0.65, 1),
-        "hat": (0.8, 0.3, 0.3, 1)}
+# The bell is tinted apart from the fixed shell, because which is which is the thing to see.
+BELL = ("beard", "head", "hat")
 for n in SECTIONS:
     if (STL / f"{n}.stl").exists():
-        load(STL / f"{n}.stl", f"shell:{n}", shell, color=tint[n])
+        load(STL / f"{n}.stl", f"shell:{n}", shell,
+             color=(0.9, 0.55, 0.45, 1) if n in BELL else (0.55, 0.6, 0.75, 1))
 
 for name, info in placements.items():
     p = STL / f"{name}.stl"
@@ -100,9 +100,17 @@ def box(name, x0, x1, y0, y1, z0, z1, color):
     ob.display_type = "WIRE"
 
 
-L, W, H = P.CANISTER
-cx, cy = P.CANISTER_XY
-box("canister", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.CANISTER_Z0, P.CANISTER_Z0 + H, (0.3, 0.5, 0.9, 1))
+# The canister became a bottle in the belly; draw whichever this params has.
+if hasattr(P, "BOTTLE"):
+    L, W, H = P.BOTTLE
+    cx, cy = P.BOTTLE_XY
+    box("bottle", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.BOTTLE_Z0, P.BOTTLE_Z0 + H,
+        (0.3, 0.5, 0.9, 1))
+else:
+    L, W, H = P.CANISTER
+    cx, cy = P.CANISTER_XY
+    box("canister", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.CANISTER_Z0,
+        P.CANISTER_Z0 + H, (0.3, 0.5, 0.9, 1))
 L, W, H = P.PUMP
 cx, cy = P.PUMP_XY
 box("pump", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H, (0.3, 0.7, 0.4, 1))

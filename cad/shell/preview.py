@@ -23,9 +23,12 @@ import params as P  # noqa: E402
 
 STL = CAD / "out" / "stl"
 PNG = CAD / "out" / "preview"
-SECTIONS = ("base", "torso", "belly", "head_back", "face", "hat")
+SECTIONS = tuple(P.SECTIONS_STATUE)          # the statue's sections, from params
 MECH = "mechanism_assembly"
-CUTAWAY = ("base", "torso")                 # the belly panel comes off, these two are halved
+# Halved for the cutaway: the fixed shell. The bell is left whole over it, so the picture shows
+# what turns and what does not as well as what is inside.
+CUTAWAY = ("base_left", "base_right", "hand_left", "hand_right", "torso", "panel_left", "panel_right")
+BELL = ("beard", "head", "hat")
 SIZE = 900
 CLAY = (0.62, 0.60, 0.57)
 STEEL = (0.32, 0.34, 0.38)
@@ -140,12 +143,12 @@ def mechanism():
 
 
 def cutaway():
-    """The gnome with its belly open and its right half gone, over the mechanism inside."""
+    """The gnome with its right half gone, over the mechanism inside."""
     sc, co = scene()
     clay = _mat("clay", CLAY)
     steel = _mat("steel", STEEL, rough=0.45)
     obs = [halve(load(n, clay)) for n in CUTAWAY]
-    obs += [load(n, clay) for n in ("head_back", "face", "hat")]
+    obs += [load(n, clay) for n in BELL]
     obs.append(load(MECH, steel))
     shoot(sc, co, "cutaway", obs, views={"iso": VIEWS["iso"], "side": VIEWS["side"]})
 

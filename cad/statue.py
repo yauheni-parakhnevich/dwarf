@@ -33,6 +33,8 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 CAD = Path(__file__).resolve().parent
@@ -60,28 +62,47 @@ def tidy(mesh):
     behind them; manifold3d is entitled to leave two vertices in one place where a cutter grazed
     a facet. Either is a perfectly good solid in memory and neither survives an STL, which has no
     vertex identity and merges the pair into an edge with four faces on it. The cavity went out
-    of here unwatertight that way, and a mesh nothing can test is worse than no mesh. A crumb is
-    anything under a cubic centimetre - the smallest real section is a hand, at fifty.
+    of here unwatertight that way, and a mesh nothing can test is worse than no mesh.
+
+    Two things this learned the hard way. A crumb is not always loose: a flap welded to the body
+    along a pinched edge looks like its own component, because faces meeting at such an edge are
+    not adjacent, and dropping it leaves a hole - so a drop that breaks the solid is undone. And
+    a vertex of a degenerate triangle has no normal to move along, numpy says NaN rather than
+    saying so, and those were the twins that stayed twinned; they now move away from the mesh's
+    own centre instead, which is never the zero vector.
     """
     parts = mesh.split(only_watertight=False)
     dropped = 0
     if len(parts) > 1:
         solid = [c for c in parts if abs(c.volume) > 1000.0]
-        dropped = len(parts) - len(solid)
-        if dropped:
-            mesh = solid[0] if len(solid) == 1 else trimesh.util.concatenate(solid)
+        if len(solid) < len(parts) and solid:
+            kept = solid[0] if len(solid) == 1 else trimesh.util.concatenate(solid)
+            if kept.is_watertight:
+                dropped, mesh = len(parts) - len(solid), kept
     v = np.asarray(mesh.vertices)
     pairs = cKDTree(v).query_pairs(2e-4, output_type="ndarray")
     pinches = 0
     if len(pairs):
         mesh = mesh.copy()
-        idx = np.unique(pairs[:, 0])
-        # A vertex of a degenerate triangle has no normal, and numpy hands back NaN rather than
-        # saying so. Exported, a NaN vertex takes its faces with it - the base lost the 10 mm
-        # under its rim that way, silently - so the ones without a direction stay where they are.
-        n = np.nan_to_num(np.asarray(mesh.vertex_normals)[idx], nan=0.0, posinf=0.0, neginf=0.0)
-        mesh.vertices[idx] = mesh.vertices[idx] + n * 2e-3
-        pinches = int((np.linalg.norm(n, axis=1) > 0).sum())
+        # Twins come in threes and fours as often as in twos - three surfaces meeting at a point
+        # the lathe's cylinder grazed - so the whole cluster is found at once and every member
+        # but the first is moved by a different amount. Moving one of a pair, which is what this
+        # did before, leaves a four-way pinch four-way.
+        n = len(v)
+        graph = csr_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
+        count, label = connected_components(graph, directed=False)
+        order = np.argsort(label, kind="stable")
+        rank = np.empty(n, int)
+        rank[order] = np.arange(n) - np.maximum.accumulate(
+            np.where(np.r_[True, label[order][1:] != label[order][:-1]], np.arange(n), 0))
+        moving = np.isin(np.arange(n), np.unique(pairs)) & (rank > 0)
+        idx = np.flatnonzero(moving)
+        d = np.nan_to_num(np.asarray(mesh.vertex_normals)[idx], nan=0.0, posinf=0.0, neginf=0.0)
+        away = mesh.vertices[idx] - mesh.vertices.mean(axis=0)
+        lost = np.linalg.norm(d, axis=1) < 1e-6
+        d[lost] = away[lost] / np.maximum(np.linalg.norm(away[lost], axis=1), 1e-9)[:, None]
+        mesh.vertices[idx] = mesh.vertices[idx] + d * (2e-3 * rank[idx])[:, None]
+        pinches = len(idx)
     return mesh, dropped, pinches
 
 
@@ -110,6 +131,12 @@ def write(mesh, path, label="", quiet=False):
 
 
 # --- the frame ------------------------------------------------------------------------------
+
+def cylinder(r, z0, z1, sections=256):
+    return trimesh.creation.cylinder(radius=r, height=z1 - z0, sections=sections,
+                                     transform=trimesh.transformations.translation_matrix(
+                                         (0.0, 0.0, (z0 + z1) / 2)))
+
 
 def box(lo, hi):
     lo, hi = np.array(lo, float), np.array(hi, float)
@@ -405,53 +432,145 @@ def features(skin, cavity, shell):
 
 # --- the sections ---------------------------------------------------------------------------
 
-def sections(shell):
+def min_radius(meshes, z_lo, z_hi, step=2.0):
+    """The smallest distance from the pan axis to any of those meshes' material, over a z band."""
+    best = None
+    for z in np.arange(z_lo, z_hi + 1e-9, step):
+        for m in meshes:
+            segs = segments_at(m, z)
+            if len(segs):
+                r = float(np.hypot(segs[..., 0], segs[..., 1]).min())
+                best = r if best is None else min(best, r)
+    return best
+
+
+def max_radius(mesh, z_lo, z_hi, step=2.0):
+    """The largest radius `mesh` reaches over a z band, and the band where it passes `limit`."""
+    out = {}
+    for z in np.arange(z_lo, z_hi + 1e-9, step):
+        segs = segments_at(mesh, z)
+        if len(segs):
+            out[float(z)] = float(np.hypot(segs[..., 0], segs[..., 1]).max())
+    return out
+
+
+def lathe(bell, fixed, skin, cavity, z_lo, z_hi):
+    """Turn the bell down over the band where it would foul the fixed panels as it sweeps.
+
+    Rotation about the pan axis is the whole design: under PANEL_TOP the bell has to live inside
+    a cylinder, because anything of it at a radius the panels also occupy meets them within
+    sixty-five degrees. The radius is the panels' own closest approach to the axis less TURN_GAP,
+    measured on their cut sections rather than assumed from PANEL_Y - the coat's wall crosses
+    that plane out at the sides, not in front, so there is a little more room than the plane says.
+
+    A lathe turns a surface down; it does not punch a hole. Cutting the wall with the cylinder
+    would have done the latter - the wall is 2.4 mm thick and stands out at r 105, so the cut
+    took all of it and left the beard's front open. So the skin is turned down instead: inside
+    the band the outer solid is intersected with the cylinder and the cavity with a cylinder one
+    wall thinner, and the wall between them comes out as a cylindrical face where the beard's
+    locks used to stand proud.
+    """
+    r_fixed = min_radius(fixed, z_lo, z_hi)
+    r = r_fixed - P.TURN_GAP
+    before = max_radius(bell, z_lo, z_hi)
+    over = [z for z, rr in before.items() if rr > r]
+    if not over:
+        print(f"statue lathe    nothing to do: the bell clears r {r:.1f} under z {z_lo:.0f}..{z_hi:.0f}")
+        return bell, r, None, 0.0
+    band = (min(over), max(over))
+    slab = box((-FAR, -FAR, z_lo), (FAR, FAR, z_hi))
+    turned = trimesh.boolean.boolean_manifold(
+        [trimesh.boolean.boolean_manifold([skin, slab, cylinder(r, z_lo - 2.0, z_hi + 2.0)], "intersection"),
+         trimesh.boolean.boolean_manifold([cavity, slab, cylinder(r - P.WALL, z_lo - 2.0, z_hi + 2.0)],
+                                          "intersection")], "difference")
+    out = trimesh.boolean.boolean_manifold(
+        [trimesh.boolean.boolean_manifold([bell, slab], "difference"), turned], "union")
+    print(f"statue lathe    bell turned down to r {r:.1f} (the panels reach r {r_fixed:.1f}) over "
+          f"z {band[0]:.0f}..{band[1]:.0f}, where it stood out to r {max(before.values()):.1f}; "
+          f"{(out.volume - bell.volume) / 1e3:+.1f} cm3 of wall (locks off, a turned face on)")
+    return out, r, band, out.volume - bell.volume
+
+
+def sweep(bell, fixed, step=5.0):
+    """Turn the bell through its stops against the fixed shell and report what it touches."""
+    still = trimesh.boolean.boolean_manifold(list(fixed), "union")
+    worst = (0.0, 0.0)
+    for deg in np.arange(-P.PAN_STOP_DEG, P.PAN_STOP_DEG + 1e-9, step):
+        turned = bell.copy()
+        turned.apply_transform(trimesh.transformations.rotation_matrix(
+            math.radians(float(deg)), (0.0, 0.0, 1.0)))
+        hit = trimesh.boolean.boolean_manifold([turned, still], "intersection")
+        v = abs(hit.volume) if len(hit.faces) else 0.0
+        if v > worst[0]:
+            worst = (v, float(deg))
+    print(f"statue sweep    +-{P.PAN_STOP_DEG:.0f} deg every {step:.0f}: worst overlap "
+          f"{worst[0]:.1f} mm3 at {worst[1]:+.0f} deg")
+    return worst
+
+
+def sections(shell, skin, cavity):
     """Cut the shell into the printable raw sections.
 
-    The bell - everything above Z_TURN - turns on the shroud, so it takes the sculpted skin with
-    it and the coat below keeps a flat rim TURN_GAP under the seam. The hands come off as two
-    caps, because with them the coat is 276 mm across and the bed is 256.
+    Three things are fixed and three turn. The coat's belt ring and the two side panels - the
+    sleeves, the mittens under them and the shoulders' sides - never move; the bell, which is
+    everything above Z_TURN inside the panels and everything at all above PANEL_TOP, turns with
+    the shroud and carries the beard, the face and the hat. The mitten caps come off the base
+    halves for the bed and glue back on, and the panels glue to the ring.
+
+    The bell is lathed where it would foul the panels; `lathe` says what that cost.
     """
     RAW.mkdir(parents=True, exist_ok=True)
-    hx, hy, hz = HAND["x"], HAND["y"], HAND["z"]
-    hands = {
-        "hand_left": ((hx[0], hy, hz[0]), (hx[1], FAR, hz[1])),
-        "hand_right": ((hx[0], -FAR, hz[0]), (hx[1], -hy, hz[1])),
-    }
-    out = {}
-    for name, (lo, hi) in hands.items():
-        out[name] = cut(shell, lo, hi)
-    body = shell
-    for name in hands:
-        body = trimesh.boolean.boolean_manifold([body, out[name]], "difference")
-    top = P.Z_TURN - P.TURN_GAP           # the coat stops TURN_GAP under the bell's skirt
+    py, pb, pt = P.PANEL_Y, P.PANEL_BOTTOM, P.PANEL_TOP
+    top = P.Z_TURN - P.TURN_GAP           # the coat's ring stops TURN_GAP under the bell's rim
     chin = P.SECTIONS_STATUE["beard"][1]  # where the bell is split for the bed, at the chin
-    plan = {
-        "base_left":  ((-FAR, KERF / 2, -1.0), (FAR, FAR, P.Z_BELT)),
-        "base_right": ((-FAR, -FAR, -1.0), (FAR, -KERF / 2, P.Z_BELT)),
-        "torso":      ((-FAR, -FAR, P.Z_BELT), (FAR, FAR, top)),
-        "beard":      ((-FAR, -FAR, P.Z_TURN), (FAR, FAR, chin)),
-        "head":       ((-FAR, -FAR, chin), (FAR, FAR, P.Z_HAT)),
-        "hat":        ((-FAR, -FAR, P.Z_HAT), (FAR, FAR, P.Z_TOP + 1.0)),
+    sides = {                             # the fixed sides: panels above the belt, mittens below
+        "panel_left":  ((-FAR, py, P.Z_BELT), (FAR, FAR, pt)),
+        "panel_right": ((-FAR, -FAR, P.Z_BELT), (FAR, -py, pt)),
+        "hand_left":   ((-FAR, py, pb), (FAR, FAR, P.Z_BELT)),
+        "hand_right":  ((-FAR, -FAR, pb), (FAR, -py, P.Z_BELT)),
     }
-    for name, (lo, hi) in plan.items():
-        out[name] = cut(body, lo, hi)
+    out = {name: cut(shell, lo, hi) for name, (lo, hi) in sides.items()}
+    # the base halves keep everything below the belt except the mitten caps
+    below = cut(shell, (-FAR, -FAR, -1.0), (FAR, FAR, P.Z_BELT))
+    for name in ("hand_left", "hand_right"):
+        below = trimesh.boolean.boolean_manifold([below, out[name]], "difference")
+    out["base_left"] = cut(below, (-FAR, KERF / 2, -1.0), (FAR, FAR, P.Z_BELT))
+    out["base_right"] = cut(below, (-FAR, -FAR, -1.0), (FAR, -KERF / 2, P.Z_BELT))
+    # the ring: the coat between the panels, from the belt to under the bell's rim
+    out["torso"] = cut(shell, (-FAR, -py, P.Z_BELT), (FAR, py, top))
+    # the bell: inside the panels above Z_TURN, everything above them
+    bell = trimesh.boolean.boolean_manifold(
+        [cut(shell, (-FAR, -py, P.Z_TURN), (FAR, py, pt)),
+         cut(shell, (-FAR, -FAR, pt), (FAR, FAR, P.Z_TOP + 1.0))], "union")
+    bell, r_lathe, band, turned_off = lathe(bell, [out["panel_left"], out["panel_right"]],
+                                            skin, cavity, P.Z_TURN, pt)
+    sweep(bell, [out["torso"], out["panel_left"], out["panel_right"],
+                 out["hand_left"], out["hand_right"]])
+    rim = bell.bounds
+    print(f"statue bell     z {rim[0][2]:.1f}..{rim[1][2]:.1f}, "
+          f"{bell.volume / 1e3:.0f} cm3; rim at the sides {pt:.0f}, in front {P.Z_TURN:.0f}")
+    if rim[0][2] < P.Z_TURN - 1e-6:
+        raise RuntimeError(f"the bell dips to z {rim[0][2]:.1f}, under Z_TURN")
+    side_low = cut(bell, (-FAR, py - 1.0, -1.0), (FAR, FAR, P.Z_TOP + 1.0)).bounds[0][2]
+    if side_low < pt - 1e-6:
+        raise RuntimeError(f"the bell reaches z {side_low:.1f} outside the panels, under their top {pt}")
+    for name, (lo, hi) in {"beard": (P.Z_TURN, chin), "head": (chin, P.Z_HAT),
+                           "hat": (P.Z_HAT, P.Z_TOP + 1.0)}.items():
+        out[name] = cut(bell, (-FAR, -FAR, lo), (FAR, FAR, hi))
     total = 0.0
-    for name in ("base_left", "base_right", "torso", "hand_left", "hand_right", "beard", "head", "hat"):
+    for name in P.SECTIONS_STATUE:
         back = write(out[name], RAW / f"{name}.stl", quiet=True)
         out[name] = back
-        e = back.extents
         total += back.volume
-        if max(e) > P.BED:
-            raise RuntimeError(f"{name} is {max(e):.1f} mm across; the bed is {P.BED}")
-    # what the cuts threw away: the kerf between the base halves and the turning seam
-    waste = 0.0
-    for lo, hi in ((( -FAR, -KERF / 2, -1.0), (FAR, KERF / 2, P.Z_BELT)),
-                   ((-FAR, -FAR, top), (FAR, FAR, P.Z_TURN))):
-        waste += cut(shell, lo, hi).volume
-    err = (total + waste - shell.volume) / shell.volume
-    print(f"statue sections  {total / 1e3:.0f} cm3 + {waste / 1e3:.1f} cm3 of kerf "
-          f"vs the shell's {shell.volume / 1e3:.0f} cm3: {err * 100:+.2f} %")
+        if max(back.extents) > P.BED:
+            raise RuntimeError(f"{name} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
+    kerf = cut(shell, (-FAR, -KERF / 2, -1.0), (FAR, KERF / 2, P.Z_BELT)).volume
+    seam = cut(shell, (-FAR, -py, top), (FAR, py, P.Z_TURN)).volume
+    want = shell.volume - kerf - seam + turned_off
+    err = (total - want) / shell.volume
+    print(f"statue sections  {total / 1e3:.1f} cm3 against the shell's {shell.volume / 1e3:.1f} "
+          f"less the y-kerf ({kerf / 1e3:.1f}) and the bell's seam ({seam / 1e3:.1f}), "
+          f"plus the lathe ({turned_off / 1e3:+.1f}): {err * 100:+.2f} %")
     if abs(err) > 0.01:
         raise RuntimeError(f"the sections and the shell disagree by {err * 100:.2f} %")
     return out
@@ -466,7 +585,7 @@ def main():
     skin = outer()
     cavity, grown, shell = hollow()
     features(skin, cavity, shell)
-    sections(shell)
+    sections(shell, skin, cavity)
     preview()
 
 
