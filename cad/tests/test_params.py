@@ -33,7 +33,10 @@ def test_phone_stands_on_the_divider_and_under_the_deck():
     top = bottom + P.PHONE_L
     assert bottom > P.Z_BASE_TOP + P.DIVIDER_PROUD + P.SLED_WALL      # the tray's floor is above the divider
     assert top + 2.0 < P.Z_DECK - P.DECK_T                             # under the deck with 2 mm
-    assert P.PHONE_FRONT_X > P.RING_R_OUT                              # and outside the deck ring's annulus
+    # ... and the phone comes down through the cage's open front, not past a leg: its widest
+    # corner is well inside the half-angle the foot ring leaves clear about +X
+    corner = math.degrees(math.atan2(P.PHONE_W / 2, P.PHONE_FRONT_X))
+    assert corner < P.CAGE_FOOT_OPEN - 10.0, corner
 
 
 

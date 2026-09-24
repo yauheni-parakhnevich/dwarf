@@ -72,12 +72,21 @@ def test_the_fan_hole_clears_the_bearing_and_the_deck_rim(parts):
 
 
 def test_the_deck_cage_stands_inside_the_bells_bore(parts):
-    """It is the deck's only support now, and every millimetre of it is inside the turning bore."""
+    """It is the deck's only support now, and every millimetre of it is inside the turning bore.
+
+    The bore is not the cavity: the bell turns +-65 degrees over everything above Z_TURN, so a
+    fixed part is bound by the narrowest radius the cavity has anywhere over the bell's height -
+    the back of the coat, which every azimuth comes round to. The statue measures that; it is
+    68.8 mm at z 380, and this holds the cage a millimetre inside it.
+    """
+    from test_params import statue_reach
     cage = parts["deck_ring"]
     bb = cage.bounding_box()
     assert math.isclose(bb.min.Z, P.Z_CHASSIS + P.CHASSIS_T, abs_tol=1e-6)     # feet on the chassis
     assert math.isclose(bb.max.Z, P.Z_DECK - P.DECK_T, abs_tol=1e-6)           # head under the deck
-    assert max(math.hypot(v.X, v.Y) for v in cage.vertices()) < 70.0           # inside the bell's bore
+    bore = min(v[0] for z, v in statue_reach().items() if P.Z_TURN <= z <= bb.max.Z)
+    reach = max(math.hypot(v.X, v.Y) for v in cage.vertices())
+    assert reach <= bore - 1.0, (reach, bore)                                  # inside the turning bore
     fx, fy = P.FAN_XY                                                          # the fan hangs clear
     assert (cage & box(fx - P.FAN / 2, fx + P.FAN / 2, fy - P.FAN / 2, fy + P.FAN / 2,
                        P.Z_DECK - P.DECK_T - P.FAN_T, P.Z_DECK - P.DECK_T)).volume < 1e-6
@@ -87,6 +96,67 @@ def test_the_deck_cage_stands_inside_the_bells_bore(parts):
         assert (foot & cage).volume < 1e-6, a          # an insert up from every foot, for the chassis
         top = cyl_z(P.INSERT_D / 2 - 0.05, bb.max.Z - P.RING_T + 1.2, bb.max.Z + 1, x, y)
         assert (top & cage).volume < 1e-6, a           # ... and one down from every leg's top
+
+
+BOARD_H = 25.0     # the tallest thing standing on the electronics deck, inductors and all
+
+
+def board_stack(placed):
+    """The electronics deck with a box on it for every board EDECK_LAYOUT names."""
+    from mech.torso import _rect
+    z0 = P.Z_CHASSIS + P.CHASSIS_T + P.EDECK_STANDOFF + P.EDECK_T
+    stack = placed["electronics_deck"]
+    for name in P.EDECK_LAYOUT:
+        x0, y0, x1, y1 = _rect(P.EDECK_LAYOUT[name])
+        stack = stack + box(x0, x1, y0, y1, z0, z0 + BOARD_H)
+    return stack
+
+
+def test_the_cage_goes_on_before_the_boards_and_they_drop_in(placed):
+    """The order the machine is actually built in, swept: nothing has to be sprung past anything.
+
+    The cage is bolted to the chassis and the pair goes in; then the electronics deck comes
+    straight down onto its three standoffs, boards and all, and then the phone's sled onto its
+    two locks. Both drops are checked every 2 mm over the 60 mm above home against everything
+    that is already in the statue, and the second of them is the service lift as well: the sled
+    comes back out with the boards still bolted down, which is what the slots in the deck's
+    front edge are for.
+
+    This is what the two annuli made impossible. A ring of bore 50 under the deck and another
+    at z 304 stood in the way of a 100 x 92 board deck and a sled that reaches r 81.6, and no
+    ring wide enough for either fits inside the r 69 the turning bell leaves.
+    """
+    from mech.common import phone_body
+    fixed = {n: placed[n] for n in ("deck_ring", "chassis", "divider", "filler_neck",
+                                    "filler_cap", "belt_flange_upper", "belt_flange_lower")}
+    boards = board_stack(placed)
+    sled = placed["phone_sled"] + phone_body()
+    for what, moving, extra in (("the boards", boards, {}),
+                                ("the sled", sled, {"the boards": boards})):
+        obstacles = dict(fixed, **extra)
+        for dz in range(60, -1, -2):
+            up = moving.moved(Pos(0, 0, float(dz)))
+            for name, other in obstacles.items():
+                v = (up & other).volume
+                assert v < 1e-6, (what, f"+{dz} mm", name, v)
+
+
+def test_the_cages_feet_are_driven_before_the_chassis_goes_in(parts, placed):
+    """The cage bolts up into its own feet from under the chassis, so the two go on the bench.
+
+    Nothing of the machine stands in those four screws' way - the boards are not on yet and the
+    cage's legs are above them - but once the chassis is in the statue the divider is 7.7 mm
+    under it, and no driver fits that. Hence the order: cage onto the chassis on the bench, the
+    pair lowered in, and the chassis's own four screws driven from above afterwards.
+    """
+    from mech.torso import cage_feet
+    z = P.Z_CHASSIS
+    for x, y in cage_feet():
+        driver = cyl_z(3.0, z - 30.0, z - 0.01, x, y)
+        for name in ("chassis", "deck_ring"):
+            assert (driver & placed[name]).volume < 1e-3, (x, y, name)
+    x, y = cage_feet()[0]                               # ... and this is what says "on the bench"
+    assert (cyl_z(3.0, z - 30.0, z - 0.01, x, y) & placed["divider"]).volume > 1e-3
 
 
 def test_deck_ring_is_cut_around_the_pan_servo(parts):

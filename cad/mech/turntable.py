@@ -65,40 +65,56 @@ def _column_slot(z0, z1):
 
 @part("deck_ring")
 def deck_ring():
-    """A cage: the annulus the deck bolts to, standing on four legs down to the chassis.
+    """A cage: four legs from the chassis up to the deck, tied at their feet and nowhere else.
 
     Nothing above the coat's shoulder is fixed any more but the two side panels, and the bell
     sweeps the ground between them, so the deck cannot hang from the shell. It stands instead
     on four legs that run straight down to the chassis and bolt through it from below, inside
     the bell's bore the whole way. The deck's own four screws go into the legs' tops.
 
-    Print it legs down: 134 mm tall, the ring flat on the bed's far end, no support needed.
+    It used to carry two annuli - one under the deck and a tie at z 304 - and between them they
+    made the machine unassemblable: the electronics deck is 100 x 92 and the phone's sled reaches
+    r 81.6, and neither can be got past a ring whose bore is 50. Nor can the ring be opened to
+    let them through, because the bell turns +-65 degrees over everything above Z_TURN and the
+    coat's back sweeps in to r 69: any ring wide enough for the boards is wider than that. So
+    both are gone, and what ties the legs is a foot ring at the one height where there is room
+    for it - between the chassis's face and the boards' underside, below everything that has to
+    come down past the legs - open CAGE_FOOT_OPEN either side of +X where the sled drops in.
+
+    The legs do not need a mid-span tie. Each is a 10 mm square PETG column 134 mm long, built
+    in at the chassis and at the deck: its radius of gyration is 2.89 mm, so L/k is 46 - stocky,
+    not slender - and the Euler load of the fixed-fixed case, 4 pi^2 EI / L^2, is 3.7 kN at
+    E = 2 GPa. The four of them carry the bell, the plate and the deck, some 16 N between them.
+
+    Print it foot ring down: the ring lies flat on the bed and the four legs rise 134 mm off it,
+    no overhang anywhere and nothing to bridge. Use a brim.
     """
     z1 = P.Z_DECK - P.DECK_T
-    z0 = z1 - P.RING_T
     foot = P.Z_CHASSIS + P.CHASSIS_T
     half = P.CAGE_LEG / 2
-    ring = cyl_z(P.RING_R_OUT, z0, z1) - cyl_z(P.RING_R_IN, z0 - 1, z1 + 1)
+    cage = None
     for a in P.DECK_SCREW_ANGLES:
-        ring = ring + box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
-    # a tie low down, where the phone's front at x 62.9 is the only thing near: the fan and the
-    # servo's hangers both cut the top annulus, and without this the two -Y legs hang off nothing
-    tie = P.Z_TURN - 5.0                                # above a 30 mm driver on the boards' screws
-    ring = ring + (cyl_z(62.0, tie, tie + 8.0) - cyl_z(P.CAGE_LEG_R - half, tie - 1, tie + 9.0))
-    ring = ring - _column_slot(z0 - 1, z1 + 1)          # RING_R_IN is 50; the column reaches r 52.15
-    for hx, hy in P.pan_hangers():                      # the -Y leg shares its ground with a hanger
-        ring = ring - box(hx - P.PAN_HANGER / 2 - P.CLEAR, hx + P.PAN_HANGER / 2 + P.CLEAR,
-                          hy - P.PAN_HANGER / 2 - P.CLEAR, hy + P.PAN_HANGER / 2 + P.CLEAR, foot - 1, z1 + 1)
-    fx, fy, fh = P.FAN_XY[0], P.FAN_XY[1], P.FAN / 2    # the fan hangs through the annulus here
-    ring = ring - box(fx - fh - P.CLEAR, fx + fh + P.CLEAR, fy - fh - P.CLEAR, fy + fh + P.CLEAR,
-                      z1 - P.RING_T - P.FAN_T - P.CLEAR, z1 + 1)
-    ez = foot + P.EDECK_STANDOFF                        # ... and the -Y one a corner of the boards
-    ring = ring - box(P.EDECK_POS[0] - P.EDECK_L / 2 - P.CLEAR, P.EDECK_POS[0] + P.EDECK_L / 2 + P.CLEAR,
-                      P.EDECK_POS[1] - P.EDECK_W / 2 - P.CLEAR, P.EDECK_POS[1] + P.EDECK_W / 2 + P.CLEAR,
-                      ez - P.CLEAR, ez + P.EDECK_T + P.CLEAR)
+        leg = box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
+        cage = leg if cage is None else cage + leg
+    top = foot + P.CAGE_FOOT_T                          # the foot ring, in the legs' own band
+    ring = (cyl_z(P.CAGE_LEG_R + half, foot, top)
+            - cyl_z(P.CAGE_LEG_R - half, foot - 1, top + 1))
+    reach = P.CAGE_LEG_R + half + 5.0
+    ring = ring - _sector(-P.CAGE_FOOT_OPEN, P.CAGE_FOOT_OPEN, foot - 1, top + 1, reach)
+    cage = cage + ring
+    # the pan servo and its hangers share the -Y quarter with the legs, but only from the servo's
+    # own shaft face upward: below that the legs and the foot ring have the floor to themselves
+    for hx, hy in P.pan_hangers():
+        cage = cage - box(hx - P.PAN_HANGER / 2 - P.CLEAR, hx + P.PAN_HANGER / 2 + P.CLEAR,
+                          hy - P.PAN_HANGER / 2 - P.CLEAR, hy + P.PAN_HANGER / 2 + P.CLEAR,
+                          P.Z_PAN_SHAFT_FACE, z1 + 1)
+    fx, fy, fh = P.FAN_XY[0], P.FAN_XY[1], P.FAN / 2    # the fan hangs past the -Y legs
+    cage = cage - box(fx - fh - P.CLEAR, fx + fh + P.CLEAR, fy - fh - P.CLEAR, fy + fh + P.CLEAR,
+                      z1 - P.FAN_T - P.CLEAR, z1 + 1)
     feet = [_polar(P.CAGE_LEG_R, a, foot) for a in P.DECK_SCREW_ANGLES]
-    ring = insert_holes(ring, feet, direction="up")     # an M3 up through the chassis into each foot
-    return insert_holes(ring, [_polar(P.DECK_SCREW_R, a, z1) for a in P.DECK_SCREW_ANGLES], depth=P.RING_T - 1)
+    cage = insert_holes(cage, feet, direction="up")     # an M3 up through the chassis into each foot
+    return insert_holes(cage, [_polar(P.DECK_SCREW_R, a, z1) for a in P.DECK_SCREW_ANGLES],
+                        depth=P.RING_T - 1)
 
 
 @part("deck")

@@ -183,9 +183,9 @@ unions into a shell section, and their STLs exist only because that is how it ea
 | `floor_plate` | The wet zone's floor at `Z_FLOOR`, with the pour hole and the two leg ports | 212 × 250 × 4 | 159 | — | — into `base_left`/`base_right` |
 | `divider` | The base's lid, sealed with a PU bead. **100 % infill, six perimeters** | 147 × 209 × 8 | 197 | 250 | Flat, with a brim |
 | `sand_plug` | Closes the floor plate's pour hole | 38 × 38 × 6 | 4 | 5 | Disc down |
-| `chassis` | The dry zone's floor, bolted down by the belt screws; carries the sled and the electronics deck | 135 × 200 × 12 | 74 | 94 | Flat |
+| `chassis` | The dry zone's floor, bolted down by the belt screws; carries the sled and the electronics deck | 135 × 200 × 12 | 79 | 100 | Flat |
 | `phone_sled` | The phone drops in camera-down, screen to −X, from above. Fits one way | 26 × 73 × 136 | 31 | 39 | Upright, back to the bed |
-| `electronics_deck` | ESP32 cradle, two XL4015, three MOSFET modules, a fuse holder | 100 × 92 × 8 | 36 | 46 | Flat |
+| `electronics_deck` | ESP32 cradle, two XL4015, three MOSFET modules, a fuse holder; its front edge slotted for the sled's lock lugs | 100 × 92 × 8 | 36 | 45 | Flat |
 | `filler_neck` | Bonded into the divider's front: the cap screws onto the M22 above it, the hose pushes onto the Ø6.5 barb hanging below it | 32 × 32 × 33 | 4.9 | 6 | Flange down |
 | `tank_cradle` | The bottle's bed on the floor plate | 103 × 201 × 14 | 57 | 72 | Flat, as it stands |
 | `tank_head` | Screws onto the bottle: dip tube, float switch, vent, and the filler's Ø6.5 barb off the shoulder | 44 × 60 × 30 | 24 | 31 | Axis vertical, mouth down; one blob under the barb |
@@ -193,7 +193,7 @@ unions into a shell section, and their STLs exist only because that is how it ea
 | `pump_bracket` | Hangs the pump in the left trouser leg under the floor plate | 51 × 46 × 103 | 43 | 54 | On its plate, cage up |
 | `valve_bracket` | The same for the solenoid, in the right leg | 51 × 31 × 63 | 17 | 22 | On its plate, cage up |
 | `valve_strap` | The bar that closes the valve's cage | 51 × 12 × 3 | 2 | 2 | Flat |
-| `deck_ring` | A cage: the annulus the deck bolts to, on four legs down to the chassis | 124 × 130 × 134 | 109 | 139 | **Top annulus down**, legs up, **tree supports under the tie** |
+| `deck_ring` | A cage: four legs from the chassis to the deck, tied only at their feet | 89 × 132 × 134 | 68 | 86 | **Foot ring down**, legs up, no support |
 | `deck` | Carries the bearing, the pan servo hanging under it, the fan, and the pan hard stops | 152 × 166 × 45 | 118 | 149 | Flat, hangers up |
 | `stop_pin` | **Glued** into a Ø6.4 seat in the deck; the plate's tab runs into it. **Print two** | 6 × 6 × 16 | 0.4 | 1 | On end |
 | `plate` | The head's foundation on the bearing; carries the shaft and the stop tab | 114 × 100 × 76 | 43 | 54 | Column up |
@@ -215,11 +215,12 @@ under it in the stated pose:
   r 49.6 to r 44 across 5.6 mm at the very top of the print. The remaining 342 mm² is the
   undersides of the six radial bosses. The four Ø7 access chimneys are bored along the axis, so
   they print vertically either way up.
-- **`deck_ring` needs supports whichever way up**; "legs down, no support" was wrong. Legs down
-  leaves **4 261 mm²** — both the top annulus and the tie ring cantilever off four 12 mm legs.
-  Top annulus down leaves **2 505 mm²**: only the tie ring does. It also puts 2 700 mm² of ring
-  flat on the bed instead of four 144 mm² feet under a 134 mm tower. So: **top annulus down,
-  legs up, tree supports under the tie ring.**
+- **`deck_ring` needs no support at all now.** It used to need it whichever way up, because
+  both of its annuli cantilevered off the legs: 4 261 mm² legs down, 2 505 mm² top annulus down.
+  Both rings are gone and what is left is a foot ring with four legs standing on it, so printed
+  **foot ring down** the overhang is **50 mm²** — the ceilings of the four feet's insert bores,
+  which bridge — over 2 294 mm² of ring flat on the bed. Upside down it would be 1 995. Use a
+  brim: it is a 134 mm tower on a 12 mm-wide ring.
 - **`tank_head` still prints mouth down.** Under the old Ø22 filler stub that left 1 723 mm²
   hanging. The stub is a Ø6.5 barb off the shoulder now and the figure is **119 mm²** — a 16 mm
   cantilever 19 mm above the bed, which wants one small support blob under its end and nothing
@@ -254,7 +255,7 @@ are what the geometry actually gives, and the counts are the ones in the code.
 | `electronics_deck` | three 3.4 through | 3 | M3 into those inserts |
 | `electronics_deck` | 8 × Ø3.2 (two XL4015), 12 × Ø3.4 (three MOSFET modules) | 20 | the modules' own screws |
 | `deck_ring` | four feet, up from the bottom of each leg | 4 | M3 insert, 6 mm — up through the chassis |
-| `deck_ring` | r 60 at 82/98/235/250°, down from its top face | 4 | M3 insert, **7 mm** |
+| `deck_ring` | r 61 at 82/98/238/250°, down from its top face | 4 | M3 insert, **7 mm** |
 | `deck` | the same four, 3.4 through | 4 | M3 down from the deck's top face into the ring |
 | `deck` | r 33.94 at 45/135/225/315° | 4 | the lazy susan's own bolts |
 | `deck` | four hangers, up | 4 | M3 insert, 6 mm — the pan servo's tabs |
@@ -321,26 +322,25 @@ barb now.
 *before* it does - that barb hangs under the divider and there is no reaching it afterwards. PU
 bead in its groove, glands through it, filler neck bonded into its hole, hose on, divider down.
 
-**The belt.** The torso ring goes on with the two sleeve panels glued to it, and the four M3 × 20
-belt screws pass down through the ring's flange and the divider into the base's inserts. The
-chassis lands on the flange's four inserts, four M3 × 10.
+**The belt, with the cage already on the chassis.** Bolt the deck ring cage to the chassis on
+the bench: four M3 × 10 up through the chassis into the feet's inserts. It has to be done there
+and not in the statue — once the chassis is down, the divider is 7.7 mm under it and no driver
+fits that gap. Then the torso ring goes on with the two sleeve panels glued to it, and the four
+M3 × 20 belt screws pass down through the ring's flange and the divider into the base's inserts.
+The chassis and its cage go in as one and land on the flange's four inserts, four M3 × 10 driven
+from above, outside the cage's legs.
 
-**The phone sled and the electronics deck, before the cage.** Neither can be got past the deck
-ring afterwards. Lift the sled straight up and it meets 2.40 cm³ of cage: the tie annulus
-(r 54–62 at z 304–312) sits over its tray floor, and the top annulus (r 50–58 at z 386–394) sits
-over the path of its two lock lugs. The 100 × 92 electronics deck meets 11.17 cm³ of the same two
-rings. There is only 3.4 mm between the phone's top at 390.6 and the deck's underside at 394, so
-nothing lifts a little and tilts out either. So: phone into the sled from above, camera end down,
-screen to −X; sled down through the chassis's pocket and locked with its two screws; electronics
-deck onto its three standoffs and two bare posts behind it.
+**The boards, then the sled, both straight down through the cage.** The cage is four 10 mm legs
+on a foot ring and nothing else, so both drop past it: the electronics deck onto its three
+standoffs and two bare posts, boards and all, and then the phone in the sled from above — camera
+end down, screen to −X — and the sled down through the chassis's pocket, locked with its two
+screws. Its two lock lugs come up through the slots in the board deck's front edge, which is
+what lets the sled come out again later without disturbing the boards.
 
-**The neck and the drive.** The deck ring cage stands on the chassis, bolted up through it from
-below - and it has to be worked down past the sled and the deck rather than dropped, because the
-same 2.40 and 11.17 cm³ read the other way round: see the known limits. The deck is
-assembled on the bench - pan servo up into its four hangers, fan under it, bearing's fixed ring
-on top - and goes in **from above, through the bell's opening**, then four screws drive down into
-the cage's inserts. Plate onto the bearing, shaft bonded into the plate, stop pins **glued** into
-their Ø6.4 seats. The neck shroud goes on with four M3 × 10 into the plate: they are driven
+**The neck and the drive.** The deck is assembled on the bench - pan servo up into its four
+hangers, fan under it, bearing's fixed ring on top - and goes in **from above, through the bell's
+opening**, then four screws drive down into the cage's inserts. Plate onto the bearing, shaft
+bonded into the plate, stop pins **glued** into their Ø6.4 seats. The neck shroud goes on with four M3 × 10 into the plate: they are driven
 downward from inside the cup, and the four Ø7 chimneys bored through its roof are how a long
 driver gets onto their heads and out again. The crank, the link and the two pivot screws go on
 **last, from below**.
@@ -358,13 +358,12 @@ beard, and their heads sit flush in the skin at 60/120/240/300°.
   and z 440 — above the mouth and below the nose, not down in the `beard` section, which is where
   this used to say they were. With the bell off the whole inside is visible from the top. Most of
   it is not yet reachable.
-- **The phone is the worst job in the machine.** It comes out only after the bell, then the neck
-  shroud (four M3 × 10 down the roof's chimneys), then the plate and the shaft off the bearing,
-  then the deck (four screws into the cage), and then the cage itself (four screws up through the
-  chassis) — because the cage's tie ring and top annulus stand over the sled and there are 3.4 mm
-  between the phone's top and the deck. Only then do the sled's two screws come out and the sled
-  lift. Recalibrate aim afterwards: the lens sits behind the ring's window and a millimetre of
-  sled travel is a degree of aim.
+- **The phone** comes out after the bell, the neck shroud (four M3 × 10 down the roof's
+  chimneys), the plate and shaft off the bearing, and the deck (four screws into the cage). The
+  cage itself stays where it is, and so do the boards: undo the sled's two screws and it lifts
+  straight up through the cage, its lock lugs rising through the slots in the board deck's edge.
+  Recalibrate aim afterwards: the lens sits behind the ring's window and a millimetre of sled
+  travel is a degree of aim.
 - **Refilling** is the cap on the divider at (42, 54), reached with the bell off. Use a funnel:
   the phone's sled stands 8.8 mm from the cap's rim on the same divider, its tray floor 1 mm above
   the divider's face, and anything spilt at the cap runs straight at it. Wipe the divider before
@@ -380,16 +379,21 @@ adds up from the floor to the hat, the phone fits between the chassis and the de
 sees where the camera needs to see, and the firmware fixture's soft limits sit inside the
 mechanical hard stops.
 
-`test_mech.py` (34) builds every build123d part and checks it is one valid solid inside the bed,
+`test_mech.py` (36) builds every build123d part and checks it is one valid solid inside the bed,
 that the deck's cage stands inside the bell's bore and is cut around the pan servo, that the fan's
 hole clears the bearing and the deck's rim, that the shaft's bore takes the tube and the wires,
 that the linkage sweeps without touching anything and stays below the deck, that the phone drops
-into the sled one way only, and that no two fixed parts share a millimetre. Three of them are
+into the sled one way only, and that no two fixed parts share a millimetre. Five of them are
 new: the shroud stands inside the statue's own cavity; **its four screws have a driver path** -
 40 mm of driver down the roof's chimney onto each head, the radial insert bores are probed round
-rather than square, and the stop pin's seat is probed with a pin 0.3 mm fat; and the electronics
+rather than square, and the stop pin's seat is probed with a pin 0.3 mm fat; the electronics
 deck's three standoffs are whole, 326.7 mm³ each, with none of them standing in the chassis's
-bore for the filler cap.
+bore for the filler cap; and **the order above is swept rather than asserted** - the board deck
+with a box on it for every board, and then the sled with the phone in it, each brought down the
+60 mm to its home 2 mm at a time against everything already in the statue, 0 mm³ at every step,
+the sled's leg of it being the service lift as well. The cage's own four feet are checked the
+same way, which is how the bench sub-assembly got into the order above: the divider is what
+stands in their drivers' way.
 
 `test_wet_and_head.py` (15) is the wet zone: the tank head's thread matches the bottle and its
 ports pass its neck and the filler's bore, the threaded parts print standing up, the filler is
@@ -468,16 +472,6 @@ tilt** from −35° to +45°, in a `JET_D` envelope.
   that does to the pan servo's duty cycle or to the bearing over a season outdoors. It hangs on
   four M3 × 30 that cross 27 mm of open air between the bell's inner skin and the shroud's
   bosses, with about 2.7 mm of thread in each insert.
-- **The cage, the phone sled and the electronics deck cannot be parted by a straight lift, in
-  either order.** Vertical separability is symmetric, so the 2.40 cm³ that stops the sled coming
-  up past the deck ring is the same 2.40 cm³ that stops the ring going down over the sled, and
-  likewise the 11.17 cm³ for the electronics deck. Both are the cage's tie annulus (z 304–312)
-  and its top annulus (z 386–394). The assembly order above puts the two boards in first because
-  that is the way round with a hope of working — the cage is an open frame of four 12 mm legs and
-  two thin rings, and it can be tilted and walked down over them, while the sled has to go
-  straight down its pocket in the chassis. **Nothing in this repository proves a rigid motion
-  that does it**, and no test asserts one. The honest fixes are to split the tie ring and glue it
-  after, or to move the two rings' radii off the sled's and the deck's footprints.
 - **Spilt water at the filler runs at the phone.** The cap is at (42, 54) on the divider and the
   sled's tray is 8.8 mm from its rim on the same flat face, with 1 mm of air under the tray. Fill
   with a funnel and wipe the divider. Nothing drains it.

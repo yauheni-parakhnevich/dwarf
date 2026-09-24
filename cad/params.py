@@ -136,12 +136,14 @@ EDECK_LAYOUT = {
 # deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
 # the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
 # under its back corners would stand off the chassis and into the wall
-EDECK_HOLES = [(46.0, -34.0), (46.0, 24.0), (-8.0, 6.0)]    # in the free strip and the gap over the
+EDECK_HOLES = [(46.0, -34.0), (46.0, 27.0), (-8.0, 6.0)]    # in the free strip and the gap over the
                                                             # fuse, under the ESP32 cradle's near rail.
-                                                            # The +Y one came in from 34: at 34 it stood
-                                                            # at (46, 39) and the chassis's bore for the
-                                                            # filler cap swallowed its standoff whole
-EDECK_POSTS = [(-46.0, -34.0), (-46.0, 34.0)]               # bare posts under the deck's back end
+                                                            # The +Y one is boxed in: at 34 the chassis's
+                                                            # bore for the filler cap swallowed its
+                                                            # standoff, and under 27 it fouls the slot
+                                                            # the sled's lock lug comes up through
+EDECK_POSTS = [(-30.0, -34.0), (-30.0, 34.0)]               # bare posts under the deck's back end,
+                                                            # inboard of the cage's foot ring at r 57
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
 FAN = 40.0
@@ -158,12 +160,24 @@ SHAFT_OD, SHAFT_ID = 21.0, 13.0   # bore: tube + three wires + 2 mm, spec sectio
 DECK_R = 80.0                  # the statue's front cavity at the deck is 85; a lobe towards -Y covers the servo hangers
 DECK_LOBE = dict(angle=270.0, half=45.0, r=86.0)   # the hangers' corners reach 83.3; the cavity there is 95
 DECK_BACK_R = 72.0             # over 140..220 degrees the coat's back is only 74..80 out
-RING_R_IN = 50.0
-RING_R_OUT = 58.0              # the ring is a narrow annulus standing on four legs down to the chassis (a cage): nothing above the belt is fixed shell
-CAGE_LEG = 12.0                # the legs' square section
-CAGE_LEG_R = 60.0              # the legs' centres; the deck's screws sit on the same points
+CAGE_LEG = 10.0                # the legs' square section. At 12 a leg's inboard corner stood
+                               # 0.2 mm inside the electronics deck's edge and the deck could not
+                               # be got past it; 10 at CAGE_LEG_R 61 clears that edge by 3.8 mm
+CAGE_LEG_R = 61.0              # the legs' centres; the deck's screws sit on the same points. The
+                               # bell turns over everything above Z_TURN and the coat's back sweeps
+                               # in to r 68.7 there, so a leg's far corner - 66.2 here - may not
+                               # pass that: it is the radius, not the cavity, that is the wall
+CAGE_FOOT_T = 7.5              # the foot ring that ties the four legs, between the chassis's face
+                               # and the electronics deck's underside. It is the cage's only tie:
+                               # above it the legs are free so the boards can drop past them
+CAGE_FOOT_OPEN = 70.0          # ... and it is open +-this much about +X, where the phone's sled
+                               # comes down and where the filler cap stands
 DECK_SCREW_R = CAGE_LEG_R
-DECK_SCREW_ANGLES = [82.0, 98.0, 235.0, 250.0]    # the cage's legs: clear of the electronics deck (|y| > 50), the pan servo (x -5..35, y -70..-50), the stop pins (+-70.7 at r 60) and the phone
+DECK_SCREW_ANGLES = [82.0, 98.0, 238.0, 250.0]    # the cage's legs, and the deck's screws into their
+                               # tops: past the electronics deck's two long edges, clear of the pan
+                               # servo (x -5..35, y -70..-50) and its hangers, of the fan, of the
+                               # stop pins at +-70.7 and of the phone. The -Y pair was at 235 and
+                               # 250, where the first of them stood inside the board deck's edge
 PLATE_R = 50.0
 PLATE_T = 5.0
 Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
@@ -360,8 +374,9 @@ CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
 # the dry zone, re-stacked
 FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
 EDECK_L, EDECK_W = 100.0, 92.0             # its corner sits at 0.68 of the chassis ellipse
-EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: it clears the deck cage's
-                                            # 235 and 250 degree legs without a notch in either
+EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: the cage's two -Y legs pass its
+                                            # back edge and its two +Y legs its front one, which
+                                            # is what lets the deck drop in between them
 # the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
 SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
 SHROUD_TOP_Z = 454.0                        # closed top with a hole for the tube and wires

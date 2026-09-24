@@ -59,8 +59,10 @@ LEG_PORT_R = 12.0
 BRACKET_BOLT = 25.0          # half-pitch of the four inserts each leg bracket hangs from
 CRADLE_BOLT = (40.0, 70.0)   # the bottle cradle's four inserts in the floor plate
 
-CHASSIS_BORE_R = 18.0        # two lightening bores beside the deck, in the chassis's free lunes
-CHASSIS_BORE_Y = 62.0        # ... on the centreline's flanks, clear of the deck and the sled
+CHASSIS_BORE_R = 12.0        # two lightening bores in the chassis's free tips, past the cage's
+CHASSIS_BORE_Y = 84.0        # feet: at (0, +-62) and r 18 the +Y bore swallowed both +Y feet and
+                             # their screws went through air. Out here they clear a foot's pad by
+                             # 6 mm and the chassis's own rim by 4
 GLAND_BORE_R = 7.0           # wiring holes over the divider's glands: a 14 mm hole per bundle
 BEAD_GROOVE = (1.3, 3.3)     # the bead groove's edges, in from the divider's rim
 BOSS_R = 5.5                 # the chassis's bosses round a blind M3 insert
@@ -162,6 +164,16 @@ def _rect_centre(name):
 
 def _sled_locks():
     return [(SLED_LOCK_X, P.PHONE_Y_OFFSET + dy) for dy in (-SLED_FOOT_Y, SLED_FOOT_Y)]
+
+
+def sled_lug(x, y):
+    """One of the sled's two lock lugs, in plan: (x0, x1, y0, y1).
+
+    It reaches back from the tray to cover its screw's head, which puts its heel at x 46.6 -
+    three millimetres inside the electronics deck's front edge. The deck is slotted for it so
+    the sled can still be lifted straight out with the boards in place.
+    """
+    return (x - BOSS_R - 1.0, P.PHONE_FRONT_X - P.SLED_WALL + 1.0, y - 5.0, y + 5.0)
 
 
 def sled_pocket(grow=0.0):
@@ -305,9 +317,9 @@ def chassis():
         c = insert_holes(c, [(x, y, z1 + P.EDECK_STANDOFF)])
     for x, y in _edeck(P.EDECK_POSTS):                               # ... and two posts under its back
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
-    nx, ny = P.FILLER_NECK_XY                                        # the filler cap passes through,
-    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 2 + 2.0,    # last, so a rib cannot grow back:
-                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)      # the cap's flare and two clear
+    nx, ny = P.FILLER_NECK_XY                                        # the filler cap turns in this,
+    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 2 + 1.0,    # cut last so a rib cannot grow
+                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)      # back: the cap's flare and one
 
 
 @part("phone_sled")
@@ -351,7 +363,7 @@ def phone_sled():
     z_lug = P.Z_CHASSIS + P.CHASSIS_T + P.SLED_FOOT_H
     lug_t = P.EDECK_STANDOFF - P.SLED_FOOT_H - 0.5          # half a millimetre under the deck
     for x, y in _sled_locks():
-        tray = tray + box(x - BOSS_R - 1, x0 + 1.0, y - 5, y + 5, z_lug, z_lug + lug_t)
+        tray = tray + box(*sled_lug(x, y), z_lug, z_lug + lug_t)
         tray = tray - cyl_z(P.M3_CLEAR / 2, z_lug - 1, z_lug + lug_t + 1, x, y)
         tray = tray - cyl_z(3.2, z_lug + 1, z_lug + lug_t + 1, x, y)     # head, flush
     return tray
@@ -359,12 +371,21 @@ def phone_sled():
 
 @part("electronics_deck")
 def electronics_deck():
-    """Plate on standoffs behind the phone, laid out from EDECK_LAYOUT."""
+    """Plate on standoffs behind the phone, laid out from EDECK_LAYOUT.
+
+    Its front edge is slotted where the phone sled's two lock lugs come up past it, so the sled
+    can be lifted straight out for phone service with the boards still bolted down. The slots
+    are in the free strip between the MOSFET modules and the edge, and nothing is laid out in
+    them; the +Y standoff sits just past the upper one.
+    """
     ex, ey = P.EDECK_POS
     z0 = P.Z_CHASSIS + P.CHASSIS_T + P.EDECK_STANDOFF
     z1 = z0 + P.EDECK_T
     zc0, zc1 = z0 - 1, z1 + 1
     d = box(ex - P.EDECK_L / 2, ex + P.EDECK_L / 2, ey - P.EDECK_W / 2, ey + P.EDECK_W / 2, z0, z1)
+    for lx, ly in _sled_locks():                                     # the sled's lugs pass here
+        x0, x1, y0, y1 = sled_lug(lx, ly)
+        d = d - box(x0 - P.CLEAR, ex + P.EDECK_L / 2 + 1, y0 - 1.0, y1 + 1.0, zc0, zc1)
     for x, y in _edeck(P.EDECK_HOLES):
         d = d - cyl_z(P.M3_CLEAR / 2, zc0, zc1, x, y)
     for name in ("xl4015_a", "xl4015_b"):
