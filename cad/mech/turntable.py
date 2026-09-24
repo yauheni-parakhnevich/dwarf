@@ -20,9 +20,18 @@ def _bearing_holes(part, z0, z1):
 
 
 # The cavity's own section over the deck's band, measured from out/statue/cavity.stl at z 394,
-# 396, 398 and 400 and minimised: the nearest boundary in each ten degrees of azimuth. The mesh
-# is not an ellipse and features.json carries only four cardinals, so it is written out here;
-# move it there when the statue stage publishes a profile.
+# 396, 398 and 400 and minimised: the nearest boundary in each ten degrees of azimuth. Re-measured
+# against the current mesh the same way, these thirty-six numbers are within 0.9 mm of it, so the
+# table is not stale - it simply has nowhere better to live yet.
+#
+# out/statue/features.json cannot stand in for it. Its `reach` rows carry five numbers each - the
+# minimum and the four cardinals - and statue.py's reach() throws the other sixty-eight directions
+# away as it goes. Rebuilding this section from what survives misses badly: the minimum alone is
+# 35.6 mm short at the sides, and interpolating the cardinals round the azimuth, whether straight
+# or as a quadrant ellipse, is out by up to 22.1 and 17.3 mm and is *optimistic* almost everywhere
+# - it reads 84 mm at 150 degrees where the coat's back corner is really at 69.3, which is exactly
+# where the deck would then grow through the wall. So the literal stays. Move it to features.json
+# when the statue stage publishes the whole profile rather than four points of it.
 NECK_SECTION = {0: 82.2, 10: 83.2, 20: 88.0, 30: 93.3, 40: 89.7, 50: 89.5, 60: 98.2, 70: 103.4,
                 80: 100.9, 90: 105.1, 100: 98.7, 110: 102.5, 120: 91.1, 130: 91.1, 140: 83.0,
                 150: 69.3, 160: 69.2, 170: 74.5, 180: 75.6, 190: 74.5, 200: 69.2, 210: 69.3,

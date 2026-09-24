@@ -93,7 +93,9 @@ def test_every_section_fits_the_bed(sections, name):
 @pytest.mark.parametrize("pair", sorted(itertools.combinations(SECTIONS, 2)))
 def test_no_two_sections_share_a_millimetre(sections, pair):
     a, b = pair
-    if not np.all(sections[a].bounds[0] <= sections[b].bounds[1] + 1.0):
+    lo_a, hi_a = sections[a].bounds
+    lo_b, hi_b = sections[b].bounds
+    if not (np.all(lo_a <= hi_b + 1.0) and np.all(lo_b <= hi_a + 1.0)):
         return                                    # their bounding boxes do not even meet
     v = clash(sections[a], sections[b])
     assert v <= SHARED_MM3, f"{a} and {b} share {v:.1f} mm3"
@@ -161,7 +163,7 @@ def test_the_neck_gap_is_the_exhaust(sections):
             open_at += 1
     stray = {k: v for k, v in blocked_by.items() if any(not n.startswith("panel_") for n in k)}
     assert not stray, f"something other than the sleeves stands in the neck gap: {stray}"
-    assert open_at >= 60, f"only {open_at} of 72 directions out of the neck gap are open"
+    assert open_at >= 62, f"only {open_at} of 72 directions out of the neck gap are open"
     for deg in (0, 180):                       # the front and the back, whatever the panels do
         a = math.radians(deg)
         assert all(hits(m, (0.0, 0.0, z), (math.cos(a), math.sin(a), 0.0)) is None

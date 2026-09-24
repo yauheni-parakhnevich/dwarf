@@ -330,7 +330,8 @@ def main():
         if max(back.extents) > P.BED:
             raise RuntimeError(f"{name} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
         if back.body_count != 1:
-            print(f"       {name}: {back.body_count} bodies - it needs something to join them")
+            raise SystemExit(f"{name} came out as {back.body_count} bodies, not one printable "
+                             f"piece; it needs something to join them")
 
 
 if __name__ == "__main__":

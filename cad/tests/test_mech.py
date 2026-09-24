@@ -57,6 +57,10 @@ def test_the_fan_hole_clears_the_bearing_and_the_deck_rim(parts):
     """The hole is between the bearing's square and the deck's trimmed back, and misses both."""
     fx, fy = P.FAN_XY
     edge = abs(fx) - P.BEARING_SQ / 2 - P.FAN_HOLE_D / 2
+    # 1.0 is the design value, not a margin with slack behind it: FAN_XY was chosen to leave
+    # exactly this much deck between the fan's hole and the bearing's square, and there is
+    # nowhere for the hole to go. So the bound bites at once - move the fan inward, or widen
+    # FAN_HOLE_D, and this fails on the first millimetre rather than after a quiet drift.
     assert edge >= 1.0, edge                                    # the bearing's corner is fully seated
     reach = math.hypot(fx, fy) + P.FAN_HOLE_D / 2
     assert reach <= P.DECK_BACK_R - 1.0, reach                  # ... and the rim is still there
