@@ -15,7 +15,7 @@ from build123d import Cone, Location, Plane, Pos, Rectangle, loft
 from bd_warehouse.thread import IsoThread
 import params as P
 from mech import part
-from mech.common import cyl_z, cyl_x, cyl_y, box, insert_holes
+from mech.common import BARB_BORE_R, BARB_R, BARB_RING, barb_rings, cyl_z, cyl_x, cyl_y, box, insert_holes
 from mech.torso import FLOOR_T, bracket_bolts, cradle_bolts, leg_centres, measured_legs
 
 # --- the bottle and its cradle -----------------------------------------------------------------
@@ -38,10 +38,11 @@ CONE_R1 = 3.2
 CONE_Z1 = CONE_Z0 + (BORE_R - CONE_R1)              # 28; 45 degrees is the radius it sheds
 TANK_HEAD_L = CONE_Z1 + 2.0                         # 30; a flat end face for the port fittings
 # The filler port leaves the shoulder sideways here and points +Z once the head is laid on the
-# neck. A hose runs from it to the neck on the divider.
-STUB_R = P.FILLER_CAP_THREAD_MAJOR / 2              # 11, the hose's spigot
+# neck. A hose runs from it to the neck on the divider, and this end of it is a barb: the port
+# used to be the M22 the cap is cut to, which no hose that fits the belly could ever go over.
+STUB_R = BARB_R                                     # 3.25, the barb the filler hose pushes onto
 STUB_Z = P.CAN_THREAD_LEN + P.FILLER_D / 2          # 19; half a millimetre past the thread's end
-STUB_OUT = TANK_HEAD_R + 16.0                       # 38, sixteen millimetres of hose grip
+STUB_OUT = TANK_HEAD_R + 16.0                       # 38: HOSE_BARB_L of grip and room to bend after it
 STUB_BORE_Y = -(TANK_HEAD_R - 12.0)                 # how far in the stub's bore reaches
 # Ports up through the nose as (x, y, radius), all inside CAN_NECK_ID / 2 with a millimetre of
 # rim, a millimetre between them, and clear of the stub's bore, which runs out along -Y.
@@ -188,11 +189,14 @@ def tank_head():
     own major diameter, and it fades at both ends.
     """
     cap = cyl_z(TANK_HEAD_R, 0, TANK_HEAD_L)
-    cap = cap + cyl_y(STUB_R, -STUB_OUT, -(TANK_HEAD_R - 6.0), 0.0, STUB_Z)      # the filler stub
+    cap = cap + cyl_y(STUB_R, -STUB_OUT, -(TANK_HEAD_R - 6.0), 0.0, STUB_Z)      # the filler barb
+    for d in barb_rings():                                                       # its two ridges
+        cap = cap + cyl_y(STUB_R + P.HOSE_BARB_LIP, -STUB_OUT + d,
+                          -STUB_OUT + d + BARB_RING, 0.0, STUB_Z)
     cap = cap - cyl_z(BORE_R, -1, CONE_Z0)                                       # thread bore
     cap = cap - _cone_z(BORE_R, CONE_R1, CONE_Z0, CONE_Z1)                       # its 45 degree roof
     cap = cap + can_thread()
-    cap = cap - cyl_y(P.FILLER_D / 2, -(STUB_OUT + 1), STUB_BORE_Y, 0.0, STUB_Z)
+    cap = cap - cyl_y(BARB_BORE_R, -(STUB_OUT + 1), STUB_BORE_Y, 0.0, STUB_Z)
     for x, y, r in PORTS.values():                                               # up through the nose
         cap = cap - cyl_z(r, P.CAN_THREAD_LEN - 1, TANK_HEAD_L + 1, x, y)
     return cap

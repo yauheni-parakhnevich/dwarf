@@ -14,10 +14,11 @@ down, and the filler's cap is turned where it stands on the divider.
 import json
 import math
 from pathlib import Path
-from build123d import Axis, Ellipse, Pos, extrude
+from build123d import Axis, Cone, Ellipse, Pos, extrude
 import params as P
 from mech import part
-from mech.common import box, cyl_z, insert_holes, polar
+from mech.common import (BARB_BORE_R, BARB_R, BARB_RING, barb_rings, box, cyl_z,
+                         insert_holes, polar)
 
 # --- numbers this module chooses, which params does not ----------------------------------
 BLANK = 15.0                 # how far past the nominal skin every interface blank runs
@@ -43,6 +44,9 @@ CHASSIS_SCREW_ANGLES = [70.0, 150.0, 210.0, 330.0]
 NECK_FLANGE_R = 16.0
 NECK_BASE_Z = P.Z_BASE_TOP + P.DIVIDER_PROUD          # the divider's top face
 NECK_TOP_Z = NECK_BASE_Z + 15.0
+# the cap pours into FILLER_D and the hose takes HOSE_BARB_D - 2, so the neck funnels between
+# them at 45 degrees, inside the flange where there is metal to do it in
+NECK_FUNNEL_TOP = NECK_BASE_Z + (P.FILLER_D / 2 - BARB_BORE_R)
 # The floor plate's blank: the cavity at Z_FLOOR is 54 front, 93 back, 118/102 across (T8). A
 # full BLANK past the widest of those would be 266 across and the bed is 256, so the +Y side
 # gets 7 mm of blank instead of 15 and every other direction keeps at least 13.
@@ -77,6 +81,11 @@ TIE_SLOT_W = 3.0             # cable-tie slots
 def _ell_z(rx, ry, z0, z1, x=0.0, y=0.0):
     """An elliptical prism along Z from z0 to z1."""
     return Pos(x, y, z0) * extrude(Ellipse(rx, ry), z1 - z0)
+
+
+def _cone_z(r0, r1, z0, z1, x=0.0, y=0.0):
+    """A cone along +Z, r0 at z0 and r1 at z1."""
+    return Pos(x, y, (z0 + z1) / 2) * Cone(r0, r1, z1 - z0)
 
 
 def _ell_ring(rx, ry, rx_in, ry_in, z0, z1):
@@ -223,8 +232,9 @@ def divider():
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in P.GLAND_POS:
         d = d - cyl_z(P.GLAND_D / 2, z0 - 1, z1 + 1, x, y)
-    nx, ny = P.FILLER_NECK_XY                                    # the filler neck's spigot
-    return d - cyl_z(P.FILLER_D / 2 + 2 + P.CLEAR, z0 - 1, z1 + 1, nx, ny)
+    nx, ny = P.FILLER_NECK_XY                                    # the filler neck drops in from
+    return d - cyl_z(BARB_R + P.HOSE_BARB_LIP + P.CLEAR,         # above, ridges and all, and its
+                     z0 - 1, z1 + 1, nx, ny)                     # flange is bonded over this hole
 
 
 # --- the floor over the sand ---------------------------------------------------------------------
@@ -297,8 +307,8 @@ def chassis():
     for x, y in _edeck(P.EDECK_POSTS):                               # ... and two posts under its back
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
     nx, ny = P.FILLER_NECK_XY                                        # the filler cap passes through,
-    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 4 + 1.0,    # last, so a rib cannot grow back
-                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)
+    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 2 + 2.0,    # last, so a rib cannot grow back:
+                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)      # the cap's flare and two clear
 
 
 @part("phone_sled")
@@ -395,21 +405,26 @@ def filler_neck():
     """The filler's neck, bonded into the divider's front: the cap screws onto this.
 
     The tank head's port feeds it by a hose, so the bottle is topped up without taking the
-    divider off - reached from the top, with the bell lifted. Its spigot passes through the
-    divider and its flange sits on the divider's top face; the thread is the same M22 the cap
-    is cut to.
+    divider off - reached from the top, with the bell lifted. Above the divider it is the M22
+    the cap is cut to; below it, where a Ø18 spigot used to hang that no hose could go over, it
+    is the twin of the barb on the tank head. The two are joined by a 45 degree funnel inside
+    the flange, so the cap still pours into FILLER_D and the hose still takes HOSE_BARB_D.
     """
     from bd_warehouse.thread import IsoThread
     nx, ny = P.FILLER_NECK_XY
     bore = P.FILLER_D / 2
+    mouth = P.Z_BELT - P.HOSE_BARB_L                                       # the barb's open end,
+                                                                           # hanging under the divider
     thread = IsoThread(major_diameter=P.FILLER_CAP_THREAD_MAJOR, pitch=P.FILLER_CAP_PITCH,
                        length=NECK_TOP_Z - NECK_BASE_Z - 4.0, external=True,
                        end_finishes=("square", "square"))
     core = thread.min_radius
-    neck = cyl_z(bore + 2.0, P.Z_BELT, NECK_BASE_Z, nx, ny)                # spigot, through the divider
-                                                                           # only: a millimetre lower and
-                                                                           # it is in the base ring's bore
+    neck = cyl_z(BARB_R, mouth, NECK_BASE_Z, nx, ny)                       # the barb, up through the
+    for d in barb_rings():                                                 # divider to its top face
+        neck = neck + cyl_z(BARB_R + P.HOSE_BARB_LIP, mouth + d, mouth + d + BARB_RING, nx, ny)
     neck = neck + cyl_z(NECK_FLANGE_R, NECK_BASE_Z, NECK_BASE_Z + 3.0, nx, ny)
     neck = neck + cyl_z(core, NECK_BASE_Z, NECK_TOP_Z, nx, ny)
     neck = neck + Pos(nx, ny, NECK_BASE_Z + 3.0) * thread
-    return neck - cyl_z(bore, P.Z_BELT - 1.0, NECK_TOP_Z + 1.0, nx, ny)
+    neck = neck - cyl_z(bore, NECK_FUNNEL_TOP, NECK_TOP_Z + 1.0, nx, ny)   # what the cap pours into
+    neck = neck - _cone_z(BARB_BORE_R, bore, NECK_BASE_Z, NECK_FUNNEL_TOP, nx, ny)   # ... funnelled down
+    return neck - cyl_z(BARB_BORE_R, mouth - 1.0, NECK_BASE_Z + 0.01, nx, ny)        # to the barb's bore

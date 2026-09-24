@@ -398,6 +398,27 @@ def test_the_boards_fit_the_deck_as_laid_out():
     assert area <= P.EDECK_L * P.EDECK_W
 
 
+def test_the_electronics_decks_standoffs_are_whole(parts):
+    """Three standoffs and two posts on the chassis, and the filler's bore eats none of them.
+
+    The bore the chassis gives the filler cap is cut last, so whatever stands in it goes: with
+    the +Y standoff at (46, 39) it took all but 1.6 mm3 of 326.7, and the deck rested on two
+    points and two bare posts without anything saying so.
+    """
+    from mech.torso import STANDOFF_R, _edeck
+    chassis = parts["chassis"]
+    z0 = P.Z_CHASSIS + P.CHASSIS_T
+    bore = cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 2 + 2.0, z0 - 1,
+                 z0 + P.EDECK_STANDOFF + 1, *P.FILLER_NECK_XY)
+    for kind, points in (("standoff", _edeck(P.EDECK_HOLES)), ("post", _edeck(P.EDECK_POSTS))):
+        solid = []
+        for x, y in points:
+            column = cyl_z(STANDOFF_R, z0, z0 + P.EDECK_STANDOFF, x, y)
+            assert (column & bore).volume < 1e-6, (kind, x, y)     # none stands in the cap's way
+            solid.append((column & chassis).volume)
+        assert min(solid) >= 0.95 * max(solid), (kind, solid)      # ... and none has been eaten
+
+
 def test_the_lower_flanges_tongue_stands_outside_the_divider(parts):
     """The base's half rises past the split as a tongue for the torso's skirt to shingle over.
 

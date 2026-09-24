@@ -82,6 +82,22 @@ def phone_body():
                P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
 
 
+# --- the filler hose's two barbs, one on the tank head and one under the divider's neck --------
+BARB_R = P.HOSE_BARB_D / 2                 # the shank the hose stretches over
+BARB_BORE_R = (P.HOSE_BARB_D - 2.0) / 2    # ... bored to leave a millimetre of wall all round
+BARB_RING = 1.5                            # how wide each of the two ridges is
+
+
+def barb_rings():
+    """How far back from a barb's mouth each of its two ridges starts.
+
+    One at the mouth, where the hose's end pulls back against it, and one half the grip in.
+    Both are HOSE_BARB_LIP proud, which is what the hose has to be stretched over and what the
+    divider's hole has to pass.
+    """
+    return (1.0, 1.0 + P.HOSE_BARB_L / 2)
+
+
 def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction="down"):
     """Blind holes for heat-set inserts, drilled from each (x, y, z) point."""
     for x, y, z in points:
