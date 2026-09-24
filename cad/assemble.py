@@ -157,8 +157,6 @@ def region(name):
     flange 210 mm across reaches into exactly that corner, so a flange clipped by the box alone
     would be unioned into the base and into the cap both.
     """
-    py, pt, pb = P.PANEL_Y, P.PANEL_TOP, P.PANEL_BOTTOM
-    top = P.Z_TURN - P.TURN_GAP
     if name.startswith("base_"):
         side = 1.0 if name.endswith("left") else -1.0
         whole = box(*((-FAR, FAR, KERF / 2, FAR) if side > 0 else (-FAR, FAR, -FAR, -KERF / 2)),

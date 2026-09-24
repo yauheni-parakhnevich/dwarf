@@ -82,19 +82,6 @@ def phone_body():
                P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L)
 
 
-def pump_body():
-    L, W, H = P.PUMP
-    cx, cy = P.PUMP_XY
-    return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H)
-
-
-def valve_body():
-    """Beside the pump on the pump mount's plate, at the back of the base."""
-    L, W, H = P.VALVE
-    cx, cy = P.VALVE_XY
-    return box(cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H)
-
-
 def insert_holes(part, points, depth=P.INSERT_DEPTH, r=P.INSERT_D / 2, direction="down"):
     """Blind holes for heat-set inserts, drilled from each (x, y, z) point."""
     for x, y, z in points:
