@@ -1,4 +1,5 @@
 import math
+import pytest
 import params as P
 
 
@@ -139,21 +140,31 @@ def test_hard_stops_sit_outside_the_fixture_limits():
     assert P.TILT_STOP[0] < cfg["tiltMin"] and P.TILT_STOP[1] > cfg["tiltMax"]
 
 
-# The statue's cavity reach about the pan axis at 700 mm (fit report T8), used until the statue
-# stage writes out/statue/features.json with the same table measured on the mesh.
-def statue_reach():
+def statue_features():
+    """out/statue/features.json, or a skip.
+
+    Every layout test below is measured against the statue's own mesh. There used to be a table
+    of the fit report's numbers here to fall back on, and in a clone without cad/in/ five tests
+    quietly passed against it while the mesh said something else. test_fit.py skips without the
+    statue and so does this.
+    """
     import json
     from pathlib import Path
     f = Path(__file__).resolve().parents[1] / "out" / "statue" / "features.json"
-    if f.exists():
-        data = json.load(open(f))
-        if "reach" in data:
-            return {float(k): v for k, v in data["reach"].items()}
-    return {150: (51, 54, 93, 118, 102), 180: (90, 103, 95, 115, 115), 212: (83, 99, 83, 124, 124),
-            230: (76, 99, 78, 133, 129), 250: (77, 96, 77, 133, 129), 265: (74, 98, 76, 129, 126),
-            300: (72, 86, 72, 115, 109), 340: (71, 95, 74, 107, 98), 368: (71, 100, 74, 103, 86),
-            392: (69, 92, 81, 114, 95), 400: (71, 85, 79, 114, 95), 411: (72, 72, 76, 106, 93),
-            430: (69, 78, 76, 93, 85), 454: (57, 73, 84, 88, 75), 478: (44, 46, 86, 78, 69)}
+    if not f.exists():
+        pytest.skip("the statue stage has not written features.json")
+    return json.load(open(f))
+
+
+def statue_reach():
+    """The cavity's reach about the pan axis every 5 mm, as the statue stage measured it."""
+    return {float(k): v for k, v in statue_features()["reach"].items()}
+
+
+def statue_legs():
+    """The two trouser legs' centres and free radius, as the statue stage measured them."""
+    legs = statue_features()["legs"]
+    return {"left": tuple(legs["left"][:2]), "right": tuple(legs["right"][:2]), "r": float(legs["r"])}
 
 
 def reach_at(z):
@@ -216,14 +227,19 @@ def test_belt_ring_fits_the_coats_section():
 
 
 def test_wet_zone_envelopes_fit():
+    """The bottle in the belly, and the pump and the valve in the legs the statue measured."""
     ceiling = P.Z_BELT - P.FLANGE_LOWER_H
     assert P.BOTTLE_Z0 + P.BOTTLE[2] + 2 < ceiling                      # the bottle under the lower flange
     _, front, back, left, right = reach_at(P.BOTTLE_Z0 + P.BOTTLE[2] / 2)
     assert P.BOTTLE[1] / 2 + 2 < min(left, right)
     assert P.BOTTLE[0] / 2 + 2 < min(front, back)
-    for part, xy in ((P.PUMP, P.PUMP_XY), (P.VALVE, P.VALVE_XY)):       # pump and valve stand in the legs
-        assert math.hypot(part[0], part[1]) / 2 + 2 < P.LEG_R, part
-        assert abs(xy[1]) > P.BOTTLE[1] / 2 - 40 or True                # legs sit under the bottle's ends; the mesh decides
+    legs = statue_legs()                             # the mesh's radius, not LEG_R's 38 mm guess
+    for part in (P.PUMP, P.VALVE):                                      # each stands in one leg
+        assert math.hypot(part[0], part[1]) / 2 + 2 < legs["r"], part
+    # ... and the two legs are far enough apart that the two cages cannot touch, walls and all
+    wall = 3.0                                                          # mech.base's BRACKET_WALL
+    gap = abs(legs["left"][1] - legs["right"][1]) - (P.PUMP[1] + P.VALVE[1]) / 2 - 2 * wall
+    assert gap > 2.0, (gap, legs)
     assert P.PUMP_Z0 > P.SAND_Z_TOP and P.VALVE_Z0 > P.SAND_Z_TOP
 
 

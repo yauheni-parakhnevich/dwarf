@@ -100,37 +100,45 @@ def box(name, x0, x1, y0, y1, z0, z1, color):
     ob.display_type = "WIRE"
 
 
-# The canister became a bottle in the belly; draw whichever this params has.
-if hasattr(P, "BOTTLE"):
-    L, W, H = P.BOTTLE
-    cx, cy = P.BOTTLE_XY
-    box("bottle", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.BOTTLE_Z0, P.BOTTLE_Z0 + H,
-        (0.3, 0.5, 0.9, 1))
-else:
-    L, W, H = P.CANISTER
-    cx, cy = P.CANISTER_XY
-    box("canister", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.CANISTER_Z0,
-        P.CANISTER_Z0 + H, (0.3, 0.5, 0.9, 1))
-L, W, H = P.PUMP
-cx, cy = P.PUMP_XY
-box("pump", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H, (0.3, 0.7, 0.4, 1))
-L, W, H = P.VALVE
-cx, cy = P.VALVE_XY
-box("valve", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.PUMP_Z0, P.PUMP_Z0 + H, (0.3, 0.7, 0.4, 1))
+def legs():
+    """The trouser legs the statue stage measured, as mech.torso.measured_legs reads them.
+
+    It is read here rather than imported because this file runs inside Blender, which has no
+    build123d - and the parameters' LEG_LEFT_XY is 41 mm from where the mesh puts the leg, so
+    drawing the pump there would draw it somewhere it does not go.
+    """
+    try:
+        m = json.load(open(CAD / "out" / "statue" / "features.json"))["legs"]
+        return tuple(m["left"][:2]), tuple(m["right"][:2])
+    except (OSError, KeyError, ValueError):
+        return P.LEG_LEFT_XY, P.LEG_RIGHT_XY
+
+
+L, W, H = P.BOTTLE
+cx, cy = P.BOTTLE_XY
+box("bottle", cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, P.BOTTLE_Z0, P.BOTTLE_Z0 + H,
+    (0.3, 0.5, 0.9, 1))
+left, right = legs()
+for name, (L, W, H), (cx, cy), z0 in (("pump", P.PUMP, left, P.PUMP_Z0),
+                                      ("valve", P.VALVE, right, P.VALVE_Z0)):
+    box(name, cx - L / 2, cx + L / 2, cy - W / 2, cy + W / 2, z0, z0 + H, (0.3, 0.7, 0.4, 1))
 box("phone", P.PHONE_FRONT_X, P.PHONE_BACK_X, P.PHONE_Y_OFFSET - P.PHONE_W / 2, P.PHONE_Y_OFFSET + P.PHONE_W / 2,
     P.PHONE_BOTTOM_Z, P.PHONE_BOTTOM_Z + P.PHONE_L, (0.1, 0.1, 0.1, 1))
 Ls, Ws, Hs = P.DS3218["body"]
 sx, sy = P.PAN_SERVO_XY
 box("pan servo", sx - P.DS3218["shaft_off"], sx + Ls - P.DS3218["shaft_off"], sy - Ws / 2, sy + Ws / 2,
     P.Z_PAN_SHAFT_FACE, P.Z_PAN_SHAFT_FACE + Hs, (0.9, 0.6, 0.2, 1))
-Ls, Ws, Hs = P.MG996R["body"]
-box("tilt servo", -Ws / 2, Ws / 2, P.TILT_SERVO_SHAFT_Y - Hs, P.TILT_SERVO_SHAFT_Y,
-    P.Z_HEAD - P.MG996R["shaft_off"], P.Z_HEAD + Ls - P.MG996R["shaft_off"], (0.9, 0.6, 0.2, 1))
+# the tilt servo is a micro one on the tilt bracket now, not an MG996R in the head: shaft along
+# +Y at the nozzle's pivot, body running out to -Y and hanging downward. This is what
+# mech.turntable._tilt_servo draws, by way of mech.common.servo_body's "y" with up=False.
+Ls, Ws, Hs = P.MG92B["body"]
+off = P.MG92B["shaft_off"]
+sx, sy, sz = P.NOZZLE_PIVOT[0], -8.0, P.NOZZLE_PIVOT[2]          # SERVO_SHAFT_Y in mech.turntable
+box("tilt servo", sx - Ws / 2, sx + Ws / 2, sy - Hs, sy, sz - (Ls - off), sz + off,
+    (0.9, 0.6, 0.2, 1))
 box("bearing", -P.BEARING_SQ / 2, P.BEARING_SQ / 2, -P.BEARING_SQ / 2, P.BEARING_SQ / 2, P.Z_DECK, P.Z_DECK + P.BEARING_T, (0.6, 0.6, 0.6, 1))
 
-# viewport: solid shading with object colours, clip far enough
-for area in bpy.context.screen.areas if bpy.context.screen else []:
-    pass
+# viewport: solid shading with object colours
 sc.render.engine = "BLENDER_WORKBENCH"
 sc.display.shading.color_type = "MATERIAL"
 out = CAD / "out" / "gnome.blend"

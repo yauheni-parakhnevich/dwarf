@@ -544,8 +544,10 @@ def sections(shell, skin, cavity):
          cut(shell, (-FAR, -FAR, pt), (FAR, FAR, P.Z_TOP + 1.0))], "union")
     bell, r_lathe, band, turned_off = lathe(bell, [out["panel_left"], out["panel_right"]],
                                             skin, cavity, P.Z_TURN, pt)
-    sweep(bell, [out["torso"], out["panel_left"], out["panel_right"],
-                 out["hand_left"], out["hand_right"]])
+    worst = sweep(bell, [out["torso"], out["panel_left"], out["panel_right"],
+                         out["hand_left"], out["hand_right"]])
+    if worst[0] > 0.0:
+        raise SystemExit(f"the bell fouls the fixed shell by {worst[0]:.1f} mm3 at {worst[1]:+.0f} deg")
     rim = bell.bounds
     print(f"statue bell     z {rim[0][2]:.1f}..{rim[1][2]:.1f}, "
           f"{bell.volume / 1e3:.0f} cm3; rim at the sides {pt:.0f}, in front {P.Z_TURN:.0f}")
