@@ -4,14 +4,14 @@ The statue has no cavity below the coat's hem, so the floor is a plate at Z_FLOO
 below it is sand ballast - except the two trouser legs, which are the only tall free volumes in
 the whole statue and are where the pump and the valve now hang, on brackets bolted up under that
 plate. The bottle lies on the plate on its wide face, neck to +Y, and the tank head screws onto
-it; a hose carries the filler forward to a neck on the divider, under the belly hatch.
+it; a hose carries the filler forward to a neck on the divider.
 
-Service: the belly hatch reaches the filler cap and the sled. The bottle is 97 x 210 in plan and
-the hatch opening is 110 x 154, so the bottle does not pass it - to change the bottle the belt
-joint comes apart and the divider lifts off.
+Service: there is no hatch. The filler cap and the sled are reached from the top with the bell
+lifted off. The bottle is 97 x 195 in plan and the belt ring's bore is 120 x 182, so it does not
+pass that either - to change the bottle the belt joint comes apart and the divider lifts off.
 """
 import math
-from build123d import Cone, Location, Plane, Pos, Rectangle, Rot, loft
+from build123d import Cone, Location, Plane, Pos, Rectangle, loft
 from bd_warehouse.thread import IsoThread
 import params as P
 from mech import part
@@ -21,7 +21,6 @@ from mech.torso import FLOOR_T, bracket_bolts, cradle_bolts, leg_centres, measur
 # --- the bottle and its cradle -----------------------------------------------------------------
 PLATE_TOP = P.Z_FLOOR + FLOOR_T                     # 154, what everything wet stands on
 BOTTLE_W, BOTTLE_L, BOTTLE_H = P.BOTTLE
-NECK_L = 20.0                                       # the bottle's neck, inside its 210 of length
 BOTTLE_Y1 = P.BOTTLE_XY[1] + BOTTLE_L / 2           # 105, the neck's outer face
 BOTTLE_AXIS_Z = P.BOTTLE_Z0 + BOTTLE_H / 2          # 191.5, the neck's own axis
 PAD_T = P.BOTTLE_Z0 - PLATE_TOP                     # 2, the cradle's pad under the bottle
@@ -117,26 +116,33 @@ def can_thread():
     return Pos(0, 0, THREAD_Z) * thread
 
 
-def hose_route(r=None):
-    """The filler hose, from the tank head's stub to the neck on the divider, as cylinders.
+def hose_points():
+    """The filler hose's centreline, from the tank head's stub to the neck on the divider.
 
-    Up off the stub, forward past the bottle's +Y end - where its shoulder has drawn in far
-    enough in y that the hose is outboard of it - then in to the neck and up. The one tight leg
-    is the last across: at x 44 the hose's inboard flank is 0.6 mm off the shoulder's front face
-    and its crown 0.5 mm under the divider. Thirteen millimetres is all there is between the
-    bottle's top and the divider, so the hose is modelled at a 1.5 mm wall, not 2.
+    Straight up off the stub, in over the bottle's top to the neck's y, out to the neck's x,
+    and up into it. Every leg is in the one free band there is: over the bottle's shoulder,
+    under the divider, and inside the belt ring's bore - the ring is solid from 232 to 240
+    everywhere outside that ellipse. The run's height is the only one there is, a hose radius
+    and a millimetre over the higher of the stub's top and the bottle's own top, and HOSE_OD
+    is what will then pass under the divider. The neck came in to x 42 for the same reason:
+    the last rise has to stand inside that bore too.
+
+    The corners are the cost. Five millimetres of straight is all there is at either fitting
+    before the hose has to turn, which is HOSE_BEND_R and why that comment says what it says.
     """
-    r = P.FILLER_D / 2 + 1.5 if r is None else r
+    r = P.HOSE_OD / 2
     sx, sy = P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z
-    top = BOTTLE_AXIS_Z + STUB_OUT
+    top = BOTTLE_AXIS_Z + STUB_OUT                       # the stub's end face: the hose starts here
     nx, ny = P.FILLER_NECK_XY
-    run = P.Z_BELT - r - 0.5
-    # out past the shoulder's y before crossing: at the run's height the shoulder still reaches
-    # y 84.7, and the hose's flank has to be outboard of that
-    out = P.BOTTLE[1] / 2 - P.BOTTLE_SHOULDER_IN[1] * (run - r - (P.BOTTLE_Z0 + P.BOTTLE[2]
-          - P.BOTTLE_SHOULDER_H)) / P.BOTTLE_SHOULDER_H + r + 0.5
-    pts = [(sx, sy, top), (sx, sy, run), (sx, out, run), (nx, out, run), (nx, ny, run),
-           (nx, ny, P.Z_BELT - 1.5)]
+    run = max(top, P.BOTTLE_Z0 + P.BOTTLE[2]) + r + 1.0  # clear of the stub's top and of the bottle
+    return [(sx, sy, top), (sx, sy, run), (sx, ny, run), (nx, ny, run),
+            (nx, ny, P.Z_BELT - 0.5)]                    # ... and up to the neck's spigot
+
+
+def hose_route(r=None):
+    """The hose itself: hose_points() swept as cylinders, HOSE_OD across unless told otherwise."""
+    r = P.HOSE_OD / 2 if r is None else r
+    pts = hose_points()
     route = None
     for a, b in zip(pts, pts[1:]):
         d = math.dist(a, b)
@@ -153,7 +159,7 @@ def tank_cradle():
     """The bottle's bed on the floor plate: a pad, two ribs down its flanks and two end stops.
 
     Nothing wraps over it, so the bottle lifts straight out once the divider is off - which is
-    the only way it comes out, since it does not pass the belly hatch.
+    the only way it comes out, there being no hatch to take it through.
     """
     cx, cy = P.BOTTLE_XY
     hx, hy = BOTTLE_W / 2, BOTTLE_L / 2
@@ -194,7 +200,7 @@ def tank_head():
 
 @part("filler_cap", placement=FILLER_CAP_AT)
 def filler_cap():
-    """Closes the neck on the divider, inside the belly hatch. Retention thread, an O-ring seal."""
+    """Closes the neck on the divider, reached from the top. Retention thread, an O-ring seal."""
     cap = cyl_z(CAP_R, 0, CAP_L)
     cap = cap + _cone_z(CAP_R, CAP_R + CAP_GRIP, CAP_SEAT_Z, CAP_L)      # a grip that flares at 45
     cap = cap - cyl_z(CAP_BORE_R, -1, CAP_SEAT_Z)

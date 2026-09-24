@@ -181,8 +181,12 @@ def test_the_mouth_and_the_parting_are_open(sections):
 
 def test_the_shroud_screws_reach_their_bosses(sections):
     """Four radial screws through the bell, into the shroud that carries it."""
+    from mech.turntable import BOSS_OUT
     shroud = trimesh.load(STL / "neck_shroud.stl")
     head = sections["head"]
+    # the screw's own axis runs down the insert's bore and stops on its floor; a ray beside it
+    # lands on the boss's face, and that is what tells a boss from the bare barrel behind it
+    floor = P.SHROUD_R_OUT + BOSS_OUT - P.INSERT_DEPTH
     for deg in P.SHROUD_SCREW_ANGLES:
         a = math.radians(deg)
         out = (math.cos(a), math.sin(a), 0.0)
@@ -191,7 +195,12 @@ def test_the_shroud_screws_reach_their_bosses(sections):
         assert hits(head, start, inward) is None, f"the screw at {deg:.0f} deg has no hole"
         d = hits(shroud, start, inward)
         assert d is not None, f"the screw at {deg:.0f} deg meets no boss on the shroud"
-        assert 300.0 - d >= P.SHROUD_R_OUT - 1.0, f"the screw at {deg:.0f} deg lands inside the shroud"
+        assert abs((300.0 - d) - floor) <= 0.5, \
+            f"the screw at {deg:.0f} deg bottoms at r {300.0 - d:.1f}, not on its insert's floor {floor:.1f}"
+        beside = (start[0], start[1], P.SHROUD_SCREWS_Z + P.INSERT_D / 2 + 0.5)
+        f = hits(shroud, beside, inward)
+        assert f is not None and 300.0 - f >= P.SHROUD_R_OUT + BOSS_OUT - 1.0, \
+            f"the screw at {deg:.0f} deg has no boss under its head"
 
 
 # --- the bell turns ----------------------------------------------------------------------------

@@ -139,7 +139,7 @@ def deck():
     # The pins are separate parts, so nothing stands proud and the deck prints flat, hangers up.
     for sign in (1, -1):
         x, y, _ = _polar(P.STOP_POST_R, sign * P.stop_pin_deg(), 0)
-        d = d - cyl_z((P.STOP_POST_D + 0.1) / 2, z1 - P.STOP_PIN_DEPTH, z1 + 0.01, x, y)
+        d = d - cyl_z(P.STOP_PIN_SEAT_D / 2, z1 - P.STOP_PIN_DEPTH, z1 + 0.01, x, y)
     return d
 
 
@@ -221,18 +221,6 @@ def pan_link():
     return link - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, ax, ay) - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, bx, by)
 
 
-def jet_axis(deg):
-    """Where the jet leaves the mouth and which way it points, in (r, z), at a tilt of `deg`.
-
-    Positive is nose up, the machine's convention. The mouth is on the head's sphere, so its
-    x comes from HEAD_R and the mouth's drop below the tilt axis.
-    """
-    x0 = math.sqrt(P.HEAD_R ** 2 - (P.Z_HEAD - P.Z_MOUTH) ** 2)
-    dz = P.Z_MOUTH - P.Z_HEAD
-    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
-    return (x0 * c - dz * s, P.Z_HEAD + x0 * s + dz * c), (c, s)
-
-
 TAIL = 10.0             # how far the arm reaches back from the pivot, to the tube's barb
 BARB_D = 4.4            # the 6 x 4 tube pushes over this
 ARM_W = 12.0            # across the beard's parting, which is NOZZLE_SLOT_W wide
@@ -287,10 +275,19 @@ def _radial_span(r0, r1, deg, z, half):
     return bar & cyl_z(r1, z - half, z + half)
 
 
+def _radial_bore(r0, r1, deg, z, rad):
+    """A drilled hole lying along the radius at azimuth `deg`, from r0 to r1, `rad` in radius.
+
+    An insert is a cylinder, so its bore is one too: a box-shaped cutter left a square hole a
+    heat-set insert only touches at four corners.
+    """
+    return cyl_x(rad, r0, r1, 0.0, z).rotate(Axis.Z, deg)
+
+
 def _radial_boss(part, r, deg, z):
     """A boss on the shroud's outside with an insert bored radially inward from its face."""
     part = part + _radial_span(r - 3.0, r + BOSS_OUT, deg, z, BOSS_D / 2)
-    return part - _radial_span(r + BOSS_OUT - P.INSERT_DEPTH, r + BOSS_OUT + 1, deg, z, P.INSERT_D / 2)
+    return part - _radial_bore(r + BOSS_OUT - P.INSERT_DEPTH, r + BOSS_OUT + 1, deg, z, P.INSERT_D / 2)
 
 
 @part("neck_shroud")
@@ -300,6 +297,11 @@ def neck_shroud():
     A plain cup now that nothing nods: a ring on the plate's rim held by the same four screws,
     a barrel up to a closed top, an opening at the front the nozzle arm's tail swings in, and
     four radial inserts the head shell screws into from outside, hidden in the beard's locks.
+
+    The four screws into the plate are driven downward from inside the cup, with 34 mm of barrel
+    and a closed roof above them, so the roof is bored SHROUD_ACCESS_D over each one and the
+    counterbore is carried the whole way up: a driver goes down a chimney onto the head. The
+    bores are at the ring's screw circle, which is nowhere near the jet's notch at the front.
     """
     r, w = P.SHROUD_R_OUT, P.WALL
     z0, z1 = P.SHROUD_BASE_Z, P.SHROUD_TOP_Z
@@ -313,6 +315,7 @@ def neck_shroud():
         x, y = polar(P.YOKE_SCREW_R, a)
         s = s - cyl_z(P.M3_CLEAR / 2, z0 - 1, z0 + 6, x, y)
         s = s - cyl_z(head_d / 2, base_top, z0 + 8, x, y)          # head sunk, 3 mm of ring left
+        s = s - cyl_z(P.SHROUD_ACCESS_D / 2, z0 + 8 - 0.01, z1 + 1, x, y)     # ... and the driver's way out
     for a in P.SHROUD_SCREW_ANGLES:                                # the head shell's four screws
         s = _radial_boss(s, r, a, P.SHROUD_SCREWS_Z)
     for a in BRACKET_SCREW_ANGLES:                                 # ... and the tilt bracket's two

@@ -37,9 +37,9 @@ BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
 # corners.
 CHASSIS_SCREW_ANGLES = [70.0, 150.0, 210.0, 330.0]
 # The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
-# stood inside the sled's tray, which is at x 59.9 .. 73 from z 249.3 up; beside the tray it
-# needs |y| >= 36.55 + 18 (the cap's grip) and it sits at y -58. That is 44 degrees round from
-# the front. With the turning bell off, the cap is turned from straight above it.
+# stood inside the sled's tray, which reaches y 36.85 from z 249.3 up; beside the tray the cap
+# needs |y| >= 36.85 + 16 (its grip) and it sits at y 54. Its x is set by the hose rather than
+# by anything up here: see HOSE_OD. With the turning bell off, the cap is turned from above it.
 NECK_FLANGE_R = 16.0
 NECK_BASE_Z = P.Z_BASE_TOP + P.DIVIDER_PROUD          # the divider's top face
 NECK_TOP_Z = NECK_BASE_Z + 15.0
@@ -196,8 +196,8 @@ def belt_flange_upper():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
     ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
-    # full height now: the belt screws moved to 55 degrees and the chassis's to 70, so the
-    # nearest of either is 28 mm away and the notch takes nothing with it
+    # full height now: the belt screws sit at 55 degrees and the chassis's at 70, so the nearest
+    # of either is 26.5 mm from the neck and the notch takes nothing with it
     ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, z1 + 1, *P.FILLER_NECK_XY)
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)

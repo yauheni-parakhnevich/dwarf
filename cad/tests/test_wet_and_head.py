@@ -136,26 +136,31 @@ def test_the_filler_is_reached_from_above(parts, placed):
 
 
 def test_the_filler_hose_reaches_the_neck(placed):
-    """From the tank head's stub, forward over the bottle's neck end, down its front, up the neck.
+    """From the tank head's stub, up beside the bottle's neck, across its shoulder, up the neck.
 
-    The bottle is not in the clash list and that is a finding, not an oversight: between its
-    shoulder at 227 and the divider's underside at 240 there are thirteen millimetres, and a
-    hose with a FILLER_D bore is eighteen across. The route's last leg, in to the neck at
-    x 44, therefore grazes the shoulder's inboard flank - 930 mm3 of it. Either the filler
-    hose is thinner than FILLER_D says, or the neck goes further out than the belt ring's
-    bore allows. The report for this commit has the numbers.
+    Two gaps size this hose and there is nothing else to give. It rises beside the stub at
+    y 86.5, where the belt ring's bore reaches only y 90.9, so it cannot be more than 8.9 mm
+    across there; and it crosses the thirteen millimetres between the bottle's top at 227 and
+    the divider's underside at 240. HOSE_OD is what is left. The neck came in to x 42 for the
+    same reason: at 48 it sat a fifth of a millimetre inside that bore and nothing could rise
+    to it. The route now touches nothing at all.
     """
-    from mech.base import bottle_envelope, hose_route
+    from mech.base import BOTTLE_AXIS_Z, STUB_OUT, bottle_envelope, hose_points, hose_route
     route = hose_route()
     bb = route.bounding_box()
-    assert bb.max.Z <= P.Z_BELT + 3.0                                  # it stops in the divider's hole
-    for name in ("tank_cradle", "pump_bracket", "valve_bracket", "phone_sled", "divider"):
-        assert (route & placed[name]).volume < 1e-6, name
-    # the barrel is clear all the way down the front; only the shoulder's flank is not
-    barrel = box(-P.BOTTLE[0] / 2, P.BOTTLE[0] / 2, -P.BOTTLE[1] / 2, P.BOTTLE[1] / 2,
-                 P.BOTTLE_Z0, P.BOTTLE_Z0 + P.BOTTLE[2] - P.BOTTLE_SHOULDER_H)
-    assert (route & barrel).volume < 1e-6
-    assert (route & bottle_envelope()).volume < 2000.0                 # ... and the graze is small
+    assert math.isclose(bb.min.Z, BOTTLE_AXIS_Z + STUB_OUT, abs_tol=1e-6)   # it starts on the stub
+    assert bb.max.Z <= P.Z_BELT + 3.0                                  # ... and stops in the neck's hole
+    for name in ("tank_cradle", "tank_head", "pump_bracket", "valve_bracket", "phone_sled",
+                 "divider", "chassis", "belt_flange_lower", "belt_flange_upper", "deck_ring",
+                 "filler_neck", "floor_plate"):
+        assert (route & placed[name]).volume == 0.0, name
+    assert (route & bottle_envelope()).volume == 0.0
+    # ... and not by a whisker: a hose a millimetre fatter all round still misses the bottle
+    assert (hose_route(P.HOSE_OD / 2 + 1.0) & bottle_envelope()).volume == 0.0
+    # no corner turns tighter than the hose is allowed to: every straight leg is HOSE_BEND_R
+    pts = hose_points()
+    for a, b in zip(pts, pts[1:]):
+        assert math.dist(a, b) >= P.HOSE_BEND_R - 1e-9, (a, b, math.dist(a, b))
 
 
 # --- the bottle, its cradle and the floor plate ------------------------------------------------------

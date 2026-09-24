@@ -1,13 +1,41 @@
 import itertools
 import math
-from build123d import Axis, Location, Pos, Sphere, Vertex
+from build123d import Axis, Location, Plane, Pos, Sphere, Vertex
 import params as P
 from mech.common import box, cyl_x, cyl_z, cyl_y, polar, servo_body, skin_solid
-from mech.turntable import BOSS_OUT, _radial_span
+from mech.turntable import BOSS_OUT, _radial_bore, _radial_span
 
 
 def _bb(p):
     return p.bounding_box().size
+
+
+def _driver(head, direction, r=3.0, length=40.0):
+    """A driver of radius `r`, `length` long, on a screw head at `head` pointing `direction`."""
+    mid = tuple(h + d * length / 2 for h, d in zip(head, direction))
+    return Plane(origin=mid, z_dir=direction) * Pos(0, 0, -length / 2) * cyl_z(r, 0, length)
+
+
+def shroud_screws():
+    """Every screw inside or into the neck shroud, as (head, the way its driver comes in).
+
+    Four M3 x 10 hold the shroud down onto the plate: they are driven from inside the cup, so
+    their drivers run up the inside of the barrel and out through the roof. The four that carry
+    the bell and the two that carry the tilt bracket are radial, driven inward from outside, so
+    their drivers stand off the boss's face.
+    """
+    out = []
+    head_z = P.SHROUD_BASE_Z + 3.0 + P.SCREW_HEAD_H         # the ring's face, plus the sunk head
+    for a in P.YOKE_SCREW_ANGLES:
+        x, y = polar(P.YOKE_SCREW_R, a)
+        out.append(((x, y, head_z), (0.0, 0.0, 1.0), f"shroud screw at {a:.0f} deg"))
+    from mech.turntable import BRACKET_SCREW_ANGLES
+    face = P.SHROUD_R_OUT + BOSS_OUT
+    for a, z, what in ([(a, P.SHROUD_SCREWS_Z, "bell") for a in P.SHROUD_SCREW_ANGLES]
+                       + [(a, P.NOZZLE_PIVOT[2], "bracket") for a in BRACKET_SCREW_ANGLES]):
+        ux, uy = math.cos(math.radians(a)), math.sin(math.radians(a))
+        out.append(((face * ux, face * uy, z), (ux, uy, 0.0), f"{what} screw at {a:.0f} deg"))
+    return out
 
 
 def test_every_part_is_one_valid_solid(parts):
@@ -148,22 +176,37 @@ def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
 
 
 def test_stop_pins_seat_in_the_deck(parts):
+    """Each pin drops into its own seat, and the seat is a glue fit rather than a press one."""
     pin = parts["stop_pin"]
     assert math.isclose(pin.bounding_box().max.Z, P.STOP_PIN_TOP, abs_tol=1e-6)
     for p in (pin, pin.rotate(Axis.Z, -2 * P.stop_pin_deg())):
         assert (p & parts["deck"]).volume == 0                           # each sits in its own hole
+    # a printed pin comes out over size; the seat takes one 0.3 mm fat without being driven in
+    assert P.STOP_PIN_SEAT_D - P.STOP_POST_D >= 0.4, P.STOP_PIN_SEAT_D
+    x, y = polar(P.STOP_POST_R, P.stop_pin_deg())
+    fat = cyl_z((P.STOP_POST_D + 0.3) / 2, P.Z_DECK - P.STOP_PIN_DEPTH, P.Z_DECK, x, y)
+    assert (fat & parts["deck"]).volume < 1e-6
 
 
-def test_the_shroud_fits_the_statues_cavity_and_takes_its_screws(parts):
-    """The shroud is a body of revolution inside the beard: the chin is the tightest place."""
-    import json
-    from pathlib import Path
-    cavity = {"chin": 57.0, "z400": 71.0}                      # from the fit report, at 700 mm
-    feat = Path(__file__).resolve().parents[1] / "out/statue/features.json"
-    if feat.exists():
-        cavity.update(json.loads(feat.read_text()).get("cavity_r", {}))
-    for where, r in cavity.items():
-        assert P.SHROUD_R_OUT + 3.0 <= r, (where, r)
+def test_the_shroud_fits_the_statues_cavity():
+    """The shroud is a body of revolution inside the beard: the chin is the tightest place.
+
+    The radii are the statue's own, read out of the reach table the statue stage measures on the
+    mesh - the table's narrowest direction at each height - so this skips without a statue
+    rather than passing against a number typed in here.
+    """
+    from test_params import reach_at, statue_features
+    chin = statue_features()["features"]["chin"]          # skips if the statue has not run
+    for where, z in (("chin", chin), ("z400", 400.0)):
+        assert P.SHROUD_R_OUT + 3.0 <= reach_at(z)[0], (where, z, reach_at(z)[0])
+
+
+def test_the_shroud_takes_its_screws(parts):
+    """Four down into the plate, four radial for the bell and two for the tilt bracket.
+
+    Every radial bore is a drilled cylinder, not the square a box-shaped cutter used to leave:
+    an insert of INSERT_D goes in it, and a 4 x 4 prism of the same depth does not.
+    """
     shroud = parts["neck_shroud"]
     bb = shroud.bounding_box()
     assert math.isclose(bb.min.Z, P.SHROUD_BASE_Z, abs_tol=1e-6)
@@ -172,10 +215,15 @@ def test_the_shroud_fits_the_statues_cavity_and_takes_its_screws(parts):
         x, y = polar(P.YOKE_SCREW_R, a)
         shank = cyl_z(P.M3_CLEAR / 2 - 0.05, P.SHROUD_BASE_Z - 1, P.SHROUD_BASE_Z + 3, x, y)
         assert (shank & shroud).volume < 1e-6, a
-    for a in P.SHROUD_SCREW_ANGLES:                            # ... and the head shell's, radially
-        probe = _radial_span(P.SHROUD_R_OUT + BOSS_OUT - P.INSERT_DEPTH + 0.2,
-                             P.SHROUD_R_OUT + BOSS_OUT + 1, a, P.SHROUD_SCREWS_Z, P.INSERT_D / 2 - 0.05)
-        assert (probe & shroud).volume < 1e-6, a
+    from mech.turntable import BRACKET_SCREW_ANGLES
+    r0 = P.SHROUD_R_OUT + BOSS_OUT - P.INSERT_DEPTH
+    r1 = P.SHROUD_R_OUT + BOSS_OUT
+    for a, z in ([(a, P.SHROUD_SCREWS_Z) for a in P.SHROUD_SCREW_ANGLES]
+                 + [(a, P.NOZZLE_PIVOT[2]) for a in BRACKET_SCREW_ANGLES]):
+        bore = _radial_bore(r0 + 0.2, r1 + 1, a, z, P.INSERT_D / 2 - 0.05)
+        assert (bore & shroud).volume < 1e-6, (a, z, "the insert's bore is not clear")
+        square = _radial_span(r0 + 0.2, r1 - 0.2, a, z, P.INSERT_D / 2)
+        assert (square & shroud).volume > 1e-3, (a, z, "the bore is square, not drilled")
 
 
 def test_the_deck_is_lobed_to_the_coat(parts):
@@ -453,7 +501,13 @@ def test_belt_screw_length(parts):
 
 
 def test_chassis_and_deck_screws_have_driver_paths(parts):
-    """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else."""
+    """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else.
+
+    The shroud's screws are held to the same rule, with 40 mm of driver, because the bell they
+    carry is 573 g and they are the only thing under it: the four that hold the shroud to the
+    plate are driven downward from inside the cup, so the roof is bored over each of them, and
+    the six radial ones are driven inward from outside.
+    """
     from mech.common import phone_body
     from mech.torso import _edeck
     obstacles = dict(parts)
@@ -467,6 +521,11 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
         driver = cyl_z(3.0, z, z + 30.0, x, y)
         for name, other in obstacles.items():
             assert (driver & other).volume < 1e-3, (x, y, name)
+    for head, direction, what in shroud_screws():
+        driver = _driver(head, direction)
+        for name, other in obstacles.items():
+            v = (driver & other).volume
+            assert v < 1e-3, (what, name, v)
 
 
 

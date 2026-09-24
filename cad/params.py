@@ -213,6 +213,7 @@ PAN_SERVO_FIT = 0.5                          # the body slides up between the ha
 PAN_STOP_DEG = 65.0
 STOP_POST_R = 60.0
 STOP_POST_D = 6.0
+STOP_PIN_SEAT_D = STOP_POST_D + 0.4    # the seat in the deck; glue the pin in, do not press it
 
 
 def stop_pin_deg():
@@ -335,8 +336,19 @@ FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
 FILLER_VIA_TOP = True                       # a hose from the tank head's port to a filler neck in the divider's front, reached from the top with the bell off
-FILLER_NECK_XY = (48.0, 54.0)               # on the divider at the ring's bore, on the bottle's neck side, beside the sled's path; the ring is notched for it, the hose comes up in front of the bottle's end
-                                            # stand inside the sled's tray. See the note in mech/torso.py
+HOSE_OD = 8.0                               # the filler hose, tank head to neck. Two gaps size it and
+                                            # neither gives: it rises beside the stub at y 86.5, where
+                                            # the belt ring's bore is only 90.9 out, and it crosses the
+                                            # 13 mm between the bottle's top (227) and the divider (240)
+HOSE_BEND_R = 5.0                           # the tightest corner the route turns, at both fittings, and
+                                            # all the 13 mm leaves. A plain PVC hose of HOSE_OD wants
+                                            # three times that: buy a corrugated one, or an elbow on the
+                                            # tank head's stub and another under the neck
+FILLER_NECK_XY = (42.0, 54.0)               # on the divider, on the bottle's neck side and beside the sled's
+                                            # path; the ring is notched for it. x is what lets the hose rise
+                                            # to it inside the belt ring's bore - at 48 the neck sat 0.2 mm
+                                            # inside that ellipse and no hose could reach it from below.
+                                            # y keeps the cap out of the sled's tray. See mech/torso.py
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 SAND_Z_TOP = Z_FLOOR - PUMP[2] - 12.0       # sand fills the boots up to here, under the pump and the valve
@@ -396,6 +408,9 @@ SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chi
 SHROUD_TOP_Z = 454.0                        # closed top with a hole for the tube and wires
 SHROUD_SCREWS_Z = 440.0                     # four radial M3 from outside, hidden in the beard's locks
 SHROUD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
+SHROUD_ACCESS_D = 7.0                       # the roof is bored this wide over each of the four screws
+                                            # that hold the shroud down: they are driven from inside
+                                            # the cup and the driver leaves through the roof
 # the nozzle tilts on a micro servo inside the beard, through the beard's parting under the mouth
 MG92B = dict(body=(22.8, 12.4, 28.5), tab_span=32.5, tab_t=2.0, tab_z=19.0, shaft_off=6.0, holes=(27.8, 0.0))
 MICRO_HORN_D = 14.0
