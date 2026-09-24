@@ -81,6 +81,12 @@ def deck_ring():
     for it - between the chassis's face and the boards' underside, below everything that has to
     come down past the legs - open CAGE_FOOT_OPEN either side of +X where the sled drops in.
 
+    What binds the legs' radius is not the cavity but the bell's own inner wall as it comes
+    round: the coat's back is 69 mm out where its flanks are 105, and 130 degrees of pan bring
+    that back over every azimuth the legs stand at. test_shell turns the built bell against the
+    built cage every 5 degrees and measures it - 2.98 mm at the nearest, at +30 degrees - and
+    test_mech keeps the same rule cheaply, against the statue's own reach table.
+
     The legs do not need a mid-span tie. Each is a 10 mm square PETG column 134 mm long, built
     in at the chassis and at the deck: its radius of gyration is 2.89 mm, so L/k is 46 - stocky,
     not slender - and the Euler load of the fixed-fixed case, 4 pi^2 EI / L^2, is 3.7 kN at

@@ -415,7 +415,7 @@ for `cavity.stl` against `WALL`, three for `cavity_grown.stl` against `WALL - 1.
 current build measures: minimum 2.13 mm and 0.89 mm, both medians still nominal, where before
 the keep-out pass both minima were 0.00.
 
-`test_shell.py` (94) needs `statue` and `assemble` to have run. Every section is watertight,
+`test_shell.py` (96) needs `statue` and `assemble` to have run. Every section is watertight,
 winding-consistent, **one body** and within the bed; no two of the ten share a millimetre;
 every interface piece the assembler welded in is inside the section it went into; the window,
 the intake, the mouth and the parting are open, and the parting is open at every tilt; the four
@@ -424,7 +424,12 @@ face beside each head — an assertion a shroud with no bosses at all used to pa
 ±65° without touching anything fixed**, its rim never dips under `Z_TURN` nor reaches outside the
 panels below their tops; **the neck gap is the exhaust** - 62 of 72 directions out of it are
 open, and the ten that are not are the sleeve panels; and **the jet leaves the statue at every
-tilt** from −35° to +45°, in a `JET_D` envelope.
+tilt** from −35° to +45°, in a `JET_D` envelope. Two of them are new and they are about what
+the bell turns **over** rather than beside: the built bell is swept against every printed
+mechanism part that does not turn with the plate and stands over its rim — the cage, the phone
+sled and the two stop pins — 0 mm³ at all 27 angles, with the least gap measured at each
+(2.98 mm from the cage at +30°); and the turntable deck, which that sweep found fouls it, is a
+strict xfail carrying the number until the deck is redrawn.
 
 ## Known limits
 
@@ -468,6 +473,17 @@ tilt** from −35° to +45°, in a `JET_D` envelope.
   bottle does not go in at all. Tighter still inside: the fan's hole in the deck clears the lazy
   susan's bolt circle by **1.0 mm**, and the plate's hanging column passes the pan servo by
   about a millimetre.
+- **The bell's back sweeps through the turntable deck.** `_neck_prism` trims the deck to the
+  statue's own section at z 394–400, so its rim touches the coat's inner wall all the way round
+  — and that wall is 69 mm out at the back and 105 at the flanks. Turn the bell and the back
+  comes onto the deck's lobe: up to **1.8 cm³ at the +65° stop**, 1.1 at −65, all of it the rim
+  between r 69 and the deck's own 86, plus one of the pan servo's hangers at the −Y end of the
+  arc. `test_the_bell_clears_the_turntable_deck` is in the suite as a strict xfail, so it will
+  start failing the day it is fixed. The fix is not small: inside r 69 there is no room for the
+  fan's Ø36 hole at (−49, −20) or for the pan servo's four hangers, so the deck, the fan and the
+  servo's position all move together. Nothing else the bell turns over is touched — the cage
+  clears it by 2.98 mm, the sled by 10.6 and the stop pins by 12.0, all measured by sweeping the
+  built meshes.
 - **The bell is 573 g and turns on a 52 mm shroud.** Nothing in this repository has checked what
   that does to the pan servo's duty cycle or to the bearing over a season outdoors. It hangs on
   four M3 × 30 that cross 27 mm of open air between the bell's inner skin and the shroud's

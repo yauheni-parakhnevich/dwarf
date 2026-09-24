@@ -206,6 +206,96 @@ def test_the_shroud_screws_reach_their_bosses(sections):
 
 
 # --- the bell turns ----------------------------------------------------------------------------
+# What turns with the plate, from mech.common.assembly's own grouping: everything else that the
+# mechanism leaves standing above the bell's rim is what the bell has to turn over.
+TURNS_WITH_THE_HEAD = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank",
+                       "pan_link", "nozzle_arm"}
+SWEEP = tuple(range(-int(P.PAN_STOP_DEG), int(P.PAN_STOP_DEG) + 1, 5))
+
+
+@pytest.fixture(scope="session")
+def fixed_mech():
+    """Every printed mechanism part that does not turn and stands over the bell's rim, placed.
+
+    Read out of out/placements.json so this is not a second copy of where the parts go. The
+    stop pin is printed once and fitted twice, so its mirror is added the way assembly() does.
+    """
+    import json
+    places = json.loads((CAD / "out" / "placements.json").read_text())
+    out = {}
+    for name, info in sorted(places.items()):
+        if name in TURNS_WITH_THE_HEAD or not (STL / f"{name}.stl").exists():
+            continue
+        m = trimesh.load(STL / f"{name}.stl")
+        m.apply_transform(np.array(info["matrix"], float))
+        if m.bounds[1][2] <= P.Z_TURN:
+            continue                                   # it is under the bell, not inside it
+        out[name] = m
+        if name == "stop_pin":
+            twin = m.copy()
+            twin.apply_transform(np.diag([1.0, -1.0, 1.0, 1.0]))
+            out["stop_pin_mirrored"] = twin
+    assert "deck_ring" in out and "deck" in out, sorted(out)
+    return out
+
+
+def bell_gap(query, mesh, deg):
+    """The least distance from `mesh` to the bell with the bell turned `deg`, in millimetres.
+
+    The bell is rigid and its query tree costs seconds to build, so it is built once at rest
+    and the points are turned the other way instead. Only the points that could be nearest are
+    asked about - over the bell's rim, and outside the bore of anything inboard.
+    """
+    v = mesh.vertices
+    near = v[(v[:, 2] >= P.Z_TURN - 10.0) & (np.hypot(v[:, 0], v[:, 1]) >= 45.0)]
+    a = math.radians(-deg)
+    c, s = math.cos(a), math.sin(a)
+    spun = near @ np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]])
+    return float(query.on_surface(spun)[1].min())
+
+
+def test_the_bell_turns_over_the_fixed_mechanism(bell, fixed_mech):
+    """The bell against the mechanism it turns over, swept, not inferred from a radius.
+
+    test_mech holds the cage inside the narrowest radius the statue's reach table has over the
+    bell's height, which is a proxy: the real question is what the bell's own inner wall does as
+    it comes round, and this asks it. Every 5 degrees of the pan travel, the built bell is turned
+    and intersected with each fixed part, and then measured: the nearest the cage comes to the
+    bell is **2.98 mm at +30 degrees**, the sled 10.6 and the stop pins 12.0.
+
+    The turntable deck is the one part not in here. It fouls the bell, and has its own test.
+    """
+    for deg in SWEEP:
+        spun = turned(bell, deg)
+        for name, part in fixed_mech.items():
+            if name == "deck":
+                continue
+            v = clash(spun, part)
+            assert v < 1e-6, f"the bell fouls {name} by {v:.1f} mm3 at {deg:+.0f} deg"
+    query = trimesh.proximity.ProximityQuery(bell)
+    gaps = {name: min((bell_gap(query, part, deg), deg) for deg in SWEEP)
+            for name, part in fixed_mech.items() if name != "deck"}
+    said = ", ".join(f"{n} {g:.2f} mm at {d:+.0f}" for n, (g, d) in sorted(gaps.items()))
+    assert min(g for g, _ in gaps.values()) >= 1.0, said
+
+
+@pytest.mark.xfail(strict=True, reason="the deck is trimmed to the statue's section at one pan "
+                                       "angle, and the bell sweeps that section 130 degrees "
+                                       "round over it: see the known limits in the README")
+def test_the_bell_clears_the_turntable_deck(bell, fixed_mech):
+    """The deck fills the statue's section at z 394..400, and the section is not a circle.
+
+    `_neck_prism` in mech/turntable.py trims the deck to the cavity measured at those heights,
+    so its rim touches the coat's inner wall at every azimuth - and the coat's back is 69 mm out
+    where its flanks are 105. Turn the bell and its back comes round onto the deck's lobe. It
+    takes up to 1.8 cm3 at the +65 stop, all of it the rim between r 69 and the deck's own 86,
+    and one of the pan servo's hangers at the -Y end of the same arc.
+    """
+    for deg in SWEEP:
+        v = clash(turned(bell, deg), fixed_mech["deck"])
+        assert v < 1e-6, f"the bell fouls the deck by {v:.0f} mm3 at {deg:+.0f} deg"
+
+
 @pytest.mark.parametrize("deg", (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG))
 def test_the_bell_turns_to_its_stops(bell, still, deg):
     v = clash(turned(bell, deg), still)
