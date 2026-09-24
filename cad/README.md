@@ -89,6 +89,16 @@ What that stage does, in order:
 3. **Hollow.** Blender's SOLIDIFY, inward, twice: `WALL` for `shell.stl`, and 1.2 mm for the
    `cavity_grown.stl` the assembler clips interface parts to, so a boss ends inside the wall and
    fuses to it instead of hovering a clearance away. `cavity.stl` is the plain void.
+   SOLIDIFY offsets a *surface*, not a solid, so wherever the skin has a ridge thinner than two
+   walls - the fold of the skirt over the boots, the parting between two strands of the beard -
+   the offset runs through itself and the cavity reaches into the ridge as a spike. The wall
+   there measured nothing at all. So the cavity is then cut back: the thin patches are found by
+   measuring, and around each one the distance to the skin is sampled on a 0.7 mm lattice and
+   its `WALL − 0.2` contour meshed and subtracted, which is the honest erosion of the solid and
+   simply loses a ridge too thin to hold a wall. It is local - the cavity keeps its own surface
+   everywhere the wall was already thick enough - and `shell.stl` is taken from the cut-back
+   cavity, so the two stay each other's complement in the skin. `test_wall.py` measures what
+   comes out: `WALL_MIN` is the floor the wall may never go under.
 4. **Measure.** `out/statue/features.json` - the feature heights (measured on the mesh where it
    has a signature, from `STATUE_FEATURES` where it has not, and it says which is which), the
    cavity's reach from the pan axis every 5 mm in five directions, and the two trouser legs'
@@ -300,6 +310,11 @@ parts overlap.
 
 `test_fit.py` (3) is the statue's own contract: every placed part and every bought-part envelope
 is inside `out/statue/cavity.stl`, and the trouser legs are where the brackets expect them.
+
+`test_wall.py` (3) is the shell's: 25 000 points spread evenly over the cavity's surface, each
+measured to the skin. The thinnest is at least `WALL_MIN`, next to none of the surface is under
+`WALL - 0.4`, and the median is still `WALL` - the last so that buying a minimum by fattening
+the whole shell, which would take the room out of the mechanism, fails here.
 
 `test_shell.py` (94) needs `statue` and `assemble` to have run. Every section is watertight,
 winding-consistent, **one body** and within the bed; no two of the ten share a millimetre;

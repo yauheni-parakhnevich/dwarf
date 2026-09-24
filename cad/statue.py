@@ -29,10 +29,12 @@ for the shroud; `TURN_GAP` is the air in the seam.
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 import trimesh
+from scipy.ndimage import binary_dilation, distance_transform_edt, label
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -50,6 +52,9 @@ KERF = 1.0                   # air between the two base halves
 HAND = {"y": 118.0, "z": (196.0, 306.0), "x": (-80.0, 106.0)}
 STEP = 5.0                   # the reach table's resolution
 Z_LEGS = P.Z_FLOOR - 50.0    # where the pump and the valve stand
+CUT = P.WALL - 0.2           # what a folded patch of wall is cut back to; see `keep_out`
+GRID = 0.7                   # the grid that cut-back surface is found on
+CELL = 6.0                   # thin patches within this of each other share one region
 
 
 # --- writing meshes out ---------------------------------------------------------------------
@@ -217,8 +222,184 @@ def outer():
 
 # --- hollow ---------------------------------------------------------------------------------
 
+# A cell's eight corners, c = x + 2y + 4z, and the six tetrahedra it is cut into. Every cell is
+# cut the same way, along the same body diagonal 0-7, so two cells that share a face cut that
+# face along the same diagonal and the two halves of the surface meet. That is the whole reason
+# for tetrahedra: marching cubes' 256-case table is ambiguous on a face and leaves a hole where
+# neighbours resolve it differently, and a dual contour leaves four faces on an edge wherever
+# the surface crosses one grid face twice. manifold3d takes neither - it wants a closed volume.
+CORNER = np.array([(c & 1, (c >> 1) & 1, (c >> 2) & 1) for c in range(8)])
+TETS = ((0, 1, 3, 7), (0, 1, 5, 7), (0, 2, 3, 7), (0, 2, 6, 7), (0, 4, 5, 7), (0, 4, 6, 7))
+TET_EDGES = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+# Which of a tetrahedron's six edges the surface crosses, by which of its corners are inside.
+# One triangle when a single corner is cut off, two when the tetrahedron is cut in half.
+TET_TRI = {1: ((0, 1, 2),), 14: ((0, 1, 2),), 2: ((0, 3, 4),), 13: ((0, 3, 4),),
+           4: ((1, 3, 5),), 11: ((1, 3, 5),), 8: ((2, 4, 5),), 7: ((2, 4, 5),),
+           3: ((1, 2, 4), (1, 4, 3)), 12: ((1, 2, 4), (1, 4, 3)),
+           5: ((0, 2, 5), (0, 5, 3)), 10: ((0, 2, 5), (0, 5, 3)),
+           9: ((0, 1, 5), (0, 5, 4)), 6: ((0, 1, 5), (0, 5, 4))}
+# Every edge of every tetrahedron runs from its lower-numbered corner to its higher-numbered
+# one, and the step between them is one of these seven. An edge is then named by the grid node
+# it starts at and which step it takes, which is the same name in both cells that share it.
+STEPS = np.array([(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, 0, 1), (0, 1, 1), (1, 1, 1)])
+
+
+def _wound():
+    """The same triangles, turned to face f > 0. There is no networkx in the build venv and so
+    no `fix_normals`; but a triangle's side is settled by which corners of its tetrahedron are
+    inside, not by where on the edges it ended up, so it can be decided once, here."""
+    out = {}
+    for t, tet in enumerate(TETS):
+        for key, tris in TET_TRI.items():
+            away = (CORNER[tet[next(p for p in range(4) if not key >> p & 1)]]
+                    - CORNER[tet[next(p for p in range(4) if key >> p & 1)]])
+            turned = []
+            for tri in tris:
+                m = [(CORNER[tet[TET_EDGES[k][0]]] + CORNER[tet[TET_EDGES[k][1]]]) / 2.0
+                     for k in tri]
+                turned.append(tri if np.cross(m[1] - m[0], m[2] - m[0]) @ away > 0 else tri[::-1])
+            out[t, key] = turned
+    return out
+
+
+WOUND = _wound()
+
+
+def marching_tets(f, origin, h):
+    """A watertight mesh of the surface f = 0 in a sampled field, or None if it has none."""
+    shape = np.array(f.shape)
+    cells = shape - 1
+    ins = (f < 0.0).astype(np.int8)
+    corners = [ins[tuple(slice(o, o + n) for o, n in zip(CORNER[c], cells))] for c in range(8)]
+    live = np.flatnonzero((sum(corners).ravel() % 8) != 0)          # 0 or 8 means no crossing
+    if not len(live):
+        return None
+    vals = [f[tuple(slice(o, o + n) for o, n in zip(CORNER[c], cells))].ravel()[live]
+            for c in range(8)]
+    sign = [v < 0.0 for v in vals]
+    node = np.ravel_multi_index(np.unravel_index(live, tuple(cells)), tuple(shape))
+    stride = np.array([shape[1] * shape[2], shape[2], 1])
+    faces = []
+    for t, tet in enumerate(TETS):
+        code = sum(int(1 << i) * sign[c] for i, c in enumerate(tet))
+        for key in TET_TRI:
+            tris = WOUND[t, key]
+            sel = np.flatnonzero(code == key)
+            if not len(sel):
+                continue
+            eid = {}
+            for k in set(i for tri in tris for i in tri):
+                ca, cb = (tet[TET_EDGES[k][0]], tet[TET_EDGES[k][1]])
+                first, second = (ca, cb) if ca < cb else (cb, ca)
+                fam = int(np.flatnonzero(
+                    (STEPS == CORNER[second] - CORNER[first]).all(axis=1))[0])
+                eid[k] = (node[sel] + CORNER[first] @ stride) * 7 + fam
+            for tri in tris:
+                faces.append(np.stack([eid[i] for i in tri], axis=1))
+    if not faces:
+        return None
+    faces = np.vstack(faces)
+    uid, inv = np.unique(faces.ravel(), return_inverse=True)
+    start, fam = uid // 7, uid % 7
+    end = start + STEPS[fam] @ stride
+    flat = f.ravel()
+    a, b = flat[start], flat[end]
+    den = np.where(np.abs(a - b) > 1e-12, a - b, 1.0)
+    along = np.clip(np.where(np.abs(a - b) > 1e-12, a / den, 0.5), 0.0, 1.0)
+    p = (np.stack(np.unravel_index(start, tuple(shape)), axis=1).astype(float)
+         + along[:, None] * STEPS[fam])
+    return trimesh.Trimesh(vertices=origin + h * p, faces=inv.reshape(faces.shape), process=False)
+
+
+def keep_out(skin, cavity):
+    """The wall's own keep-out: everything within CUT of the skin, where the cavity gets closer.
+
+    SOLIDIFY offsets each vertex of the skin along its normal, which is an offset surface and
+    not an offset solid. Wherever the skin has a ridge thinner than twice the wall - the fold of
+    the skirt over the boots, the parting between two strands of the beard - that surface runs
+    through itself, and the difference that makes the cavity then reaches into the ridge as a
+    thin spike. The measured wall there was nothing at all in places: a pinhole, at a 0.6 mm
+    nozzle, in the two parts of the statue a hand goes to first.
+
+    The honest inward offset is the erosion of the solid by a ball of the wall's radius, which
+    simply loses a ridge too thin to hold one, and that is what this builds - but only around the
+    patches that need it, because the erosion of a 700 mm figure on a grid fine enough to see a
+    beard is fifty million cells. The thin patches are found by measuring, grouped into regions,
+    and inside each region the distance to the skin is sampled on a GRID mm lattice and its CUT
+    contour meshed. What comes back is subtracted from the cavity, so the cavity keeps its own
+    surface everywhere the wall was already thick enough and the spikes are cut off flush.
+
+    The contour is cut at CUT rather than at WALL_MIN: a patch repaired to the floor would sit at
+    the floor, and cutting back to just under the wall instead leaves it indistinguishable from
+    the rest of the shell, with the lattice's own error inside the margin. It is never deeper
+    than the wall, so nothing the mechanism is fitted to moves.
+    """
+    t0 = time.time()
+    probe, _ = trimesh.sample.sample_surface_even(cavity, 150000, seed=3)
+    probe = np.vstack([probe, np.asarray(cavity.vertices)])
+    _, d, _ = trimesh.proximity.closest_point(skin, probe)
+    seed = probe[d < CUT]
+    if not len(seed):
+        print("statue keep-out  nothing thinner than the wall")
+        return []
+    cell = np.floor(seed / CELL).astype(int)
+    base = cell.min(axis=0) - 1
+    grid = np.zeros(cell.max(axis=0) + 2 - base, bool)
+    grid[tuple((cell - base).T)] = True
+    grid = binary_dilation(grid, np.ones((3, 3, 3), bool))       # a cell of margin all round
+    lab, n = label(grid)
+    tri = skin.triangles
+    tlo, thi = tri.min(axis=1), tri.max(axis=1)
+    parts, exact = [], 0
+    for i in range(1, n + 1):
+        idx = np.argwhere(lab == i)
+        lo = (idx.min(axis=0) + base) * CELL - 2 * GRID
+        hi = (idx.max(axis=0) + 1 + base) * CELL + 2 * GRID
+        near = np.flatnonzero(np.all((thi > lo - 4.0) & (tlo < hi + 4.0), axis=1))
+        if not len(near):
+            continue
+        sub = skin.submesh([near], append=True, repair=False)
+        shape = np.ceil((hi - lo) / GRID).astype(int) + 1
+        # Which nodes are near enough to the skin to be worth an exact distance: the skin is
+        # scattered into the lattice and the lattice's distance to those cells is the estimate.
+        spray, _ = trimesh.sample.sample_surface(sub, max(1000, int(8 * sub.area / GRID**2)),
+                                                 seed=5)
+        occ = np.ones(tuple(shape), bool)
+        occ[tuple(np.clip(np.rint((spray - lo) / GRID).astype(int), 0, shape - 1).T)] = False
+        rough = distance_transform_edt(occ) * GRID
+        f = rough - CUT
+        band = np.abs(f) < 1.2 + GRID                 # everything the contour could run through
+        band[0], band[-1], band[:, 0], band[:, -1], band[:, :, 0], band[:, :, -1] = (False,) * 6
+        at = np.argwhere(band)
+        if len(at):
+            _, ex, _ = trimesh.proximity.closest_point(sub, lo + GRID * at)
+            f[tuple(at.T)] = ex - CUT
+            exact += len(at)
+        f[0], f[-1], f[:, 0], f[:, -1], f[:, :, 0], f[:, :, -1] = (1e3,) * 6
+        m = marching_tets(f, lo, GRID)
+        if m is None or not len(m.faces):
+            continue
+        if not (m.is_watertight and m.is_winding_consistent and m.volume > 0):
+            raise RuntimeError(f"keep-out region {i} is not a solid (watertight "
+                               f"{m.is_watertight}, winding {m.is_winding_consistent}, "
+                               f"volume {m.volume:.1f}); the contour ran off the lattice "
+                               f"between {lo} and {hi}")
+        parts.append(m)
+    print(f"statue keep-out  {len(seed)} of {len(probe)} probes under {CUT:.1f} mm, "
+          f"{len(parts)} regions, {sum(len(p.faces) for p in parts)} faces, "
+          f"{sum(p.volume for p in parts) / 1000:.1f} cm3, {exact} exact distances, "
+          f"{time.time() - t0:.0f} s")
+    return parts
+
+
 def hollow():
-    """shell.stl, cavity.stl, cavity_grown.stl. Blender walls; manifold takes the difference."""
+    """shell.stl, cavity.stl, cavity_grown.stl. Blender walls; manifold takes the difference.
+
+    The cavity then has its folds cut back by `keep_out`, and the shell is taken from the cavity
+    rather than from Blender's wall solid, so that the two are each other's complement in the
+    skin to the last facet: the sections are cut from the shell and every part is fitted to the
+    cavity, and a wall the two disagreed about would be a wall nothing had checked.
+    """
     from build import blender
     raw = [OUT / "wall_full.stl", OUT / "wall_thin.stl"]
     blender("statue_hollow.py", wants=raw)
@@ -228,10 +409,15 @@ def hollow():
         w = trimesh.load(wall_file)
         if not w.is_watertight:
             raise RuntimeError(f"{wall_file.name} is not watertight; SOLIDIFY folded somewhere")
+        void = trimesh.boolean.boolean_manifold([skin, w], "difference")
         if void_name == "cavity":
-            out["shell"] = write(w, OUT / "shell.stl", f"wall {t} mm, {w.volume * 1.24e-3:.0f} g of PLA")
-        out[void_name] = write(trimesh.boolean.boolean_manifold([skin, w], "difference"),
-                               OUT / f"{void_name}.stl", f"{t} mm inside the skin")
+            blanks = keep_out(skin, void)
+            if blanks:
+                void = trimesh.boolean.boolean_manifold([void] + blanks, "difference")
+        out[void_name] = write(void, OUT / f"{void_name}.stl", f"{t} mm inside the skin")
+    shell = trimesh.boolean.boolean_manifold([skin, out["cavity"]], "difference")
+    out["shell"] = write(shell, OUT / "shell.stl",
+                         f"wall {P.WALL} mm, {shell.volume * 1.24e-3:.0f} g of PLA")
     return out["cavity"], out["cavity_grown"], out["shell"]
 
 

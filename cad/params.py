@@ -11,6 +11,8 @@ import math
 # --- printer and fits ------------------------------------------------------------------
 BED = 256.0
 WALL = 2.4                 # shell wall, two 0.6 mm perimeters
+WALL_MIN = 1.6             # and never thinner than this anywhere: under it a 0.6 mm nozzle lays
+                           # one bead or none, which is a pinhole. See statue.py's `keep_out`.
 CLEAR = 0.3                # sliding fit, machined-scale parts
 CLEAR_SHELL = 0.5          # shell-to-shell shingles: a voxel-remeshed skin is not a machined bore
 INSERT_D = 4.0             # M3 heat-set insert bore
