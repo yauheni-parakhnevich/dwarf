@@ -421,7 +421,7 @@ def hollow():
         out[void_name] = write(void, OUT / f"{void_name}.stl", f"{t} mm inside the skin")
     shell = trimesh.boolean.boolean_manifold([skin, out["cavity"]], "difference")
     out["shell"] = write(shell, OUT / "shell.stl",
-                         f"wall {P.WALL} mm, {shell.volume * 1.24e-3:.0f} g of PLA")
+                         f"wall {P.WALL} mm, {shell.volume * 1.27e-3:.0f} g of PETG")
     return out["cavity"], out["cavity_grown"], out["shell"]
 
 

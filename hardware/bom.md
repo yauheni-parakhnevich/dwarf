@@ -31,7 +31,11 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | Buck converters ×2 | `XL4015 5A DC-DC adjustable step down` | 2–6 | Not LM2596: 3A absolute max, ~2A real, and widely counterfeited. One XL4015 at 6V for servos, one at 5V for logic |
 | MOSFET modules ×3 | `AOD4184 MOSFET switch module 3.3V` | 3–8 | **Not IRF520**, even when the listing says "3.3V compatible". Its Rds(on) is only specified at Vgs=10V; at 3.3V it half-conducts and cooks at 5A |
 | DS18B20 probe ×2 | `DS18B20 waterproof temperature probe` | 4–10 | Buy two. A clone reports exactly **85.0°C** forever — the power-on default it never updates |
-| M3 heat-set inserts + tip | `M3 heat set threaded insert soldering tip` | 5–12 | The tip shank must match your iron (T12/900M/C245), which is the mistake people actually make |
+| M3 heat-set inserts + tip | `M3 heat set threaded insert soldering tip` | 5–12 | **55 of them** — 37 at 6 mm, 4 at 9, 4 at 7, 4 at 5, 2 at 4.5 and 4 at 4 (the short ones are blind in thin parts, so a 6 mm insert will not do). Buy 100. The tip shank must match your iron (T12/900M/C245), which is the mistake people actually make |
+| M3 screw kit | `M3 stainless socket cap screw assortment` + `M3 countersunk hex 30mm` | 6–12 | 55 screws fill those inserts: **4 × M3 × 20** (the belt, through the divider), **4 × M3 × 30 countersunk** (the bell, through the head shell into the shroud — 33 mm from the skin to the insert's floor, so 35 bottoms out), **4 × M3 × 10** (the shroud down onto the plate) and the rest between 8 and 14 mm. Plus **8 M3 × 20** through the lazy susan's own holes, the module screws that come with the boards, and 8 small self-tappers — 4 M2.5 for the pan horn, 4 M2 for the micro horn and the micro servo's tabs |
+| M12 cable glands ×2 | `M12 IP68 cable gland nylon` | 2–4 | Two, through the divider at (−40, ±30) — `GLAND_D` is 12.5, the thread with clearance. They are the only wiring path from the dry side to the pump, the valve and the float switch, and they are what keeps the wet zone a wet zone |
+| Silicone hose, 8 mm OD | `8x5mm food grade silicone hose` | 2–5 | **0.5 m is ten times what is needed** — the run is 92.5 mm, 82.5 of route plus 10 over the tank head's barb. `HOSE_OD` 8 with about a 5 mm bore is what the 13 mm between the bottle's top and the divider leaves. It must take a 5 mm bend radius at both fittings (`HOSE_BEND_R`): silicone will, plain PVC of this bore will not |
+| O-ring for the filler cap | `NBR O-ring 15x2mm` | 1–3 | The cap has a real groove — 14.8 mm ID, 19.2 OD, 2.2 wide, 1.5 deep — so about **15 × 2 mm cord**. The thread is retention only; this is the seal |
 | Wire, heatshrink, JST, 40mm fan | `22AWG silicone wire kit`, `40mm 5V fan` | 10–20 | JST pitch (2.0 PH vs 2.54 XH) must match what you're mating |
 | Resistors: 10k ×5, 4.7k ×1 | `1/4W metal film resistor kit` | 2–5 | Four 10k hold the MOSFET gates down through boot, one pulls the float switch up on GPIO 34 (input-only, no internal pull-up), one 4.7k is the 1-Wire bus pull-up. Without the gate resistors **the valve opens every time the board reboots** |
 | Flyback diodes ×2 | `1N5819 Schottky` or `1N4007` | 1–3 | Across the solenoid and the pump, cathode to +12 V. Both are inductive; switching one off without a path for the collapsing field fails the MOSFET **on**, leaving a valve stuck open |
@@ -40,7 +44,7 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | Tubing + fittings | `PU tubing 6mm 8bar`, `G1/4 BSP barbed fitting` | 10–20 | Tubing must state bar/MPa. Confirm **BSP (G), parallel** — AliExpress brass is often NPT and will weep |
 | Clip-on 0.6x lens | `0.6x wide angle clip-on phone lens` | 3–8 | Check the clip doesn't vignette the 6s main camera |
 | Thrust / lazy-susan bearing | `60mm lazy susan bearing` | 3–7 | Or print a BB race — see part list below |
-| **Cart total** | | **~75–160** | |
+| **Cart total** | | **~85–185** | |
 
 **Swiss VAT, corrected:** the threshold is ~CHF 62 of goods value, where 8.1% VAT reaches the
 CHF 5 minimum below which Switzerland doesn't collect. The CHF 150 figure is the EU's
@@ -60,7 +64,7 @@ or dead on arrival costs you another month. Wire and heatshrink can crawl.
 | Camera window | Acrylglasscheibe 100×50×3mm, cut to size | 1.15 | [conrad.ch](https://www.conrad.ch/de/p/acrylglasscheibe-l-x-b-100-mm-x-50-mm-materialstaerke-3-mm-transparent-1-st-530646.html) |
 | Water tank | **1 L rectangular HDPE lab bottle**, opaque, at most 195 mm long, with a tapered shoulder | 5–15 | Any lab supplier / Landi. It lies on its wide face in the belly: 97 × 195 × 71 mm is what the CAD assumes, and its **shoulder corners pass the coat's wall with about 2.5 mm**, so the shoulder's taper is what lets it in. A squarer bottle of the same litre does not fit. No canister any more |
 | Sealant | Polyurethane (Sikaflex-type), paintable and UV-stable | ~12 | OBI / Jumbo |
-| Insect mesh | Fibreglass or stainless window screen | ~14 | [obi.ch](https://www.obi.ch/insektenschutznetze/obi-insektenschutznetz-fenster-weiss-150-x-130-cm/p/5021506) |
+| Insect mesh *(optional)* | Fibreglass or stainless window screen | ~14 | **No printed part carries mesh.** The camera window and the intake are plain rectangular cuts in the belt ring, and the exhaust is the bell's turning gap. If you want the openings screened you are bonding mesh over a flat cut yourself |
 | Paint system | 400–600 grit, IPA, plastic adhesion promoter, opaque light topcoat | ~35 | Any DIY chain — see weatherproofing below |
 | **Subtotal** | | **~90–130** | |
 
@@ -70,8 +74,8 @@ The parts themselves are generated by `cad/build.py`: **ten shell sections and 2
 parts, 33 prints in all**, about 1.8 kg of shell and 1.1 kg of mechanism. `cad/README.md` is the
 authority — it lists every piece with its size, weight and bed orientation, what to measure
 before printing it, and what every screw and insert is for. The table below is only the material
-advice; the shell itself is a 3D scan of a real garden gnome, so its split lines are where the
-machine needs them rather than where a modeller would put them.
+advice; the shell itself is an image-to-3D reconstruction of a real garden gnome, so its split
+lines are where the machine needs them rather than where a modeller would put them.
 
 **Material: PETG, light or mid tone, for the whole shell.** Not PLA — its glass transition is
 55–60°C and a closed body in sun reaches that, so screw bosses loosen and spans sag within a
@@ -94,13 +98,13 @@ it properly, and accept repainting every couple of seasons.
 | The bell — beard, head, hat | PETG, or ASA if you have an enclosure | Glued into one piece and screwed to the neck shroud; it turns as a unit, 573 g of it. The face is the one part where detail shows, and it carries the mouth and the nozzle's parting |
 | Neck / pan turntable | PETG, 4+ perimeters | Bought lazy susan carries the bell; the servo drives a **hollow** shaft through its centre, and water plus wiring pass up inside it. Printed BB race is the fallback, with **glass or stainless** balls, never raw steel |
 | Servo brackets, horn adapters | PETG | Put a metal screw or pin through the horn joint — printed splines strip under torque |
-| Deck cage, deck, plate, shroud | PETG, 4+ perimeters | Everything the drive screws into. The cage prints legs down and needs no support |
-| Nozzle holder | PETG or ASA | Rigid in the mouth, aimed along the head's axis. The wetted orifice is the bought brass nozzle, pressed in. Heat-set inserts, never printed threads, near the water path |
+| Deck cage, deck, plate, shroud | PETG, 4+ perimeters | Everything the drive screws into. The cage prints **top annulus down, legs up, with tree supports under its tie ring** — it needs support whichever way up, and this is the way with less of it and a ring on the bed instead of four small feet. The shroud prints **closed end down** |
+| Nozzle arm and its bracket | PETG or ASA | **The nozzle rides the tilting arm**, not the mouth: a micro servo on a bracket off the shroud's front swings a 20 mm lever through the beard's parting, and the mouth is only the arm's outboard bearing. The wetted orifice is the bought brass nozzle, pressed into the arm's tip. Heat-set inserts, never printed threads, near the water path |
 | Wet/dry divider | PETG, 4–6 perimeters, **100% infill** | A normal sparse panel is porous. Seal to the shell with a polyurethane bead |
 | Internal decks, phone cradle | PETG | Cradle geometry is easy; the phone's heat problem is solved by venting and shade, not by the cradle |
-| Vent grille frames | PETG | 3–6mm openings with bonded-in insect mesh — a 0.4mm nozzle can't print real mesh. Louvres sloped down, tucked under the hat brim |
-| Filler neck and cap | PETG | On the divider, reached from the top with the bell off. Threads for retention only; an O-ring does the sealing |
+| Filler neck and cap | PETG | On the divider, reached from the top with the bell off. Threads for retention only; a 15 × 2 mm O-ring in the cap's groove does the sealing. The neck's underside is a Ø6.5 barb the filler hose pushes onto |
 | Tank cradle | PETG | Holds the bought bottle. Do not print the tank |
+| Stop pins ×2 | PETG | **Printed, not bought** — two Ø6 × 16 pins, `stop_pin` in the CAD. They **glue** into Ø6.4 seats in the deck; a press fit into a tenth of clearance split the deck |
 
 **Budget:** ~2kg of filament (range 1.5–3kg), roughly 40–50 hours of machine time, CHF 30–85
 in filament. Using a 0.6mm nozzle for the body roughly halves the shell time — two 0.6mm
@@ -138,14 +142,15 @@ wear item — expect to recoat every couple of seasons.
 
 | | CHF |
 |---|---:|
-| AliExpress cart | 75–160 |
+| AliExpress cart | 85–185 |
 | Bought locally | 90–130 |
 | Filament | 30–85 |
-| **Total** | **~195–375** |
+| **Total** | **~205–400** |
 
 Against roughly CHF 460 for the bought-body version, and the printed shell is better suited:
-mounts where they're needed, vents where the heat is, a gasketed refill hatch, and a camera
-window positioned for the lens instead of cut into whatever the statue happened to offer.
+mounts where they're needed, vents where the heat is, a gasketed filler reached from the top with
+the bell off — there is no hatch any more — and a camera window positioned for the lens instead of
+cut into whatever the statue happened to offer.
 
 ## Open risks
 

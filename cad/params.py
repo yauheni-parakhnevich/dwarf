@@ -327,7 +327,13 @@ TURN_GAP = 2.0                              # air between the bell's rim and the
 # |y| >= PANEL_Y, stay fixed up to PANEL_TOP so the arms do not twist with the head. The bell
 # sweeps +-PAN_STOP_DEG inside them; where its lower front (the beard's ends) would touch a
 # panel, the statue stage lathes the bell there and reports it.
-PANEL_Y = 105.0                             # at 95 the beard's front had to be lathed 12 mm and 14 mm slots opened beside the chest; at 105 it loses 2.3 mm
+PANEL_Y = 105.0                             # at 95 the beard's front had to be lathed 12 mm and 14 mm slots opened
+                                            # beside the chest. At 105 the bell turns down to r 103, which off the
+                                            # front meridian is not one number: the skin reached 105.8 at 0 deg
+                                            # (2.8 mm off), 107.3 at +-30 (4.3), 114.0 at +-40 (11.0), 115.5 at
+                                            # +-50 (12.5) and 112.7 at +-60 (9.7), measured on out/statue/outer.stl
+                                            # over z 309..399. The front loses the tips of two locks; the sides
+                                            # lose a centimetre of beard to a cylindrical face
 PANEL_TOP = 400.0
 PANEL_BOTTOM = 196.0                        # the mittens' lower edge; below Z_BELT the panel belongs to the base halves
 SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed

@@ -19,7 +19,7 @@ disclaimer at the top of a README; it is most of the engineering below it.
 | `firmware/lib/dwarf` | **Done.** Protocol, servos, shot state machine, safety watchdog, 92 tests |
 | `firmware/src` | **Runs on real hardware.** Serial console; BLE is next |
 | `ios/DwarfApp` | **Planned, not written.** Camera, CoreML, the radio, the web UI |
-| The gnome itself | **Modelled, not printed.** `cad/` generates all 33 printed pieces from one parameters file and a 3D scan of a real garden gnome; bought parts still unmeasured |
+| The gnome itself | **Modelled, not printed.** `cad/` generates all 33 printed pieces from one parameters file and an image-to-3D reconstruction of a real garden gnome; bought parts still unmeasured |
 
 So: the brain works and is heavily tested, the body exists on paper, and no cat has ever been
 squirted.
@@ -80,7 +80,7 @@ ios/DwarfApp/       the iOS app — planned, not yet written
 firmware/           PlatformIO project for the ESP32
 protocol/fixtures/  wire-format examples both test suites assert against
 cad/                every printed part: the mechanism from one parameters file,
-                    the shell from a 3D scan of the gnome itself
+                    the shell from an image-to-3D reconstruction of the gnome itself
 hardware/           bill of materials, wiring, bench checklists
 docs/               the design spec, the mechanical design, and the plans
 tools/              fixture generation, model export, PDF rendering
@@ -103,9 +103,18 @@ cd firmware && pio test -e native
 # the firmware itself
 cd firmware && pio run -e esp32dev
 
-# every printed part, from one parameters file — 163 tests
+# every printed part, from one parameters file — 172 tests
+uv venv --python 3.11 .venv-cad
+uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 .venv-cad/bin/python cad/build.py && .venv-cad/bin/pytest cad/tests -q
 ```
+
+The CAD build also wants Blender 5.2 at `/Applications/Blender.app` (set `BLENDER` to point
+elsewhere), and it wants `cad/in/` — the reference photographs of the statue and `gnome_ai.glb`,
+the image-to-3D reconstruction made from them. **That directory is a user-supplied input and is
+not committed**: it is 200 000 triangles of someone's garden ornament. Without it the mechanism
+still builds and its tests still run; the `statue` stage stops and the tests that need a built
+shell skip themselves. `cad/README.md` has the recipe for making the reconstruction again.
 
 ## A few things learned the hard way
 

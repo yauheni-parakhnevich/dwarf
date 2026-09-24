@@ -303,3 +303,18 @@ renders are inspected after every change to the shell scripts.
   phone and the filler are reached from the top; the window is cut in the belt ring, the fan sits on
   the left panel. Interface parts are oversize blanks the assembler clips to the cavity, so the
   shell's shape is typed nowhere. Ten printed shell pieces.
+- **2026-09-24, the statue review.** Ten fixes over the statue branch, with the geometry changed
+  only where a part could not be assembled or a wall could not be printed: the shroud's roof bored
+  so the four screws that carry the bell have a driver path at all; the six radial insert bores
+  drilled round instead of square; `STOP_PIN_SEAT_D` 6.4 and glued, not pressed; the filler hose
+  reduced to `HOSE_OD` 8 with a barb at both ends and a four-leg route that clears the bottle and
+  the belt ring, which it used to cut; the bottle 2 mm forward of centre for 2.55 mm of clearance
+  at both ends; the chassis's filler-cap bore pulled back to r 18 off the electronics deck's
+  standoff. Both hollowing offsets now go through `keep_out` in `statue.py`, which erodes the
+  voids off the skin's self-intersecting folds: `WALL_MIN` is 1.6 and the measured minima are
+  2.13 mm of wall and 0.89 mm of skin over a clipped boss, against 0.00 for both before.
+  Fifty-five dead parameters and the four pre-statue `shell/` sculpt modules are deleted. The
+  suite is 172 tests in six files, the sixth being `test_wall.py`. §3's "vent grille frames" and
+  the mesh they carried do not exist: the window and the intake are plain cuts. The known limits
+  in `cad/README.md` are the authority on what this design does not solve — chiefly that the
+  intake and the exhaust are both at the back, 36 mm apart, so the draught bypasses the phone.
