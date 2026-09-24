@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Build the printed parts. Stages: mech, statue, shell, assemble, preview. No argument runs all."""
+"""Build the printed parts.
+
+Stages: mech, statue, shell, assemble, preview, scene. No argument runs all of them, in that
+order. `shell` is a stub the statue stage replaced; it is kept so the list still reads as the
+pipeline it was.
+"""
 import os
 import subprocess
 import sys
@@ -10,10 +15,6 @@ CAD = Path(__file__).resolve().parent
 sys.path.insert(0, str(CAD))
 BLENDER = os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Blender")
 OUT = CAD / "out"
-# Which raw sections each sculpt owns. Named here because the stage has to know what a script
-# was supposed to leave behind before it can tell whether the script worked. Nothing runs them
-# any more - see `shell()`.
-SHELL = {"body.py": ("base", "torso"), "head.py": ("head", "hat")}
 
 
 def mech():
@@ -72,12 +73,11 @@ def statue():
 def shell():
     """Nothing. The sculpted shell was replaced by the statue.
 
-    `shell/body.py`, `shell/head.py` and `shell/beard.py` built the gnome out of revolves and
-    relief before there was a statue to print. They stay in the tree because their helpers -
-    `shell/common.py` - still do the Blender work, and because the swell functions are the only
-    written record of what the shape had to satisfy; but the skin now comes from
-    `in/gnome_ai.glb` through the `statue` stage, and running them would only overwrite
-    `out/raw` with a shell nothing reads.
+    Four Blender scripts once carved the gnome out of revolves and relief, before there was a
+    statue to print. They are gone: the skin comes from `in/gnome_ai.glb` through the `statue`
+    stage, nothing imported them, and running them would only have overwritten `out/raw` with
+    a shell nothing reads. Their history is in the log if the swell functions are ever wanted
+    again. The stage stays so the pipeline still names the step the statue took over.
     """
     print("shell skipped: the sections come from the statue stage (build.py statue)")
 

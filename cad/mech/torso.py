@@ -28,8 +28,7 @@ R_FRONT = P.FRONT_SKIN_X_AT_WINDOW    # 89.4, the statue's front at the window
 BELT_MID_RX = (P.BELT_RX + P.BELT_IN_RX) / 2          # 67
 BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
 # The chassis has its own four on the same mid-line, between the belt's: the belt joint has to
-# open without the chassis coming off first. Nearest pair is 48.3 mm apart. (params' own
-# CHASSIS_SCREW_ANGLES is the belt's set and is not used here.)
+# open without the chassis coming off first. Nearest pair is 48.3 mm apart.
 # ... and clear of the phone, of the sled's guide ribs and of the filler's neck. At 10 degrees
 # the screw landed at (66, 17), under the tray, with its driver going up into the phone; at 25
 # the driver caught the rib's outer edge; at 30 it was (58.0, 49.0), eleven millimetres from the

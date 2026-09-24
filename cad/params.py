@@ -17,7 +17,6 @@ INSERT_D = 4.0             # M3 heat-set insert bore
 INSERT_DEPTH = 6.0
 INSERT_DEPTH_SHORT = 4.0       # for 5 mm parts: a short M3 insert, still blind
 M3_CLEAR = 3.4
-M4_PIN = 4.0
 M2_5_CLEAR = 2.8
 SCREW_HEAD_H = 3.0
 
@@ -37,24 +36,14 @@ Z_HAT = 500.0              # the statue's brim at the sides (0.713 H); the head 
 Z_TOP = 700.0              # the statue's height: its ear line then lands on the tilt axis
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
-# outer skins only; shell_r walks these. The base's raised floor is a separate revolve row.
+# outer skins only; shell_r walks these.
 BASE_PROFILE = [(112.0, 0.0), (125.0, 90.0), (112.0, 180.0), (95.0, Z_BELT), (95.0, Z_BASE_TOP)]
-BASE_FLOOR_R = 108.0
 # broad shoulders up to 365 so the phone's top corners clear the wall; the beard collar hides them
 TORSO_PROFILE = [(95.0 + CLEAR_SHELL + WALL, Z_BELT), (95.0 + CLEAR_SHELL + WALL, Z_BASE_TOP), (104.0, 280.0), (105.0, 320.0), (100.0, 360.0),
                  (96.0, 393.0), (84.0, 408.0), (76.0, Z_TORSO_TOP)]
-TORSO_R_TOP = 76.0            # neck opening; the pan linkage sweeps inside it
-HAT_BRIM_R = 70.0
 HAT_BRIM_T = 8.0
-HAT_CONE_R = 50.0
-HAT_TIP_R = 4.0
-HAT_BEND = 15.0            # how far the tip leans forward
 BEARD_TOP_Z = 443.0
-BEARD_BOTTOM_FRONT_Z = 350.0
 BEARD_BOTTOM_BACK_Z = 340.0    # the collar's back hangs over the exhaust fan (348..388) as the spec asks
-BEARD_T = 3.0
-BEARD_R_OUT_TOP = TORSO_R_TOP + 8.0    # collar's outer radius at its top, 84
-BEARD_R_IN_TOP = BEARD_R_OUT_TOP - BEARD_T
 
 SECTION_Z = {
     "base": (0.0, Z_BASE_TOP),
@@ -92,17 +81,11 @@ def ring_r_out(profile, z0, z1=None):
 
 
 # --- belt joint ---------------------------------------------------------------------------
-FLANGE_R_IN = 80.0
-FLANGE_SCREW_R = 86.0
-FLANGE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
 DIVIDER_PROUD = 0.3        # the divider stands this much above the base's rim so the belt screws load the PU bead, not the rim
 GLAND_D = 12.5             # an M12 cable gland's thread, with clearance
 GLAND_POS = [(-40.0, 30.0), (-40.0, -30.0)]
 CHASSIS_T = 4.0
-CHASSIS_R = 90.0
-CHASSIS_SCREW_ANGLES = [40.0, 140.0, 220.0, 320.0]   # off the belt screws, the sled and the electronics deck
-CHASSIS_SCREW_R = FLANGE_SCREW_R - 2.0
-Z_CHASSIS = Z_BASE_TOP + RING_T   # 246, sits on the torso flange
+Z_CHASSIS = Z_BASE_TOP + RING_T   # 256, sits on the torso flange
 
 # --- phone and window ---------------------------------------------------------------------
 PHONE_L, PHONE_W, PHONE_T = 138.3, 67.1, 7.1
@@ -114,7 +97,6 @@ ACRYLIC_T = 3.0
 LENS_GAP = 2.0
 WINDOW_W, WINDOW_H = 40.0, 44.0            # 3.7 mm of coat left above the window under the ring's top
 WINDOW_Z_BIAS = 18.0           # window centre above the lens: the view needed is mostly above horizontal, and the belt joint is just below
-HOOD_PITCH_DEG = 10.0
 # the phone is centred; its camera sits CAM_Y off the centreline, which the aiming
 # calibration absorbs like every other fixed offset
 PHONE_Y_OFFSET = 0.0
@@ -133,10 +115,8 @@ SLED_GUIDE_H = 3.0             # ribs on the chassis either side of the feet
 
 # --- electronics --------------------------------------------------------------------------
 ESP32 = (55.0, 28.0)
-XL4015 = (54.0, 23.0)
 XL4015_HOLES = (43.0, 15.0)
 XL4015_HOLE_D = 3.2
-MOSFET = (34.0, 27.0)
 EDECK_T = 4.0                               # EDECK_L and EDECK_W are with the statue's numbers
 # board footprints on the deck, (x0, y0, x1, y1) relative to EDECK_POS: two columns, A at the back
 # Two columns on the 100 x 92 deck: the wide boards down the back, the three MOSFET modules up
@@ -160,8 +140,6 @@ EDECK_HOLES = [(46.0, -34.0), (46.0, 24.0), (-8.0, 6.0)]    # in the free strip 
                                                             # at (46, 39) and the chassis's bore for the
                                                             # filler cap swallowed its standoff whole
 EDECK_POSTS = [(-46.0, -34.0), (-46.0, 34.0)]               # bare posts under the deck's back end
-EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: it clears the deck cage's
-                                            # 235 and 250 degree legs without a notch in either
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
 FAN = 40.0
@@ -172,7 +150,6 @@ VENT_IN_W, VENT_IN_H = 40.0, 20.0          # the intake, cut in the belt ring's 
 # --- turntable ----------------------------------------------------------------------------
 BEARING_SQ = 60.0
 BEARING_T = 6.0
-BEARING_OPEN = 32.0
 BEARING_PITCH = 48.0
 BEARING_HOLE = 3.4
 SHAFT_OD, SHAFT_ID = 21.0, 13.0   # bore: tube + three wires + 2 mm, spec section 6
@@ -183,7 +160,6 @@ RING_R_IN = 50.0
 RING_R_OUT = 58.0              # the ring is a narrow annulus standing on four legs down to the chassis (a cage): nothing above the belt is fixed shell
 CAGE_LEG = 12.0                # the legs' square section
 CAGE_LEG_R = 60.0              # the legs' centres; the deck's screws sit on the same points
-RING_WEB_W = 8.0
 DECK_SCREW_R = CAGE_LEG_R
 DECK_SCREW_ANGLES = [82.0, 98.0, 235.0, 250.0]    # the cage's legs: clear of the electronics deck (|y| > 50), the pan servo (x -5..35, y -70..-50), the stop pins (+-70.7 at r 60) and the phone
 PLATE_R = 50.0
@@ -193,7 +169,7 @@ Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
 PAN_SERVO_XY = (5.0, -60.1)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -70.1 .. -50.1): 1 mm outside the column's sweep
-PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.21
+PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.31
 CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
 Z_PAN_SHAFT_FACE = 340.0       # the servo's output face, looking down; body top 380.5, under the deck; low enough that the link sweeps where the coat is 98 wide
@@ -202,10 +178,10 @@ LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
 PIN_BOSS_H = 0.5
 PIN_BOSS_D = 8.0
-Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 353; the crank's top is the shaft face, the horn sits in its pocket
-Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 348
-Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 347.5; a boss on crank and foot takes the screw's clamp, not the link
-Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 344.5
+Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 340; the crank's top is the shaft face, the horn sits in its pocket
+Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 335
+Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 334.5; a boss on crank and foot takes the screw's clamp, not the link
+Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 331.5
 SHAFT_BOTTOM = Z_LINK_BOTTOM - 5.0           # the tube leaves the shaft below the link's plane
 LINK_EYE_R = PIN_BORE / 2 + 3.0
 PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
@@ -238,14 +214,11 @@ TILT_STOP = (-35.0, 45.0)
 #     shaft offset from the near end along the length, hole pitch (along length, across)
 DS3218 = dict(body=(40.0, 20.0, 40.5), tab_span=54.5, tab_t=2.5, tab_z=28.0, shaft_off=10.0,
               holes=(49.5, 10.0))
-MG996R = dict(body=(40.7, 19.7, 42.9), tab_span=53.0, tab_t=2.5, tab_z=28.0, shaft_off=10.0,
-              holes=(48.5, 10.0))
 HORN_D = 21.0
 HORN_T = 2.5
 HORN_SCREW_R = 7.0
 # pan servo footprint in plan, with its tabs, plus 2 mm: the deck ring is cut away here
-_L, _W, _H = DS3218["body"]
-_tab = (DS3218["tab_span"] - _L) / 2
+_L = DS3218["body"][0]
 def pan_hangers():
     """Plan positions of the four columns under the deck the pan servo's tabs screw to."""
     along, across = DS3218["holes"]
@@ -256,47 +229,13 @@ def pan_hangers():
 PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y for _, y in pan_hangers()) - PAN_HANGER / 2 - 2.0),
                 (max(x for x, _ in pan_hangers()) + PAN_HANGER / 2 + 2.0, max(y for _, y in pan_hangers()) + PAN_HANGER / 2 + 2.0))
 
-# --- head, ears, tilt ---------------------------------------------------------------------
-EAR_R = 12.0                   # both ears are the coupler's diameter
-EAR_OUT_Y = HEAD_R + 6.0       # outer face of the ear boss / coupler
-YOKE_GAP = 1.0
-YOKE_ARM_T = 8.0
-YOKE_ARM_W = 36.0              # 3.5 mm of wall either side of the 25 mm hex's corners
+# --- the yoke ring under the shroud, and the nozzle's bore ----------------------------------
 YOKE_RING_R_IN = 44.0          # the yoke stands on a ring on the plate's rim
 YOKE_RING_T = 3.0
 YOKE_SCREW_R = 46.7
 YOKE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
-COUPLER_D = 24.0               # no boss: the coupler passes the wall bore from outside
-HEAD_BORE_D = COUPLER_D + 2 * CLEAR
-HORN_ACCESS_D = 4.6            # counterbores down the coupler for the horn screws' driver
-HORN_SCREWS_USED = (0.0, 180.0)   # two of the horn's four holes
-INSERT_M4_D = 5.6
-INSERT_M4_DEPTH = 8.0
-COUPLER_HEX_AF = 25.0          # wider than the shaft: the coupler enters from outside through this hex
-TILT_SERVO_SHAFT_Y = 21.0      # servo shaft face inside the head, +Y side; the body's far corner must pass the face opening
-TILT_SERVO_UP = True           # the body's long side runs up from the shaft, so its tabs sit where the sphere is wide
-BULKHEAD_Y = TILT_SERVO_SHAFT_Y - MG996R["body"][2] + MG996R["tab_z"]   # 6.1; the cradle plate's +Y face, the tabs sit on it
-BULKHEAD_T = 2.5
-BULKHEAD_BOSS_D = 8.5          # bosses round the four insert holes, INSERT_DEPTH + 1 tall, on the -Y side
-# the cradle is assembled with the servo on the bench and slides in through the face opening
-# along -X, into two rails on the back of the head; a lip on the lower rail and a stop block on
-# the face cap box it in. No screw is driven inside the head.
-CRADLE_X = (-12.0, 14.0)
-CRADLE_Z = (458.0, 517.0)      # spans the servo's tab bosses with the body running up; the top corners stay inside the sphere
-RAIL_T = 3.0                   # the rails' lips either side of the plate
-RAIL_H = 6.0                   # how far a rail reaches above/below the plate's edge
-RAIL_LIP_L = 2.5               # the lower rail's front lip, which the plate drops in behind
-FACE_STOP_Z = (506.0, 516.0)   # the face cap's stop block bears on the plate's top front edge
-HEAD_OPENING_R = 15.0          # tube and wires enter through the bottom
-FACE_SPLIT_X = 20.0            # the face is the cap in front of this plane
-FACE_LIP_T = 2.0
-FACE_LIP_L = 5.0
-Z_MOUTH = Z_HEAD - 8.0         # 470: high enough that the jet at full nose-down clears the turntable
 NOZZLE_D = 8.0
 MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
-NOZZLE_BOSS_Y = 13.4           # an r 3 driver on the screw passes the cradle rails with 1 mm to spare
-NOZZLE_HOLDER_X = (15.0, 28.0)
-TILT_STOP_TAB_R = 15.0
 # --- neck shroud: a cylinder on the plate that turns with the head and carries it; see the statue block
 SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
 JET_D = NOZZLE_D + 4.0                               # the jet's keep-out: nozzle bore plus spread over 30 mm
@@ -316,7 +255,7 @@ BOTTLE = (97.0, 195.0, 71.0)                # a rectangular 1 L HDPE lab bottle 
 # be 170 long at most, whatever its label says.
 BOTTLE_SHOULDER_H = 25.0                    # the top of the bottle tapers in over this height
 BOTTLE_SHOULDER_IN = (8.0, 16.0)            # ... by this much on each side (x) and each end (y)
-BOTTLE_XY = (2.0, 0.0)                      # 2 mm forward of centre: rear and front shoulder corners each clear the coat by about 2 mm; the hose passes its end
+BOTTLE_XY = (2.0, 0.0)                      # 2 mm forward of centre: rear and front shoulder corners each clear the coat by about 2.5 mm; the hose passes its end
 BOTTLE_Z0 = Z_FLOOR + 4.0 + 2.0             # on the floor plate's cradle
 BOTTLE_THREAD_MAJOR = 38.0                  # its neck, towards +Y; CAN_THREAD_MAJOR follows it
 CAN_THREAD_MAJOR = 38.0
@@ -328,10 +267,8 @@ PUMP_FEET = (30.0, 30.0)                    # its mounting holes; re-measure
 LEG_LEFT_XY = (0.0, 80.0)                   # leg cavity centres at Z_FLOOR - 50, from the fit report; the statue stage measures them
 LEG_RIGHT_XY = (0.0, -80.0)
 LEG_R = 38.0                                # the legs' free radius there
-PUMP_XY = LEG_LEFT_XY
 PUMP_Z0 = Z_FLOOR - PUMP[2] - 5.0           # hangs under the floor plate on a bracket, 5 mm below the plate
 VALVE = (45.0, 25.0, 55.0)
-VALVE_XY = LEG_RIGHT_XY
 VALVE_Z0 = Z_FLOOR - VALVE[2] - 5.0
 VALVE_STRAP = (12.0, 3.0)                   # a bar across the valve's body, two M3s into the bracket's inserts
 PUMP_TIE_SLOTS = True                       # cable-tie slots hold the pump to its bracket
