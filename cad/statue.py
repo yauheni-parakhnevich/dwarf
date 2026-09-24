@@ -52,7 +52,7 @@ KERF = 1.0                   # air between the two base halves
 HAND = {"y": 118.0, "z": (196.0, 306.0), "x": (-80.0, 106.0)}
 STEP = 5.0                   # the reach table's resolution
 Z_LEGS = P.Z_FLOOR - 50.0    # where the pump and the valve stand
-CUT = P.WALL - 0.2           # what a folded patch of wall is cut back to; see `keep_out`
+MARGIN = 0.2                 # how far under nominal a folded patch is cut back to; `keep_out`
 GRID = 0.7                   # the grid that cut-back surface is found on
 CELL = 6.0                   # thin patches within this of each other share one region
 
@@ -311,36 +311,37 @@ def marching_tets(f, origin, h):
     return trimesh.Trimesh(vertices=origin + h * p, faces=inv.reshape(faces.shape), process=False)
 
 
-def keep_out(skin, cavity):
-    """The wall's own keep-out: everything within CUT of the skin, where the cavity gets closer.
+def keep_out(skin, cavity, cut, what):
+    """Everything within `cut` of the skin, wherever this void comes closer than that.
 
     SOLIDIFY offsets each vertex of the skin along its normal, which is an offset surface and
-    not an offset solid. Wherever the skin has a ridge thinner than twice the wall - the fold of
-    the skirt over the boots, the parting between two strands of the beard - that surface runs
-    through itself, and the difference that makes the cavity then reaches into the ridge as a
-    thin spike. The measured wall there was nothing at all in places: a pinhole, at a 0.6 mm
-    nozzle, in the two parts of the statue a hand goes to first.
+    not an offset solid. Wherever the skin has a ridge thinner than twice the offset - the fold
+    of the skirt over the boots, the parting between two strands of the beard - that surface runs
+    through itself, and the difference that makes the void then reaches into the ridge as a thin
+    spike. The measured wall there was nothing at all in places: a pinhole, at a 0.6 mm nozzle,
+    in the two parts of the statue a hand goes to first.
 
-    The honest inward offset is the erosion of the solid by a ball of the wall's radius, which
+    The honest inward offset is the erosion of the solid by a ball of the offset's radius, which
     simply loses a ridge too thin to hold one, and that is what this builds - but only around the
     patches that need it, because the erosion of a 700 mm figure on a grid fine enough to see a
     beard is fifty million cells. The thin patches are found by measuring, grouped into regions,
-    and inside each region the distance to the skin is sampled on a GRID mm lattice and its CUT
-    contour meshed. What comes back is subtracted from the cavity, so the cavity keeps its own
-    surface everywhere the wall was already thick enough and the spikes are cut off flush.
+    and inside each region the distance to the skin is sampled on a GRID mm lattice and its `cut`
+    contour meshed. What comes back is subtracted from the void, so the void keeps its own
+    surface everywhere it was already deep enough and the spikes are cut off flush.
 
-    The contour is cut at CUT rather than at WALL_MIN: a patch repaired to the floor would sit at
-    the floor, and cutting back to just under the wall instead leaves it indistinguishable from
-    the rest of the shell, with the lattice's own error inside the margin. It is never deeper
-    than the wall, so nothing the mechanism is fitted to moves.
+    Both voids come through here, each with its own `cut`, one MARGIN under what it is nominally
+    offset by. Cutting at the floor instead would leave a repaired patch sitting exactly on the
+    floor; cutting just under nominal leaves it indistinguishable from the rest and puts the
+    lattice's own error inside the margin. Neither cut is ever deeper than its own offset, so
+    `cavity_grown` still contains `cavity` and nothing the mechanism is fitted to moves.
     """
     t0 = time.time()
     probe, _ = trimesh.sample.sample_surface_even(cavity, 150000, seed=3)
     probe = np.vstack([probe, np.asarray(cavity.vertices)])
     _, d, _ = trimesh.proximity.closest_point(skin, probe)
-    seed = probe[d < CUT]
+    seed = probe[d < cut]
     if not len(seed):
-        print("statue keep-out  nothing thinner than the wall")
+        print(f"statue keep-out  {what}: nothing closer to the skin than {cut:.1f} mm")
         return []
     cell = np.floor(seed / CELL).astype(int)
     base = cell.min(axis=0) - 1
@@ -367,13 +368,13 @@ def keep_out(skin, cavity):
         occ = np.ones(tuple(shape), bool)
         occ[tuple(np.clip(np.rint((spray - lo) / GRID).astype(int), 0, shape - 1).T)] = False
         rough = distance_transform_edt(occ) * GRID
-        f = rough - CUT
+        f = rough - cut
         band = np.abs(f) < 1.2 + GRID                 # everything the contour could run through
         band[0], band[-1], band[:, 0], band[:, -1], band[:, :, 0], band[:, :, -1] = (False,) * 6
         at = np.argwhere(band)
         if len(at):
             _, ex, _ = trimesh.proximity.closest_point(sub, lo + GRID * at)
-            f[tuple(at.T)] = ex - CUT
+            f[tuple(at.T)] = ex - cut
             exact += len(at)
         f[0], f[-1], f[:, 0], f[:, -1], f[:, :, 0], f[:, :, -1] = (1e3,) * 6
         m = marching_tets(f, lo, GRID)
@@ -385,7 +386,8 @@ def keep_out(skin, cavity):
                                f"volume {m.volume:.1f}); the contour ran off the lattice "
                                f"between {lo} and {hi}")
         parts.append(m)
-    print(f"statue keep-out  {len(seed)} of {len(probe)} probes under {CUT:.1f} mm, "
+    print(f"statue keep-out  {what}: {len(seed)} of {len(probe)} probes under "
+          f"{cut:.1f} mm, "
           f"{len(parts)} regions, {sum(len(p.faces) for p in parts)} faces, "
           f"{sum(p.volume for p in parts) / 1000:.1f} cm3, {exact} exact distances, "
           f"{time.time() - t0:.0f} s")
@@ -395,10 +397,13 @@ def keep_out(skin, cavity):
 def hollow():
     """shell.stl, cavity.stl, cavity_grown.stl. Blender walls; manifold takes the difference.
 
-    The cavity then has its folds cut back by `keep_out`, and the shell is taken from the cavity
-    rather than from Blender's wall solid, so that the two are each other's complement in the
-    skin to the last facet: the sections are cut from the shell and every part is fitted to the
-    cavity, and a wall the two disagreed about would be a wall nothing had checked.
+    Both voids then have their folds cut back by `keep_out`, each to its own offset: the cavity
+    so the wall is nowhere thinner than `WALL_MIN`, and `cavity_grown` so that a boss on a part
+    clipped to it cannot come out through the skin - it is only 1.2 mm inside to begin with, and
+    in the folds it reached the skin exactly. The shell is then taken from the cavity rather than
+    from Blender's wall solid, so that the two are each other's complement in the skin to the
+    last facet: the sections are cut from the shell and every part is fitted to the cavity, and a
+    wall the two disagreed about would be a wall nothing had checked.
     """
     from build import blender
     raw = [OUT / "wall_full.stl", OUT / "wall_thin.stl"]
@@ -410,10 +415,9 @@ def hollow():
         if not w.is_watertight:
             raise RuntimeError(f"{wall_file.name} is not watertight; SOLIDIFY folded somewhere")
         void = trimesh.boolean.boolean_manifold([skin, w], "difference")
-        if void_name == "cavity":
-            blanks = keep_out(skin, void)
-            if blanks:
-                void = trimesh.boolean.boolean_manifold([void] + blanks, "difference")
+        blanks = keep_out(skin, void, t - MARGIN, void_name)
+        if blanks:
+            void = trimesh.boolean.boolean_manifold([void] + blanks, "difference")
         out[void_name] = write(void, OUT / f"{void_name}.stl", f"{t} mm inside the skin")
     shell = trimesh.boolean.boolean_manifold([skin, out["cavity"]], "difference")
     out["shell"] = write(shell, OUT / "shell.stl",
