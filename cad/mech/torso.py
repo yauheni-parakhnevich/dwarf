@@ -9,14 +9,15 @@ sized from the belt ellipse and the cavity reach table in the fit report.
 
 There is no belly hatch any more. Everything dry-side is reached from the top with the turning
 bell lifted off: the sled drops into its cutout through the chassis, the deck's screws are driven
-down, and the filler's cap is turned where it stands on the divider.
+down. The filler is outside, on the coat's back: mech/filler.py.
 """
 import json
 import math
 from pathlib import Path
-from build123d import Axis, Cone, Ellipse, Pos, extrude
+from build123d import Axis, Cone, Ellipse, Location, Polygon, Pos, extrude
 import params as P
 from mech import part
+from mech.filler import passage_xy
 from mech.common import (BARB_BORE_R, BARB_R, BARB_RING, barb_rings, box, cyl_z,
                          insert_holes, polar)
 
@@ -31,20 +32,11 @@ BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
 # top, which the parting's seam chamfer leaves only 82 out at the sides, 86 at the front and 74 at
 # the back, so it is 72 x 80 now, not 70 x 100 - and at that size it overlaps the belt flange only
 # front and back, over |azimuth| < 40 and > 140 degrees. The front of that is the sled's pocket.
-# So the screws are at 145, 180 and 215, in the band between the flange's bore and the chassis's
+# So the screws are at 185, 200 and 215, in the band between the flange's bore and the chassis's
 # edge and outside the cage's foot ring, whose drivers they are; the front rests on the flange and
 # nothing lifts it: the deck's load comes down the cage's legs.
-CHASSIS_SCREWS = ((69.5, 145.0), (68.5, 180.0), (69.5, 215.0))
-# The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
-# stood inside the sled's tray, which reaches y 36.85 from z 249.3 up; beside the tray the cap
-# needs |y| >= 36.85 + 16 (its grip) and it sits at y 54. Its x is set by the hose rather than
-# by anything up here: see HOSE_OD. With the turning bell off, the cap is turned from above it.
-NECK_FLANGE_R = 16.0
-NECK_BASE_Z = P.Z_BASE_TOP + P.DIVIDER_PROUD          # the divider's top face
-NECK_TOP_Z = NECK_BASE_Z + 15.0
-# the cap pours into FILLER_D and the hose takes HOSE_BARB_D - 2, so the neck funnels between
-# them at 45 degrees, inside the flange where there is metal to do it in
-NECK_FUNNEL_TOP = NECK_BASE_Z + (P.FILLER_D / 2 - BARB_BORE_R)
+CHASSIS_SCREWS = ((68.5, 185.0), (69.5, 200.0), (69.5, 215.0))   # none at 145 any more: the filler's hose
+                                                                   # comes down at 147 and its port stands over 160
 # The floor plate's blank: the cavity at Z_FLOOR is 54 front, 93 back, 118/102 across (T8). A
 # full BLANK past the widest of those would be 266 across and the bed is 256, so the +Y side
 # gets 7 mm of blank instead of 15 and every other direction keeps at least 13.
@@ -69,6 +61,8 @@ SLED_OPEN_TOP = 20.0         # the tray's walls stop this far below the phone's 
 SLED_KEY_OVERRUN = 6.0       # the key finger runs this far past the flipped camera
 SLED_LIP_TOP = 30.0          # the back lip stops this far above the phone's bottom
 STANDOFF_R = 4.0
+CHASSIS_PORT_R = 61.0        # the chassis's back edge under the filler port, and ...
+CHASSIS_PORT_HALF = 19.0     # ... either side of it: the port.s inside reaches in to r 65.8
 ESP32_RAIL_T = 2.4           # the cradle's rails either side of the devkit
 ESP32_RAIL_H = 4.0
 TIE_SLOT_W = 3.0             # cable-tie slots
@@ -194,8 +188,9 @@ def belt_flange_lower():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, P.Z_BELT)
     tongue = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_RX, P.BELT_RY,
                        P.Z_BELT, P.Z_BASE_TOP)
-    return insert_holes(ring + tongue, [(x, y, P.Z_BELT) for x, y in belt_screws()],
-                        depth=P.INSERT_DEPTH + 3)
+    flange = insert_holes(ring + tongue, [(x, y, P.Z_BELT) for x, y in belt_screws()],
+                          depth=P.INSERT_DEPTH + 3)
+    return flange - cyl_z(P.FILLER_PASSAGE_D / 2, z0 - 1, P.Z_BASE_TOP + 1, *passage_xy())   # the filler's hose
 
 
 @part("belt_flange_upper", section="torso")
@@ -211,9 +206,7 @@ def belt_flange_upper():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
     ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
-    # full height now: the belt screws sit at 55 degrees and the chassis's at 70, so the nearest
-    # of either is 26.5 mm from the neck and the notch takes nothing with it
-    ring = ring - cyl_z(NECK_FLANGE_R + 1.0, z0 - 1, z1 + 1, *P.FILLER_NECK_XY)
+    ring = ring - cyl_z(P.FILLER_PASSAGE_D / 2, z0 - 1, z1 + 1, *passage_xy())     # the filler's hose
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
         ring = ring - cyl_z(3.2, z1 - (P.SCREW_HEAD_H + 0.5), z1 + 1, x, y)
@@ -238,9 +231,9 @@ def divider():
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in P.GLAND_POS:
         d = d - cyl_z(P.GLAND_D / 2, z0 - 1, z1 + 1, x, y)
-    nx, ny = P.FILLER_NECK_XY                                    # the filler neck drops in from
-    return d - cyl_z(BARB_R + P.HOSE_BARB_LIP + P.CLEAR,         # above, ridges and all, and its
-                     z0 - 1, z1 + 1, nx, ny)                     # flange is bonded over this hole
+    # the filler's hose passes here, near the rim at the back, in a hole 1.5 mm round it: what
+    # drips down the hose goes through to the wet side
+    return d - cyl_z(P.FILLER_PASSAGE_D / 2, z0 - 1, z1 + 1, *passage_xy())
 
 
 # --- the floor over the sand ---------------------------------------------------------------------
@@ -308,9 +301,12 @@ def chassis():
         c = insert_holes(c, [(x, y, z1 + P.EDECK_STANDOFF)])
     for x, y in _edeck(P.EDECK_POSTS):                               # ... and two posts under its back
         c = c + cyl_z(STANDOFF_R, z0, z1 + P.EDECK_STANDOFF, x, y)
-    nx, ny = P.FILLER_NECK_XY                                        # the filler cap turns in this,
-    return c - cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 + 3 + 2 + 1.0,    # cut last so a rib cannot grow
-                     z0 - 1, z1 + P.EDECK_STANDOFF + 1, nx, ny)      # back: the cap's flare and one
+    # the filler port stands over the chassis's back edge and the chassis goes down past it: it is
+    # cut back to r CHASSIS_PORT_R over the port's width, which takes the hose's bore with it
+    a = P.FILLER_PORT_AZ
+    notch = extrude(Polygon((0.0, 0.0), *[polar(200.0, a + d) for d in (-CHASSIS_PORT_HALF, 0.0, CHASSIS_PORT_HALF)]),
+                    z1 - z0 + 2).moved(Location((0, 0, z0 - 1)))
+    return c - (notch - cyl_z(CHASSIS_PORT_R, z0 - 2, z1 + 2))
 
 
 @part("phone_sled")
@@ -409,33 +405,3 @@ def electronics_deck():
 
 
 # --- the fan's blank in the left side panel -------------------------------------------------------
-
-
-@part("filler_neck")
-def filler_neck():
-    """The filler's neck, bonded into the divider's front: the cap screws onto this.
-
-    The tank head's port feeds it by a hose, so the bottle is topped up without taking the
-    divider off - reached from the top, with the bell lifted. Above the divider it is the M22
-    the cap is cut to; below it, where a Ø18 spigot used to hang that no hose could go over, it
-    is the twin of the barb on the tank head. The two are joined by a 45 degree funnel inside
-    the flange, so the cap still pours into FILLER_D and the hose still takes HOSE_BARB_D.
-    """
-    from bd_warehouse.thread import IsoThread
-    nx, ny = P.FILLER_NECK_XY
-    bore = P.FILLER_D / 2
-    mouth = P.Z_BELT - P.HOSE_BARB_L                                       # the barb's open end,
-                                                                           # hanging under the divider
-    thread = IsoThread(major_diameter=P.FILLER_CAP_THREAD_MAJOR, pitch=P.FILLER_CAP_PITCH,
-                       length=NECK_TOP_Z - NECK_BASE_Z - 4.0, external=True,
-                       end_finishes=("square", "square"))
-    core = thread.min_radius
-    neck = cyl_z(BARB_R, mouth, NECK_BASE_Z, nx, ny)                       # the barb, up through the
-    for d in barb_rings():                                                 # divider to its top face
-        neck = neck + cyl_z(BARB_R + P.HOSE_BARB_LIP, mouth + d, mouth + d + BARB_RING, nx, ny)
-    neck = neck + cyl_z(NECK_FLANGE_R, NECK_BASE_Z, NECK_BASE_Z + 3.0, nx, ny)
-    neck = neck + cyl_z(core, NECK_BASE_Z, NECK_TOP_Z, nx, ny)
-    neck = neck + Pos(nx, ny, NECK_BASE_Z + 3.0) * thread
-    neck = neck - cyl_z(bore, NECK_FUNNEL_TOP, NECK_TOP_Z + 1.0, nx, ny)   # what the cap pours into
-    neck = neck - _cone_z(BARB_BORE_R, bore, NECK_BASE_Z, NECK_FUNNEL_TOP, nx, ny)   # ... funnelled down
-    return neck - cyl_z(BARB_BORE_R, mouth - 1.0, NECK_BASE_Z + 0.01, nx, ny)        # to the barb's bore

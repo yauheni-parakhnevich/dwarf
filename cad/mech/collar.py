@@ -5,11 +5,11 @@ is screwed, not glued. Four tabs hang from its bottom edge SPIGOT_H down into th
 CLEAR_SHELL inside the ring, and four radial countersunk M3 x 10 go in from outside through the
 ring's top edge into inserts in them.
 
-Why tabs and not a ring, and why at 45, 135, 225 and 315 degrees: the collar is lowered over the
+Why tabs and not a ring, and why at 45, 125, 235 and 315 degrees: the collar is lowered over the
 deck and everything under it, so whatever hangs from it has to pass all of that on the way down.
 A ring would pass the deck's rim by 0.3 mm at the front and the pan servo's hangers not at all at
 300 degrees; four tabs miss the hangers (280..305 degrees), the phone and its sled (inside 35
-degrees of the front) and the fan's corners (167 and 193), and the deck is trimmed to them. They
+degrees of the front), the fan's corners (167 and 193) and the filler port at 160, and the deck is trimmed to them. They
 are also where the turning unit reaches down lowest over the ring - to the beard's bottom edge in
 front and to 20 degrees under C at the back corners - so at rest the screws are under it, and a
 driver still reaches them straight in under its rim, at rest.

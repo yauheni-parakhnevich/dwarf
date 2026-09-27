@@ -96,122 +96,107 @@ def test_the_tank_head_sits_on_the_bottles_neck(placed):
     assert (head & bottle_body()).volume < 1e-6                        # it screws on, it does not bite
 
 
-# --- the filler, reached from the top ---------------------------------------------------------
+# --- the filler, outside on the coat's back ---------------------------------------------------
 
-def test_filler_cap_screws_onto_the_divider_neck(parts, placed):
-    """The cap takes the neck on the divider: crests at FILLER_CAP_THREAD_MAJOR over a FILLER_D bore.
-
-    The bore steps on the way down now: what the cap pours into is FILLER_D, what the hose takes
-    is the barb's, and a 45 degree funnel inside the flange joins them.
-    """
+def test_filler_cap_screws_onto_the_port_neck(parts, placed):
+    """The cap takes the port's neck: its crests bite the M22, the neck's bore is FILLER_D open all
+    the way, and the cap sits on the neck along the port's axis."""
     from mech.base import CAP_THREAD_LEN, CAP_THREAD_Z
-    from mech.common import BARB_BORE_R
-    from mech.torso import NECK_FUNNEL_TOP
+    from mech.filler import U
     cap = parts["filler_cap"]
     neck = placed["filler_neck"]
-    assert P.FILLER_VIA_TOP
-    bb = neck.bounding_box()
-    assert math.isclose(bb.max.Y - bb.min.Y, 2 * 16.0, abs_tol=0.01)             # its bonding flange
     grip = cyl_z(P.FILLER_CAP_THREAD_MAJOR / 2 - 0.05, CAP_THREAD_Z, CAP_THREAD_Z + CAP_THREAD_LEN)
     assert (grip & cap).volume > 1e-3                                  # the cap's crests bite
-    nx, ny = P.FILLER_NECK_XY
-    pour = cyl_z(P.FILLER_D / 2 - 0.05, NECK_FUNNEL_TOP, bb.max.Z + 1, nx, ny)
-    assert (pour & neck).volume < 1e-6                                 # FILLER_D under the cap
-    through = cyl_z(BARB_BORE_R - 0.05, bb.min.Z - 1, bb.max.Z + 1, nx, ny)
-    assert (through & neck).volume < 1e-6                              # ... and open all the way down
+    assert (placed["filler_cap"] & neck).volume > 1e-3                 # ... on this neck, as placed
+    from mech.filler import at
+    from mech.common import polyline
+    through = polyline([at((0, 0, -P.FILLER_POCKET_D - 1.0)), at((0, 0, 10.0))], P.FILLER_D / 2 - 0.05)
+    assert (through & neck).volume < 1e-6                              # FILLER_D, end to end
+    assert math.isclose(math.degrees(math.asin(U[2])), P.FILLER_PORT_TILT, abs_tol=1e-6)
 
 
-def test_the_filler_is_reached_from_above(parts, placed):
-    """The cap stands above the divider, beside the sled, with nothing over it.
-
-    At FILLER_NECK_XY's first value - y 0 - the cap stood inside the sled's tray. Beside it the
-    cap needs the tray's half width plus its own grip, which is what put it where it is. With
-    the turning bell lifted off it is turned from straight above.
-    """
-    cap = placed["filler_cap"]
-    bb = cap.bounding_box()
-    assert P.FILLER_VIA_TOP
-    assert bb.min.Z >= P.Z_BASE_TOP + P.DIVIDER_PROUD                  # it clears the divider's face
-    # its grip passes the sled's flank with room for a finger's width of air, no more: the neck
-    # sits where the belt ring's bore allows and the flare was cut back to make even that
-    sled = placed["phone_sled"].bounding_box()
-    assert bb.min.Y > sled.max.Y + 1.0 or bb.max.Y < sled.min.Y - 1.0, (bb.min.Y, bb.max.Y)
-    assert (cap & placed["phone_sled"]).volume < 1e-6
-    assert (cap & placed["chassis"]).volume < 1e-6                     # the chassis is notched for it
-    # nothing of the dry zone stands over it: a driver comes straight down onto the cap
-    # a hand comes down on the cap's outboard side, which stands past the deck's edge
-    nx, ny = P.FILLER_NECK_XY
-    above = cyl_z(8.0, bb.max.Z, P.Z_DECK, nx, ny + 8.0)
-    for name in ("chassis", "electronics_deck", "phone_sled"):
-        assert (above & placed[name]).volume < 1e-6, name
+def test_the_port_is_above_the_bottle_and_the_hose_falls_to_it(placed):
+    """Nothing of the filler's water path is under the bottle's top: the port's lowest wetted point,
+    the pocket's floor edge, is 40 mm over it, and the hose falls all the way from the port to the
+    run over the bottle - so a full bottle cannot stand water in the port or siphon out of it."""
+    from mech.base import hose_points
+    from mech.filler import at
+    top = P.BOTTLE_Z0 + P.BOTTLE[2]
+    low = at((0.0, -P.FILLER_POCKET_R, -P.FILLER_POCKET_D))[2]
+    assert low - top >= 30.0, (low, top)
+    pts = hose_points()
+    assert pts[0][2] > pts[1][2] and all(p[2] > top for p in pts[3:5])
 
 
-def test_the_filler_hose_reaches_the_neck(placed):
-    """From the tank head's stub, up beside the bottle's neck, across its shoulder, up the neck.
-
-    Two gaps size this hose and there is nothing else to give. It rises beside the stub at
-    y 86.5, where the belt ring's bore reaches only y 90.9, so it cannot be more than 8.9 mm
-    across there; and it crosses the thirteen millimetres between the bottle's top at 227 and
-    the divider's underside at 240. HOSE_OD is what is left. The neck came in to x 42 for the
-    same reason: at 48 it sat a fifth of a millimetre inside that bore and nothing could rise
-    to it. The route now touches nothing at all.
-    """
+def test_the_filler_hose_reaches_the_tank_head(placed):
+    """From the port's barb down through the belt joint, under the flange, up inside the belt
+    ring's bore over the bottle and down onto the tank head's stub. It touches nothing - and nothing
+    with the hose grown 3 mm all round, but the parts it passes through by design: the bores in
+    the chassis, the flanges and the divider are only 1.5 mm round it, and the two barbs it is on."""
     from mech.base import BOTTLE_AXIS_Z, STUB_OUT, bottle_envelope, hose_points, hose_route
     route = hose_route()
-    bb = route.bounding_box()
-    assert math.isclose(bb.min.Z, BOTTLE_AXIS_Z + STUB_OUT, abs_tol=1e-6)   # it starts on the stub
-    assert bb.max.Z <= P.Z_BELT + 3.0                                  # ... and stops in the neck's hole
-    for name in ("tank_cradle", "tank_head", "pump_bracket", "valve_bracket", "phone_sled",
+    fat = hose_route(P.HOSE_OD / 2 + 3.0)
+    for name in ("tank_cradle", "pump_bracket", "valve_bracket", "phone_sled",
                  "divider", "chassis", "belt_flange_lower", "belt_flange_upper", "deck_ring",
-                 "floor_plate"):
-        assert (route & placed[name]).volume == 0.0, name
-    # the one thing it does touch is the neck's barb, which is the point of a barb
-    grip = (route & placed["filler_neck"]).bounding_box()
-    assert grip.max.Z - grip.min.Z >= P.HOSE_BARB_L - 2.0, (grip.min.Z, grip.max.Z)
-    assert (route & bottle_envelope()).volume == 0.0
-    # ... and not by a whisker: a hose a millimetre fatter all round still misses the bottle
-    assert (hose_route(P.HOSE_OD / 2 + 1.0) & bottle_envelope()).volume == 0.0
-    # no corner turns tighter than the hose is allowed to: every straight leg is HOSE_BEND_R
+                 "floor_plate", "electronics_deck", "filler_cap"):
+        assert (route & placed[name]).volume < 1e-6, name
+    # the two it does touch are its barbs, which is the point of a barb: all of it that is in
+    # either is within the barb's ridges and over its grip
+    from mech.filler import barb_mouth
+    from mech.base import BOTTLE_Y1, STUB_Z, TANK_HEAD_L
+    mx, my, mz = barb_mouth()
+    sx, sy = P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z
+    top = BOTTLE_AXIS_Z + STUB_OUT
+    for name, (x, y, z0, z1) in (("filler_port", (mx, my, mz, mz + P.HOSE_BARB_L)),
+                                 ("tank_head", (sx, sy, top - P.HOSE_BARB_L - 5.0, top))):
+        grip = cyl_z(P.HOSE_BARB_D / 2 + P.HOSE_BARB_LIP + 0.05, z0, z1, x, y)
+        touch = route & placed[name]
+        assert touch.volume < 1e-6 or (touch - grip).volume < 1e-6, name
+    for name in ("tank_cradle", "pump_bracket", "valve_bracket", "phone_sled", "deck_ring",
+                 "floor_plate", "electronics_deck", "filler_cap"):
+        assert (fat & placed[name]).volume < 1e-6, ("grown 3 mm", name)
+    assert (fat & bottle_envelope()).volume < 1e-6
     pts = hose_points()
     for a, b in zip(pts, pts[1:]):
         assert math.dist(a, b) >= P.HOSE_BEND_R - 1e-9, (a, b, math.dist(a, b))
+    assert math.isclose(pts[-1][2], BOTTLE_AXIS_Z + STUB_OUT, abs_tol=1e-6)
 
 
 def test_both_ends_of_the_filler_hose_are_barbs(placed):
-    """Whatever the hose is pushed onto has to be something a hose can be pushed onto.
-
-    The tank head's filler port used to be the M22 the cap is cut to and the neck's underside a
-    18 mm spigot, either of which a hose that fits the belly would sit beside rather than over.
-    Both are HOSE_BARB_D barbs now, bored HOSE_BARB_D - 2, with two ridges HOSE_BARB_LIP proud,
-    and the hose's route starts on one mouth and ends over the other.
-    """
+    """The port's barb, pointing down, and the tank head's, pointing up: solid from the bore out to
+    HOSE_BARB_D over the grip, nothing wider than the ridges, bored through, the route on both."""
     from mech.base import BOTTLE_AXIS_Z, BOTTLE_Y1, STUB_OUT, STUB_Z, TANK_HEAD_L, hose_points
     from mech.common import BARB_BORE_R, BARB_R
+    from mech.filler import barb_mouth
+    mx, my, mz = barb_mouth()
     ends = (("tank head", placed["tank_head"], P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z,
              BOTTLE_AXIS_Z + STUB_OUT, -1.0),
-            ("filler neck", placed["filler_neck"], P.FILLER_NECK_XY[0], P.FILLER_NECK_XY[1],
-             P.Z_BELT - P.HOSE_BARB_L, +1.0))
+            ("filler port", placed["filler_port"], mx, my, mz, +1.0))
     for what, part, x, y, mouth, into in ends:
         z0, z1 = sorted((mouth, mouth + into * P.HOSE_BARB_L))
-        # solid from its bore out to HOSE_BARB_D, the whole grip long: the hose has something to hold
-        ring = (cyl_z(BARB_R - 0.05, z0, z1, x, y)
-                - cyl_z(BARB_BORE_R + 0.05, z0 - 1, z1 + 1, x, y))
+        ring = (cyl_z(BARB_R - 0.05, z0, z1, x, y) - cyl_z(BARB_BORE_R + 0.05, z0 - 1, z1 + 1, x, y))
         assert math.isclose((ring & part).volume, ring.volume, rel_tol=0.02), what
-        # ... and nothing of it out there is wider than the ridges, so the hose goes on
-        slab = box(-200, 200, -200, 200, z0, z1)
+        slab = box(x - 5, x + 5, y - 5, y + 5, z0, z1 - 0.5)
         sleeve = cyl_z(BARB_R + P.HOSE_BARB_LIP + 0.05, z0 - 1, z1 + 1, x, y)
         assert ((part & slab) - sleeve).volume < 1e-6, what
-        # ... and it is bored, not solid
         assert (cyl_z(BARB_BORE_R - 0.05, z0 - 1, z1 + 1, x, y) & part).volume < 1e-6, what
-    # the route's ends are those two mouths
     first, last = hose_points()[0], hose_points()[-1]
-    assert math.isclose(first[2], BOTTLE_AXIS_Z + STUB_OUT, abs_tol=1e-6)
-    assert math.isclose(math.hypot(first[0] - P.BOTTLE_XY[0],
-                                   first[1] - (BOTTLE_Y1 - TANK_HEAD_L + STUB_Z)), 0.0, abs_tol=1e-6)
-    assert math.isclose(math.hypot(last[0] - P.FILLER_NECK_XY[0],
-                                   last[1] - P.FILLER_NECK_XY[1]), 0.0, abs_tol=1e-6)
-    assert P.Z_BELT - P.HOSE_BARB_L < last[2] <= P.Z_BELT       # on the neck's barb, under the divider
-    assert P.HOSE_BARB_D < P.HOSE_OD                            # the barb fits inside the hose
+    assert math.isclose(math.hypot(first[0] - mx, first[1] - my), 0.0, abs_tol=1e-6)
+    assert mz < first[2] <= mz + P.HOSE_BARB_L + 0.01                 # on the port's barb
+    assert math.isclose(last[0], P.BOTTLE_XY[0], abs_tol=1e-6)
+    assert P.HOSE_BARB_D < P.HOSE_OD
+
+
+def test_a_drip_down_the_hose_goes_to_the_wet_side():
+    """The hose's bores through the chassis, both flanges and the divider are FILLER_PASSAGE_D, a
+    millimetre and a half round it, all on one vertical: what runs down the hose goes through."""
+    from mech.base import hose_points
+    from mech.filler import passage_xy
+    px, py = passage_xy()
+    a, b = hose_points()[:2]
+    assert math.isclose(a[0], px, abs_tol=1e-6) and math.isclose(a[1], py, abs_tol=1e-6)
+    assert math.isclose(b[0], px, abs_tol=1e-6) and b[2] < P.Z_BELT - P.FLANGE_LOWER_H   # down past them all
+    assert P.FILLER_PASSAGE_D - P.HOSE_OD >= 3.0
 
 
 # --- the bottle, its cradle and the floor plate ------------------------------------------------------
@@ -320,13 +305,12 @@ def test_no_two_wet_zone_parts_overlap(placed):
     valve = box(vx - L / 2, vx + L / 2, vy - W / 2, vy + W / 2, P.VALVE_Z0, P.VALVE_Z0 + H)
     bodies = {"bottle": bottle_body(), "pump": pump, "valve": valve}
     for name in ("tank_cradle", "tank_head", "floor_plate", "pump_bracket", "valve_bracket",
-                 "valve_strap", "divider", "filler_neck", "filler_cap"):
+                 "valve_strap", "divider"):
         bodies[name] = placed[name]
     for a, b in itertools.combinations(bodies, 2):
         if {a, b} <= {"pump", "pump_bracket"} or {a, b} <= {"valve", "valve_bracket"}:
             continue                                                   # each sits in its own cage
-        if {a, b} in ({"valve", "valve_strap"}, {"filler_neck", "divider"},
-                      {"filler_neck", "filler_cap"},
+        if {a, b} in ({"valve", "valve_strap"},
                       {"bottle", "tank_head"}, {"bottle", "tank_cradle"}):
             continue                             # bonded, or the head screwed onto the neck the
                                                  # bottle's own envelope includes

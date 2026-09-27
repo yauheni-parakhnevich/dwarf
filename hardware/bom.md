@@ -36,7 +36,7 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | M3 heat-set inserts + tip | `M3 heat set threaded insert soldering tip` | 5–12 | **69 of them** — 52 at 6 mm, 4 at 9, 4 at 7, 7 at 4 and 2 at 4.5 — see `cad/README.md`'s fastener table for the depths (the short ones are blind in thin parts, so a 6 mm insert will not do). Buy 100. The tip shank must match your iron (T12/900M/C245), which is the mistake people actually make |
 | M3 screw kit | `M3 stainless socket cap screw assortment` + `M3 countersunk hex 8/10/12/30mm` | 6–12 | 69 M3 screws fill those inserts: **4 × M3 × 20** (the belt), **4 × M3 × 30 countersunk** (the head onto the spider — 27 mm from the skin to the boss), **2 × M3 × 16, 2 × M3 × 14, 2 × M3 × 12 countersunk** (the collar and the beard's tongues), **5 × M3 × 8 and 2 × M3 × 10 countersunk** (the bearing's cap, the collar's back pair, the hub ring), **2 × M3 × 12** (the spider onto the stem), and the rest socket heads 8–14 mm. Plus 8 M2.5 self-tappers for the two servo horns and one M2 × 4 grub for the nod pin. `cad/README.md` has every one |
 | M12 cable glands ×2 | `M12 IP68 cable gland nylon` | 2–4 | Two, through the divider at (−40, ±30) — `GLAND_D` is 12.5, the thread with clearance. They are the only wiring path from the dry side to the pump, the valve and the float switch, and they are what keeps the wet zone a wet zone |
-| Silicone hose, 8 mm OD | `8x5mm food grade silicone hose` | 2–5 | **0.5 m is ten times what is needed** — the run is 92.5 mm, 82.5 of route plus 10 over the tank head's barb. `HOSE_OD` 8 with about a 5 mm bore is what the 13 mm between the bottle's top and the divider leaves. It must take a 5 mm bend radius at both fittings (`HOSE_BEND_R`): silicone will, plain PVC of this bore will not |
+| Silicone hose, 8 mm OD | `8x5mm food grade silicone hose` | 2–5 | **0.3 m is twice what is needed** — the run is about 155 mm, 134 of route plus 10 over each barb, from the filler port on the coat's back down through the belt joint to the tank head. 8 mm is the widest that fits: where it rises beside the tank head's stub the belt ring's bore leaves 8.9. It must take a 5 mm bend at the fittings (`HOSE_BEND_R`): silicone will, plain PVC of this bore will not |
 | O-ring for the filler cap | `NBR O-ring 15x2mm` | 1–3 | The cap has a real groove — 14.8 mm ID, 19.2 OD, 2.2 wide, 1.5 deep — so about **15 × 2 mm cord**. The thread is retention only; this is the seal |
 | Wire, heatshrink, JST, 30mm fan | `22AWG silicone wire kit`, `30mm 5V fan 3010` | 10–20 | JST pitch (2.0 PH vs 2.54 XH) must match what you're mating. The fan is **30 mm**, not 40: it hangs under the deck's back and the collar has to go down past it |
 | Resistors: 10k ×5, 4.7k ×1 | `1/4W metal film resistor kit` | 2–5 | Four 10k hold the MOSFET gates down through boot, one pulls the float switch up on GPIO 34 (input-only, no internal pull-up), one 4.7k is the 1-Wire bus pull-up. Without the gate resistors **the valve opens every time the board reboots** |
@@ -103,7 +103,7 @@ it properly, and accept repainting every couple of seasons.
 | Deck cage, deck, bearing cap, hub ring, plate, stem, spider | PETG, 4+ perimeters | Everything the drive screws into. The cage prints **foot ring down, legs up, no support**. The plate carries the hub, both cheeks and the nod servo's posts in one print, disc down. The stem prints **on its side**; the spider hub down |
 | Wet/dry divider | PETG, 4–6 perimeters, **100% infill** | A normal sparse panel is porous. Seal to the shell with a polyurethane bead |
 | Internal decks, phone cradle | PETG | Cradle geometry is easy; the phone's heat problem is solved by venting and shade, not by the cradle |
-| Filler neck and cap | PETG | On the divider, reached from the top with the head, the beard and the collar off. Threads for retention only; a 15 × 2 mm O-ring in the cap's groove does the sealing. The neck's underside is a Ø6.5 barb the filler hose pushes onto |
+| Filler port and cap | PETG | **On the coat's back**, printed into the belt ring: unscrew the cap and pour, nothing taken off. Threads for retention only; a 15 × 2 mm O-ring in the cap's groove does the sealing. The neck's underside is a Ø6.5 barb the filler hose pushes onto |
 | Tank cradle | PETG | Holds the bought bottle. Do not print the tank |
 | Stop pins ×2 | PETG | **Printed, not bought** — two Ø6 × 16 pins, `stop_pin` in the CAD. They **glue** into Ø6.4 seats in the deck; a press fit into a tenth of clearance split the deck |
 
@@ -149,8 +149,8 @@ wear item — expect to recoat every couple of seasons.
 | **Total** | **~205–400** |
 
 Against roughly CHF 460 for the bought-body version, and the printed shell is better suited:
-mounts where they're needed, vents where the heat is, a gasketed filler reached from the top with
-the head and collar off — there is no hatch any more — and a camera window positioned for the lens instead of
+mounts where they're needed, vents where the heat is, a gasketed filler on the outside of the
+coat's back — there is no hatch any more — and a camera window positioned for the lens instead of
 cut into whatever the statue happened to offer.
 
 ## Open risks

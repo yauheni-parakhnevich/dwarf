@@ -144,7 +144,8 @@ def deck_ring():
         leg = box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
         cage = leg if cage is None else cage + leg
     top = foot + P.CAGE_FOOT_T                          # the foot ring, in the legs' own band but
-    ring = (cyl_z(P.CAGE_LEG_R + half - 1.5, foot, top)  # 1.5 short of their outside: the chassis's screws' drivers
+    ring = (cyl_z(P.CAGE_LEG_R + half - 2.5, foot, top)  # 2.5 short of their outside: the chassis's screws'
+                                                        # drivers, and the filler's hose down the back
             - cyl_z(P.CAGE_LEG_R - half, foot - 1, top + 1))
     reach = P.CAGE_LEG_R + half + 5.0
     ring = ring - _sector(-P.CAGE_FOOT_OPEN, P.CAGE_FOOT_OPEN, foot - 1, top + 1, reach)

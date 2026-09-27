@@ -208,6 +208,14 @@ def posed_gnome():
               centre=(0.0, 0.0, P.Z_TOP / 2), span=P.Z_TOP * 1.04)
 
 
+def back():
+    """The coat's back at rest, close, from behind the filler port: the cap in its pocket."""
+    sc, co = scene()
+    machine(0.0, 0.0)
+    b = P.FILLER_PORT_AZ + 90.0
+    frame(sc, co, "pose_rest", {"back": (80.0, b)}, centre=(-60.0, 20.0, 300.0), span=260.0)
+
+
 def posed_mechanism():
     """The mechanism alone, shell off, from the front, the side and three-quarter."""
     for name in ("rest", "nod-15"):
@@ -250,6 +258,7 @@ if __name__ == "__main__":
         if not old.name.startswith("parting_"):      # the statue stage's own, kept
             old.unlink()
     posed_gnome()
+    back()
     posed_mechanism()
     posed_cutaway()
     sections()

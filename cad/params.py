@@ -136,12 +136,12 @@ EDECK_LAYOUT = {
 # deck screws, relative to EDECK_POS: three points (a plate on three cannot rock) in the gaps
 # the layout leaves; the deck's back end rests on two plain posts instead, because a standoff
 # under its back corners would stand off the chassis and into the wall
-EDECK_HOLES = [(46.0, -34.0), (46.0, 27.0), (-8.0, 6.0)]    # in the free strip and the gap over the
+EDECK_HOLES = [(46.0, -34.0), (46.0, 34.0), (-8.0, 6.0)]    # in the free strip and the gap over the
                                                             # fuse, under the ESP32 cradle's near rail.
-                                                            # The +Y one is boxed in: at 34 the chassis's
-                                                            # bore for the filler cap swallowed its
-                                                            # standoff, and under 27 it fouls the slot
-                                                            # the sled's lock lug comes up through
+                                                            # The +Y one is back at 34, square with the
+                                                            # -Y one, now that no filler cap stands on
+                                                            # the divider there; under 27 it would foul
+                                                            # the slot the sled's lock lug comes up through
 EDECK_POSTS = [(-30.0, -34.0), (-30.0, 34.0)]               # bare posts under the deck's back end,
                                                             # inboard of the cage's foot ring at r 57
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
@@ -368,31 +368,46 @@ PUMP_TIE_SLOTS = True                       # cable-tie slots hold the pump to i
 FLOAT_HOLE_D = 12.0
 DIP_TUBE_D = 8.0
 FILLER_D = 14.0                             # the neck's 30 mm bore must also pass the float switch and the dip tube
-FILLER_VIA_TOP = True                       # a hose from the tank head's port to a filler neck in the divider's front, reached from the top with the bell off
-HOSE_OD = 8.0                               # the filler hose, tank head to neck. Two gaps size it and
-                                            # neither gives: it rises beside the stub at y 86.5, where
-                                            # the belt ring's bore is only 90.9 out, and it crosses the
-                                            # 13 mm between the bottle's top (227) and the divider (240)
-HOSE_BEND_R = 5.0                           # the tightest corner the route turns, at both fittings, and
-                                            # all the 13 mm leaves. A plain PVC hose of HOSE_OD wants
-                                            # three times that: silicone of this bore will take it, a
-                                            # corrugated hose certainly, a stiff PVC one not
+# The filler is outside, on the coat's back, and refilling needs nothing taken off: unscrew the cap,
+# pour. It is a port through the belt ring's wall, beside the air intake, tilted up and out so what
+# is poured runs in and rain runs off the cap; an 8 mm hose runs from it down through the belt
+# joint - a bore through both flanges and the divider - to the tank head's barb.
+FILLER_PORT_AZ = 160.0                      # back-left, beside the air intake (moved 12 mm right for it).
+                                            # Not further round: at pan +65 the beard's flank comes to
+                                            # az 150 and would stand in a funnel's way
+FILLER_PORT_Z = 286.0                       # where the port's axis leaves the skin; the pocket's rim is
+                                            # 19.6 above and below on the wall, so it spans 266..306, all
+                                            # in the ring, and its lowest inside edge stays over the cage's
+                                            # foot ring (z 267.5)
+FILLER_PORT_SKIN_R = 78.8                   # the skin's radius there, measured on outer.stl (a test
+                                            # holds it to the mesh)
+FILLER_PORT_TILT = 30.0                     # the axis above horizontal, outward
+FILLER_POCKET_R = 15.0                      # the cap turns in a pocket this wide ...
+FILLER_POCKET_D = 6.0                       # ... this deep along the axis, below the skin
+FILLER_PASSAGE = (71.0, 147.0)              # the hose's way down through the chassis, both belt flanges
+                                            # and the divider, (r, az): the hose grown 3 mm all round still
+                                            # outside the cage's foot ring (63.5), its bore inside the
+                                            # divider's bead groove (76.6) and the hose outside the belt
+                                            # ring's bore below (65.8 there)
+FILLER_PASSAGE_D = 11.0                     # bored this wide, 1.5 round the hose, so a drip down the hose
+                                            # goes through to the wet side and not onto the divider's top
+HOSE_OD = 8.0                               # the filler hose, port to tank head. It could not be wider:
+                                            # where it rises beside the tank head's stub, at y 86.5, the
+                                            # belt ring's bore is 90.9 out (it gave 8.9 mm there, and 8 is
+                                            # the size sold). The old second limit - the 13 mm between the
+                                            # bottle's top and the divider - is gone: over the bottle it
+                                            # runs inside the belt ring's bore, up to z 238.5
+HOSE_BEND_R = 5.0                           # the shortest straight leg of the route, at the fittings; a
+                                            # silicone hose of this bore takes it, a stiff PVC one not
 HOSE_BARB_D = 6.5                           # the barb at both ends of that hose: its 5 mm bore and a
-                                            # millimetre and a half of stretch. Bored HOSE_BARB_D - 2,
-                                            # so filling is slow - a litre through 5 mm on the 0.1 m of
-                                            # head between the cap and an empty bottle runs at about
-                                            # 1 L/min and falls to 0.6 as the bottle fills: call it a
-                                            # minute and a half with a funnel, and the air it displaces
-                                            # leaves by the tank head's vent into the belly, not back
-                                            # up the hose
+                                            # millimetre and a half of stretch. Bored HOSE_BARB_D - 2, so
+                                            # filling runs on the head between the port's mouth (z 288) and
+                                            # the water - 0.13 m over an empty bottle, 0.06 over a full one:
+                                            # about 1.1 L/min falling to 0.75, a minute for a litre.
+                                            # The air it displaces leaves by the tank head's vent into the
+                                            # belly, not back up the hose
 HOSE_BARB_L = 10.0                          # how much of each barb the hose grips
-HOSE_BARB_LIP = 0.5                         # how far each barb's two ridges stand off its shank; the
-                                            # divider's hole has to pass them, the neck going in from above
-FILLER_NECK_XY = (42.0, 54.0)               # on the divider, on the bottle's neck side and beside the sled's
-                                            # path; the ring is notched for it. x is what lets the hose rise
-                                            # to it inside the belt ring's bore - at 48 the neck sat 0.2 mm
-                                            # inside that ellipse and no hose could reach it from below.
-                                            # y keeps the cap out of the sled's tray. See mech/torso.py
+HOSE_BARB_LIP = 0.5                         # how far each barb's two ridges stand off its shank
 FILLER_CAP_THREAD_MAJOR = 22.0              # 2.8 mm of wall at the neck's thread roots
 FILLER_CAP_PITCH = 2.0
 SAND_Z_TOP = Z_FLOOR - PUMP[2] - 12.0       # sand fills the boots up to here, under the pump and the valve
@@ -518,6 +533,8 @@ FAN_XY = (-49.0, 0.0)                       # the fan's axis, under the deck's b
                                             # one at 49 straight back has its corners at r 65.7
 FAN_HOLE_D = FAN - 4.0
 Z_VENT_IN = 272.0
+VENT_IN_Y = -12.0                           # the intake's centre across the back: 12 mm to the right of
+                                            # the back meridian, so the filler port can stand at 160
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
 BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
@@ -540,4 +557,4 @@ SPIGOT_H = 10.0                             # how far the tabs go down into the 
 SPIGOT_T = 3.0
 SPIGOT_HALF_DEG = 8.0
 COLLAR_SCREWS_Z = 302.0
-COLLAR_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
+COLLAR_SCREW_ANGLES = [45.0, 125.0, 235.0, 315.0]   # the back pair clear of the filler port at 150

@@ -45,7 +45,12 @@ INTO = {
     "collar_spigot": ("collar",),
     "nozzle_holder": ("head",),
     "beard_tongue": ("beard",),
+    "filler_port": ("torso",),
+    "filler_neck": ("torso",),
 }
+# Blanks unioned whole, not clipped to the grown cavity: the filler's neck stands in the pocket, half
+# of it outside where the skin was, and the pocket is cut round it afterwards.
+UNCLIPPED = {"filler_neck"}
 # A blank may reach past its section's own box where the part is meant to: the collar's spigot
 # tabs hang SPIGOT_H under the collar into the ring, a clearance inside it. (down, up), in mm.
 REACH = {("collar_spigot", "collar"): (P.SPIGOT_H + 1.0, 0.0),
@@ -234,8 +239,9 @@ def blanks(section, raw, grown):
         if not path.exists():
             print(f"      {section}: {name}.stl is not built; skipped")
             continue
-        clipped = isect(load_part(name), grown,
-                        blank_region(name, section) if (name, section) in REACH else region(section))
+        clipped = (load_part(name) if name in UNCLIPPED else
+                   isect(load_part(name), grown,
+                         blank_region(name, section) if (name, section) in REACH else region(section)))
         if clipped.is_empty or abs(clipped.volume) < 1.0:
             print(f"      {section}: {name} has nothing inside this section's wall; skipped")
             continue
@@ -253,7 +259,7 @@ def blanks(section, raw, grown):
             print(f"      {section}: {name} touches no wall here ({clipped.volume / 1e3:.1f} cm3); skipped")
             continue
         print(f"      {section}: {name} {sum(abs(p.volume) for p in welded) / 1e3:.1f} cm3 in{note}")
-        out.extend(welded)
+        out.extend((p, name) for p in welded)
     return out
 
 
@@ -263,10 +269,10 @@ def openings(name, mesh):
         window = box(0.0, FAR, P.CAM_Y - P.WINDOW_W / 2, P.CAM_Y + P.WINDOW_W / 2,
                      P.Z_LENS + P.WINDOW_Z_BIAS - P.WINDOW_H / 2,
                      P.Z_LENS + P.WINDOW_Z_BIAS + P.WINDOW_H / 2)
-        intake = box(-FAR, 0.0, -P.VENT_IN_W / 2, P.VENT_IN_W / 2,
+        intake = box(-FAR, 0.0, P.VENT_IN_Y - P.VENT_IN_W / 2, P.VENT_IN_Y + P.VENT_IN_W / 2,
                      P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
         from mech.collar import tab_out_r
-        mesh = cut(mesh, window, intake)
+        mesh = cut(mesh, window, intake, *filler_cutters())
         holes = []
         for deg in P.COLLAR_SCREW_ANGLES:                  # the collar's four, into its tabs
             holes.append(radial_holes(mesh, [deg], P.COLLAR_SCREWS_Z, tab_out_r(deg) - P.INSERT_DEPTH,
@@ -351,9 +357,14 @@ def main():
         mesh = trimesh.load(RAW / f"{name}.stl")
         raw_volume = mesh.volume
         parts = blanks(name, mesh, grown)
-        if parts:
-            mesh = union(mesh, *parts)
-        mesh = debris(openings(name, mesh), name)
+        clipped = [p for p, n in parts if n not in UNCLIPPED]
+        whole = [p for p, n in parts if n in UNCLIPPED]
+        if clipped:
+            mesh = union(mesh, *clipped)
+        mesh = openings(name, mesh)
+        if whole:                                   # the filler's neck stands in the pocket just cut
+            mesh = union(mesh, *whole)
+        mesh = debris(mesh, name)
         halves = P.FITTING_SPLIT.get(name, ((name, 0.0),))
         (STL / f"{name}.stl").unlink(missing_ok=True) if name in P.FITTING_SPLIT else None
         for out, side in halves:
@@ -371,6 +382,19 @@ def main():
 def write_holes():
     import json
     (STL / "holes.json").write_text(json.dumps(HOLES, indent=1))
+
+
+def filler_cutters():
+    """The filler port's pocket and bore, and the pocket's weep. The neck is unioned after them."""
+    from mech.filler import pocket_cut, weep
+    from build123d import export_stl
+    out = []
+    for i, shape in enumerate((pocket_cut(), weep())):
+        path = CAD / "out" / "stl" / f"_filler_cut_{i}.stl"
+        export_stl(shape, str(path), tolerance=0.05, angular_tolerance=0.1)
+        out.append(trimesh.load(path))
+        path.unlink()
+    return out
 
 
 def split(mesh, side):

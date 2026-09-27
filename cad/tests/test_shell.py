@@ -117,7 +117,7 @@ def test_every_interface_part_is_welded_into_its_section(sections):
             raw = trimesh.load(STATUE / "raw" / f"{target}.stl")
             printed = (trimesh.boolean.union([sections[h] for h, _ in P.FITTING_SPLIT[target]], engine=ENGINE)
                        if target in P.FITTING_SPLIT else sections[target])
-            for piece in A.blanks(target, raw, grown):
+            for piece, _ in A.blanks(target, raw, grown):
                 seen += 1
                 outside = volume_of(trimesh.boolean.difference(
                     [piece, printed], engine=ENGINE))
@@ -143,7 +143,7 @@ def test_the_window_is_open(sections):
 
 
 def test_the_intake_is_open(sections):
-    assert hits(sections["torso"], (0.0, 0.0, P.Z_VENT_IN), (-1.0, 0.0, 0.0)) is None, \
+    assert hits(sections["torso"], (0.0, P.VENT_IN_Y, P.Z_VENT_IN), (-1.0, 0.0, 0.0)) is None, \
         "the intake is blocked"
 
 

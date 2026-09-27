@@ -14,7 +14,7 @@ class Spec(NamedTuple):
 
 ALL = []          # Spec, in build order
 INTERFACES = {}   # shell section -> [part names unioned into it]
-MODULES = ("mech.turntable", "mech.nod", "mech.collar", "mech.head", "mech.torso", "mech.base")
+MODULES = ("mech.turntable", "mech.nod", "mech.collar", "mech.head", "mech.filler", "mech.torso", "mech.base")
 
 # What moves, and how. The head pans about Z and nods about Y, both about C = (0, 0, Z_NOD).
 # PANS: turns with the plate and does not nod - the plate with its hub, its cheeks and the nod

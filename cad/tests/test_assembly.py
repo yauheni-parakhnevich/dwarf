@@ -52,6 +52,7 @@ def world():
     out.update({n: m for n, (m, _) in M.bought().items()})
     out.update(M.sections())
     out["tube"] = M.tube(0.0, 0.0)
+    out["filler_cap"] = M.mech_meshes()["filler_cap"]
     return out
 
 
@@ -185,8 +186,8 @@ def test_the_collar_joint(world):
         assert len(up), f"the screw at {a:.0f} deg is not under the unit at rest"
         driver = M.to_mesh(_driver(tuple(head), tuple(u), r=3.0, length=40.0), f"collar_driver_{a:.0f}")
         assert M.overlap(driver, others) <= 0.05, f"no driver reaches the collar screw at {a:.0f} deg"
-        tip = screw_head(a)[0]                                    # the insert is behind the hole
-        assert abs(math.hypot(tip[0], tip[1]) - r) < 8.0, (a, r)
+        tip = screw_head(a)[0]                                    # the insert is behind the hole,
+        assert 0.0 < r - math.hypot(tip[0], tip[1]) <= 20.0 - 3.0, (a, r)   # within an M3 x 20's reach
 
 
 def test_the_head_screws_have_a_driver(world):
@@ -210,7 +211,7 @@ SCREWS = {    # (angles, z, length at each angle): the kit's countersunk M3s, fr
     "the beard's halves onto the head": ((30.0, 75.0, 285.0, 330.0), 417.0,
                                          {30.0: 14.0, 330.0: 14.0, 75.0: 12.0, 285.0: 12.0}),
     "the collar onto the ring": (P.COLLAR_SCREW_ANGLES, P.COLLAR_SCREWS_Z,
-                                 {45.0: 16.0, 315.0: 16.0, 135.0: 8.0, 225.0: 8.0}),
+                                 {45.0: 16.0, 315.0: 16.0, 125.0: 20.0, 235.0: 20.0}),
 }
 
 
@@ -232,3 +233,91 @@ def test_the_radial_screws_are_the_right_length(what):
         face = h["floor"] + P.INSERT_DEPTH
         assert face - tip >= 2.5, (what, a, h, tip)
         assert tip - h["floor"] >= 0.5, (what, a, h, tip)
+
+
+# --- the filler on the coat's back ---------------------------------------------------------------
+def _local_cyl(r, z0, z1, name):
+    from mech.filler import FRAME
+    from build123d import Cylinder, Pos
+    return M.to_mesh(FRAME * (Pos(0, 0, (z0 + z1) / 2) * Cylinder(r, z1 - z0)), name)
+
+
+def test_the_filler_port_is_open_and_the_cap_sits_in_it(world):
+    """The pocket, the bore and the weep are open through the ring; the cap, screwed on, touches
+    nothing of it, and stands out of the skin by its body's top and the grip bar, 14.5 mm at most."""
+    import mech.filler as F
+    from mech.base import CAP_L, GRIP
+    torso = world["torso"]
+    for what, origin, d in (("pocket", F.at((6.0, 0.0, -3.0)), F.U),
+                            ("bore", F.at((0.0, 0.0, -P.FILLER_POCKET_D + 1.0)), F.U)):
+        loc, _, _ = torso.ray.intersects_location(np.array([origin]), np.array([d]))
+        assert not len(loc), f"the {what} is closed"
+    cap = world["filler_cap"]
+    on_neck = M.overlap(cap, M.mech_meshes()["filler_neck"])     # the cap's thread on the neck's
+    assert on_neck > 1.0 and M.overlap(cap, torso) - on_neck < 0.5, (M.overlap(cap, torso), on_neck)
+    top = -P.FILLER_POCKET_D + F.CAP_END + CAP_L + GRIP[2]
+    assert top <= 14.5, top
+    far = max(np.dot(v - np.array(F.O), np.array(F.U)) for v in cap.vertices)
+    assert abs(far - top) < 0.05, (far, top)
+
+
+FILL_PANS = (0.0,)
+
+
+@pytest.mark.parametrize("pan,nod", [(p, n) for p in FILL_PANS for n in (-15.0, 0.0, 5.0)])
+def test_a_funnel_and_a_hand_reach_the_filler(world, pan, nod):
+    """A funnel's spout, 25 across and 80 long, along the port's axis out of the neck, and a gloved
+    hand, 60 across and 60 deep, over the cap's top: neither meets the statue, the sleeves, the
+    mitten caps or the turning unit, with the head parked at pan 0 and at every nod. Not at the pan
+    stops (test_the_funnel_is_clear_over_most_of_the_pan says how far): the unit's low parts - the beard's flanks to 85 degrees either side of the front,
+    and its back corners at 135 and 225, 22 degrees under C - swept through +-65 cover every
+    azimuth of the coat, so no port anywhere on it is clear of them at both stops. Fill with the
+    head parked; the firmware parks it at 0 whenever it is disarmed."""
+    from mech.base import CAP_L, GRIP
+    import mech.filler as F
+    neck_top = -P.FILLER_POCKET_D + F.NECK_H + 1.5               # over the neck and its thread's end
+    spout = M.manifold(_local_cyl(12.5, neck_top, neck_top + 80.0, "funnel"))
+    top = -P.FILLER_POCKET_D + F.CAP_END + CAP_L + GRIP[2]
+    hand = M.manifold(_local_cyl(30.0, top + 1.0, top + 61.0, "hand"))
+    fixed = M.manifold(M.union([world[n] for n in ("collar", "panel_left", "panel_right", "hand_left",
+                                                   "hand_right", "base_left", "base_right")]))
+    unit = M.moved(M.manifold(M.union([world[n] for n in UNIT])), "nods", pan, nod)
+    for what, m in (("the funnel", spout), ("the hand", hand)):
+        for other, o in (("the fixed shell", fixed), ("the turning unit", unit)):
+            assert M.mvolume(m, o) < 0.05, f"{what} meets {other} at pan {pan:+.0f}, nod {nod:+.0f}"
+    torso = M.manifold(world["torso"])
+    assert M.mvolume(spout, torso) < 0.05
+
+
+def test_the_filler_weep_drains_the_pocket(world):
+    """The pocket's lowest point drains out through the wall, 10 degrees down: a ray down the weep
+    leaves the ring."""
+    import mech.filler as F
+    import math as _m
+    start = F.at((0.0, -(P.FILLER_POCKET_R - 1.5), -P.FILLER_POCKET_D + 1.5))
+    dn = _m.radians(10.0)
+    d = (_m.cos(dn) * F.E_R[0], _m.cos(dn) * F.E_R[1], -_m.sin(dn))
+    loc, _, _ = world["torso"].ray.intersects_location(np.array([start]), np.array([d]))
+    assert not len(loc), "the weep is closed"
+
+
+def test_the_filler_port_skin_is_where_the_mesh_says(world):
+    """FILLER_PORT_SKIN_R, which the port is placed by, is the skin at that height and azimuth."""
+    import assemble as A
+    import trimesh as _t
+    outer = _t.load(M.CAD / "out" / "statue" / "outer.stl")
+    r = A.skin_at(outer, P.FILLER_PORT_AZ, P.FILLER_PORT_Z)
+    assert abs(r - P.FILLER_PORT_SKIN_R) <= 1.0, r
+
+
+def test_the_funnel_is_clear_over_most_of_the_pan(world):
+    """How far the head may be turned with a funnel in the port: every 5 degrees of pan at every
+    nod, the spout alone. It is clear from the -65 stop to +35; past that the beard's left flank
+    comes round over the coat's back-left."""
+    import mech.filler as F
+    unit = M.manifold(M.union([world[n] for n in UNIT]))
+    neck_top = -P.FILLER_POCKET_D + F.NECK_H + 1.5
+    spout = M.manifold(_local_cyl(12.5, neck_top, neck_top + 80.0, "funnel"))
+    clear = [p for p in range(-65, 66, 5)
+             if all(M.mvolume(spout, M.moved(unit, "nods", float(p), n)) < 0.05 for n in (-15.0, 0.0, 5.0))]
+    assert clear == list(range(-65, clear[-1] + 1, 5)) and clear[-1] >= 35, clear

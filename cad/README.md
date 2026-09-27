@@ -17,9 +17,9 @@ both, the mechanism from three sides, two cutaways and every section - is writte
 `out/preview/`, and `out/statue/preview_*.png` and `out/preview/parting_*.png` show the statue and
 its parting.*
 
-The gnome stands **700 mm**. There are **twelve shell pieces** and **28 mechanism parts**, six of
+The gnome stands **700 mm**. There are **twelve shell pieces** and **29 mechanism parts**, eight of
 which are unioned into the shell rather than printed on their own, and the stop pin prints twice:
-**35 prints** in all, none wider than the 256 mm bed. About 1.9 kg of shell and 0.9 kg of
+**34 prints** in all, none wider than the 256 mm bed. About 1.9 kg of shell and 0.9 kg of
 mechanism at 1.27 g/cm³.
 
 The shell is an image-to-3D reconstruction of the user's own garden gnome, hollowed to a 2.4 mm
@@ -185,7 +185,7 @@ and hat come down over them and are screwed to them.
 
 ### Mechanism — 28 parts
 
-Six never print on their own: they are blanks the assembler clips to the cavity and unions into a
+Eight never print on their own: they are blanks the assembler clips to the cavity and unions into a
 shell section.
 
 | File | What it is | mm | cm³ | g | On the bed |
@@ -196,8 +196,11 @@ shell section.
 | `beard_tongue` | The four tongues from the beard's halves up into the head | — | 5 | — | — into `beard_left`/`beard_right` |
 | `divider` | The base's lid, sealed with a PU bead. **100 % infill, six perimeters** | 147 × 209 × 8 | 197 | 250 | Flat, with a brim |
 | `sand_plug` | Closes the floor plate's pour hole | 38 × 38 × 6 | 4 | 5 | Disc down |
-| `chassis` | The dry zone's floor, **71.5 × 77 now** so it goes in through the ring's top; three screws at the back | 134 × 154 × 12 | 65 | 83 | Flat |
-| `phone_sled`, `electronics_deck`, `filler_neck`, `tank_cradle`, `tank_head`, `filler_cap`, `pump_bracket`, `valve_bracket`, `valve_strap` | as before | | | | as before |
+| `chassis` | The dry zone's floor, **71.5 × 77 now** so it goes in through the ring's top; three screws at the back, at 185/200/215°, and cut back to r 61 under the filler port | 134 × 154 × 12 | 65 | 83 | Flat |
+| `filler_port` | The filler through the ring's back: a cup round the cap's pocket, a channel in and down, a barb pointing down with a drip lip | — | 11 | — | — into `torso` |
+| `filler_neck` | The M22 neck in the pocket; unioned unclipped, after the pocket is cut | — | 2 | — | — into `torso` |
+| `filler_cap` | The M22 cap with its O-ring groove and a 26 × 5 × 6 grip bar | 28 × 28 × 20 | 6 | 7 | Open end down |
+| `phone_sled`, `electronics_deck`, `tank_cradle`, `tank_head`, `pump_bracket`, `valve_bracket`, `valve_strap` | as before | | | | as before |
 | `deck_ring` | The cage: four legs from the chassis to the deck, tied at their feet | 87 × 131 × 134 | 65 | 83 | Foot ring down, no support |
 | `deck` | Carries the bearing's outer ring on a lip, the pan servo hanging beneath, the 30 mm fan, the pan stops. Its outline is the collar's narrowest opening under it less 1.5, and the socket's sphere less 1.5 | 148 × 163 × 48 | 93 | 118 | Top face down, hangers up |
 | `bearing_cap` | Clamps the bearing's outer ring down; three countersunk M3 × 8 | 79 × 80 × 5 | 8 | 11 | Top face down |
@@ -272,7 +275,7 @@ measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are
 |---|---|---|---|
 | `belt_flange_lower` | the belt ring's four, down from `Z_BELT` | 4 | M3 insert, **9 mm** |
 | `belt_flange_upper`, `divider` | the same four, through | 4 | **M3 × 20** — the belt |
-| `belt_flange_upper` | three at the back, at 145/180/215°, up | 3 | M3 insert, 6 mm — the chassis |
+| `belt_flange_upper` | three at the back, at 185/200/215°, up | 3 | M3 insert, 6 mm — the chassis |
 | `chassis` | the same three, through | 3 | M3 × 10 |
 | `floor_plate` | the cradle's four and the two brackets' eight | 12 | M3 insert, 6 mm |
 | `tank_cradle`, `pump_bracket`, `valve_bracket` | through into those | 12 | M3 |
@@ -295,15 +298,15 @@ measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are
 | `stem` | the nod horn's four | 4 | M2.5 self-tapping |
 | `spider` | four radial at z 440 | 4 | M3 insert, 6 mm — the head's **M3 × 30 countersunk** |
 | `spider` | the tube's clamp | 1 | M3 insert, 6 mm — M3 × 8 |
-| `collar_spigot` | four radial in the tabs | 4 | M3 insert, 6 mm — **M3 × 16** at 45/315°, **M3 × 8** at 135/225°, countersunk, through the ring |
+| `collar_spigot` | four radial in the tabs | 4 | M3 insert, 6 mm — **M3 × 16** at 45/315°, **M3 × 20** at 125/235°, countersunk, through the ring |
 | `beard_tongue` | four radial | 4 | M3 insert, 6 mm — **M3 × 14** at 30/330°, **M3 × 12** at 75/285°, countersunk, through the head |
 | `servo_crank` | the pan horn's four | 4 | M2.5 self-tapping |
 | `electronics_deck` | the modules' own feet | 20 | their own screws |
 
 **Totals.** **69 M3 inserts** - 4 at 9 mm, 4 at 7 mm, 2 at 4.5 mm, 7 at 4 mm and **52 at 6 mm** - and
 69 M3 screws to fill them: 4 × M3 × 20 (belt), 4 × M3 × 30 countersunk (head), 2 × M3 × 16, 2 × M3 × 14
-and 2 × M3 × 12 countersunk (collar, beard), 2 × M3 × 12 (spider), 3 + 2 × M3 × 8 countersunk (cap,
-collar), 2 × M3 × 10 countersunk (hub ring), and the rest socket heads between 8 and 14 mm. Plus
+and 2 × M3 × 12 countersunk (collar, beard), 2 × M3 × 20 countersunk (the collar's back pair), 2 × M3 × 12 (spider), 3 × M3 × 8 countersunk (bearing
+cap), 2 × M3 × 10 countersunk (hub ring), and the rest socket heads between 8 and 14 mm. Plus
 8 M2.5 self-tappers for the two horns, one M2 grub for the pin, the modules' own screws, a Ø4 × 14
 dowel, a 4 × 6 × 6 bushing and a 5 × 1.5 O-ring. The lazy susan's eight bolts are gone.
 
@@ -318,8 +321,10 @@ moved along their path 2 mm at a time against everything already in, and touch n
 
 **The legs and the base**, as before: the pump's and the valve's brackets up into the floor plate
 while each half is open, then the halves glued, the mitten caps, the sand and its plug, the bottle
-in its cradle, the tank head, the filler hose on both barbs, the divider with its bead and glands,
-the belt ring with its sleeves, and the four M3 × 20 belt screws.
+in its cradle, the tank head, the filler hose on the tank head's barb and threaded up through the
+divider's hole at the back (147°, r 71), the divider with its bead and glands, the belt ring with
+its sleeves - the hose through its flange's bore on the way - and the four M3 × 20 belt screws.
+Push the hose up onto the filler port's barb, inside the ring's back, before the chassis goes in.
 
 **On the bench: the cage onto the chassis** (four M3 × 10 up into its feet), then the pair **down
 through the ring's top** onto the flange, three screws at the back. The chassis is 71.5 × 77 so that
@@ -359,8 +364,19 @@ countersunk screws from outside: four into the spider, four into the beard's ton
   This is more than it was, and it is honest: the phone is under everything that turns.
 - **The head** alone comes off on its eight screws; with it off the spider, the stem's head and the
   dome's bore are in view, and nothing below the dome is reachable.
-- **Refilling** is the cap on the divider at (42, 54), under the deck: it now needs the collar off
-  as well as the head. Use a funnel and wipe the divider.
+- **Refilling needs nothing taken off: unscrew the cap on the coat's back, pour.** The port is on
+  the belt ring at 160°, beside the air intake, its axis 30° up and out at z 286, so it takes a
+  funnel or a bottle's spout; fill with the head parked (the firmware parks it at 0 when disarmed) -
+  a Ø25 spout 80 long is clear of everything from the −65 stop to +35, past that the beard's flank
+  comes round over it. The cap sits sunk in the port's pocket, its body 8.5 mm out of the skin and
+  its grip bar 14.5, 26 long, for a gloved hand. What spills outside runs down the coat's back; what
+  stands in the pocket runs in, or out through the weep at its lowest point; a leak at the one
+  joint inside, the port's barb, meets a drip lip that leads it onto the hose, and the hose's bores
+  through the chassis, the flanges and the divider are 1.5 mm round it, so it runs down into the wet
+  side at the back - 120 mm from the phone, 16 mm outside the boards. Filling runs at about 1.1
+  L/min falling to 0.75 as the bottle fills: a minute for a litre.
+
+  ![The coat's back at rest: the filler cap in its pocket beside the air intake](docs/pose_rest_back.png)
 - **The bottle** comes out only by opening the belt.
 
 ## What the tests check
@@ -379,7 +395,10 @@ the deck inside the socket and the collar's shadow; the linkage through the whol
 the yoke; every group of parts, bought ones included, overlapping nothing but its designed contacts;
 and every bench screw's driver path.
 
-`test_wet_and_head.py` (15) is the wet zone, unchanged.
+`test_wet_and_head.py` (16) is the wet zone: the cap on the port's neck; the port 43 mm over the
+bottle's top with the hose falling all the way; the hose from the port's barb to the tank head's,
+touching nothing else and nothing with 3 mm more round it; both barbs; a drip down the hose going
+through to the wet side.
 
 `test_fit.py` (4): every placed part inside `cavity.stl`, and everything fixed or panning over the
 ring's top inside the socket's sphere, bought parts included.
@@ -397,7 +416,9 @@ manifold3d's `min_gap`): **the whole machine posed**, pan −65, −30, 0, 30, 6
 what nods, what pans, the linkage and the tube against what is fixed and against each other; the
 least gap to each neighbour at the stops; and the 2 mm seam, proved by distance from C.
 
-`test_assembly.py` (17): the order above, swept step by step; why the beard is in halves; the
+`test_assembly.py`: the order above, swept step by step; the filler port open, its cap on it and
+14.5 mm out of the skin, its weep draining, a funnel and a hand reaching it with the head parked and
+how far the head may turn with a funnel in it; why the beard is in halves; the
 chassis through the ring's top; the collar joint's screws under the unit at rest and reachable; the
 radial screws' lengths; and - a strict xfail - the lens clip, below.
 
@@ -422,6 +443,9 @@ radial screws' lengths; and - a strict xfail - the lens clip, below.
   a turned-in flange; where the skin was thinner than the wall it was lifted, and in print the edge
   will bead. The beard's centre lock hangs from the moustache by skin just under the wall and is
   slightly frayed.
+- **Fill with the head parked.** No port anywhere on the coat is clear of the turning unit at both
+  pan stops - its beard flanks and its low back corners, swept through ±65°, cover every azimuth -
+  so a funnel in the port at 160° is clear from −65° to +35° and not past that.
 - **The phone is under everything.** Servicing it takes the unit, the spider, the collar and the
   deck off.
 - **The exhaust is the dome's bore and the 2 mm seam**, and nothing is filtered or sealed: rain on

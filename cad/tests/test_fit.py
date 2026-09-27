@@ -39,11 +39,14 @@ def _cavity():
     return trimesh.load_mesh(str(CAVITY))
 
 
+OUTSIDE = {"filler_cap"}      # it screws on outside, sunk in the port's pocket: test_assembly's
+
+
 def test_every_placed_part_is_inside_the_cavity(placed):
     """The mesh is the arbiter, vertex by vertex."""
     mesh = _cavity()
     for name, p in sorted(placed.items()):
-        if name in blanks():
+        if name in blanks() or name in OUTSIDE:
             continue
         pts = [(v.X, v.Y, v.Z) for v in p.vertices()]
         if not pts:

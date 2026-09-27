@@ -4,10 +4,10 @@ The statue has no cavity below the coat's hem, so the floor is a plate at Z_FLOO
 below it is sand ballast - except the two trouser legs, which are the only tall free volumes in
 the whole statue and are where the pump and the valve now hang, on brackets bolted up under that
 plate. The bottle lies on the plate on its wide face, neck to +Y, and the tank head screws onto
-it; a hose carries the filler forward to a neck on the divider.
+it; a hose comes down to its barb from the filler port on the coat's back (mech/filler.py).
 
-Service: there is no hatch. The filler cap and the sled are reached from the top with the bell
-lifted off. The bottle is 97 x 195 in plan and the belt ring's bore is 120 x 182, so it does not
+Service: there is no hatch. The filler cap is outside, on the coat's back; the sled is reached
+from the top. The bottle is 97 x 195 in plan and the belt ring's bore is 120 x 182, so it does not
 pass that either - to change the bottle the belt joint comes apart and the divider lifts off.
 """
 import math
@@ -57,8 +57,8 @@ TANK_HEAD_AT = Location((P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L, BOTTLE_AXIS_Z)
 
 # --- filler cap ----------------------------------------------------------------------------
 CAP_R = P.FILLER_CAP_THREAD_MAJOR / 2 + 3           # 14
-CAP_GRIP = 2.0                                      # the flare's reach past CAP_R. At 4 the
-                                                    # cap's rim touched the sled's flank
+CAP_GRIP = 0.0                                      # no flare any more: it turns in the port's
+                                                    # pocket, 1 mm round it, by the bar on its top
 CAP_BORE_R = P.FILLER_CAP_THREAD_MAJOR / 2 + 0.2    # 11.2
 CAP_END_T = 4.0
 CAP_L = 14.0
@@ -66,9 +66,10 @@ CAP_SEAT_Z = CAP_L - CAP_END_T                      # 10; the neck's rim lands h
 CAP_THREAD_Z = 0.5
 CAP_THREAD_LEN = 9.0
 GROOVE_R = (P.FILLER_D / 2 + 0.4, P.FILLER_CAP_THREAD_MAJOR / 2 - 1.4)
-# it screws down onto the neck on the divider, mouth down, so its closed end is uppermost
-FILLER_CAP_AT = Location((P.FILLER_NECK_XY[0], P.FILLER_NECK_XY[1],
-                          P.Z_BASE_TOP + P.DIVIDER_PROUD + 1.0), (0, 0, 0))
+GRIP = (26.0, 5.0, 6.0)                             # a bar across the cap's top, for a gloved hand
+# it screws onto the port's neck, sunk in the pocket, along the port's axis
+from mech.filler import cap_location  # noqa: E402
+FILLER_CAP_AT = cap_location()
 
 # --- the brackets in the legs ------------------------------------------------------------------
 BRACKET_T = 4.0                                     # the plate that bolts up under the floor
@@ -118,26 +119,29 @@ def can_thread():
 
 
 def hose_points():
-    """The filler hose's centreline, from the tank head's stub to the neck on the divider.
+    """The filler hose's centreline, from the port's barb on the coat's back to the tank head's.
 
-    Straight up off the stub, in over the bottle's top to the neck's y, out to the neck's x,
-    and up into it. Every leg is in the one free band there is: over the bottle's shoulder,
-    under the divider, and inside the belt ring's bore - the ring is solid from 232 to 240
-    everywhere outside that ellipse. The run's height is the only one there is, a hose radius
-    and a millimetre over the higher of the stub's top and the bottle's own top, and HOSE_OD
-    is what will then pass under the divider. The neck came in to x 42 for the same reason:
-    the last rise has to stand inside that bore too.
-
-    The corners are the cost. Five millimetres of straight is all there is at either fitting
-    before the hose has to turn, which is HOSE_BEND_R and why that comment says what it says.
+    Straight down from the port's barb, through the chassis, both belt flanges and the divider at
+    FILLER_PASSAGE; under the lower flange, in towards the axis until it is inside the belt ring's
+    bore and past the bottle's shoulder; up to the run over the bottle, inside that bore; across to
+    the stub; and down onto it. The run's height is the old one, a hose radius and a millimetre over
+    the stub's top, and inside the bore the hose may rise to the divider, so it is not the 13 mm
+    between the bottle and the divider any more that sizes it, but the bore beside the stub.
     """
+    from mech.filler import hose_start, passage_xy
     r = P.HOSE_OD / 2
     sx, sy = P.BOTTLE_XY[0], BOTTLE_Y1 - TANK_HEAD_L + STUB_Z
-    top = BOTTLE_AXIS_Z + STUB_OUT                       # the stub's end face: the hose starts here
-    nx, ny = P.FILLER_NECK_XY
-    run = max(top, P.BOTTLE_Z0 + P.BOTTLE[2]) + r + 1.0  # clear of the stub's top and of the bottle
-    return [(sx, sy, top), (sx, sy, run), (sx, ny, run), (nx, ny, run),
-            (nx, ny, P.Z_BELT - 0.5)]                    # ... and up to the neck's spigot
+    top = BOTTLE_AXIS_Z + STUB_OUT                       # the stub's end face
+    run = max(top, P.BOTTLE_Z0 + P.BOTTLE[2]) + r + 1.0  # over the stub and the bottle
+    px, py = passage_xy()
+    under = P.Z_BELT - P.FLANGE_LOWER_H - r - 2.0         # under the lower flange
+    ix, iy = HOSE_TURN_IN                                 # inside the belt's bore, past the shoulder
+    return [hose_start(), (px, py, under), (ix, iy, under), (ix, iy, run), (sx, sy, run),
+            (sx, sy, top)]
+
+
+HOSE_TURN_IN = (-47.0, 43.0)       # where the hose turns up to the run: inside the belt ring's bore
+                                   # (0.84 of it) and 4.5 mm outside the bottle's shoulder at z 226
 
 
 def hose_route(r=None):
@@ -204,9 +208,10 @@ def tank_head():
 
 @part("filler_cap", placement=FILLER_CAP_AT)
 def filler_cap():
-    """Closes the neck on the divider, reached from the top. Retention thread, an O-ring seal."""
-    cap = cyl_z(CAP_R, 0, CAP_L)
-    cap = cap + _cone_z(CAP_R, CAP_R + CAP_GRIP, CAP_SEAT_Z, CAP_L)      # a grip that flares at 45
+    """Closes the filler port on the coat's back. Retention thread, an O-ring seal, and a bar
+    across its top a gloved hand can turn it by. Printed open end down."""
+    cap = cyl_z(CAP_R, 0, CAP_L) + box(-GRIP[0] / 2, GRIP[0] / 2, -GRIP[1] / 2, GRIP[1] / 2,
+                                       CAP_L - 0.01, CAP_L + GRIP[2])
     cap = cap - cyl_z(CAP_BORE_R, -1, CAP_SEAT_Z)
     thread = IsoThread(major_diameter=P.FILLER_CAP_THREAD_MAJOR + 0.4, pitch=P.FILLER_CAP_PITCH,
                        length=CAP_THREAD_LEN, external=False, end_finishes=("fade", "fade"))
