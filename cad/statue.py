@@ -21,10 +21,19 @@ Everything it writes lands in `out/statue/`:
     features.json      feature heights, the per-5-mm reach table, the legs
     raw/*.stl          the sections, before the assembler cuts openings in them
 
-The sections follow the fit report's 6.3: everything above `Z_TURN` (the beard's bottom edge)
-is one turning bell - beard, head, hat - which lifts off, so the coat below it has no belly
-hatch and no sculpted skin above the seam. `R_TURN` is the radius the bell's inside keeps clear
-for the shroud; `TURN_GAP` is the air in the seam.
+The sections part on one sphere. The head pans about Z and nods about Y, and both are
+rotations about a single point C = (0, 0, `Z_NOD`) on the pan axis; a rotation about a point
+maps every sphere about that point to itself. So the coat is kept inside the ball of radius
+`NECK_SPHERE_R` - `TURN_GAP` about C and the turning unit outside the sphere of radius
+`NECK_SPHERE_R`, and then no pan and no nod can bring them together. The seam is where the
+sculpt's own skin crosses that sphere - low over the shoulders, high at the nape, and in front
+it is the beard's own outline, where the relief stands proud of the sphere. Under the beard the
+coat is filled out to the sphere inside `BEARD_AZ`, which is the bib the beard rests on.
+
+Below `Z_BEARD_BOT` nothing turns and the coat keeps its skin; that part of the coat is outside
+the ball, so it is the one thing the sphere does not protect, and it is the nod - not the pan -
+that would run into it. The coat stays whole; the unit's bottom rim is trimmed instead, to what
+stays above `Z_BEARD_BOT` at every nod in `NOD_RANGE`, and `sweep()` proves it.
 """
 import json
 import math
@@ -602,6 +611,7 @@ def measured(skin):
 
 def features(skin, cavity, shell):
     feats, src = measured(skin)
+    prof, _, _ = profile(skin, cavity)
     doc = {
         "frame": "mm, Z up, +X front, +Y left, origin on the floor under the pan axis",
         "height": P.Z_TOP,
@@ -614,141 +624,251 @@ def features(skin, cavity, shell):
         "reach": reach(cavity, shell),
         "legs_z": Z_LEGS,
         "legs": legs(cavity),
+        "profile_step": [PROF_Z[2], 360.0 / PROF_AZ],
+        "profile_band": [PROF_Z[0], PROF_Z[1]],
+        "parting": {"z_nod": P.Z_NOD, "r": P.NECK_SPHERE_R, "z_collar": P.Z_COLLAR,
+                    "z_beard_bottom": P.Z_BEARD_BOT},
     }
+    doc.update(prof)
     (OUT / "features.json").write_text(json.dumps(doc, indent=1))
-    print(f"statue features  {len(doc['reach'])} reach rows, legs {doc['legs']}")
+    print(f"statue features  {len(doc['reach'])} reach rows, "
+          f"{len(doc['profile_outer'])} x {PROF_AZ} profile rows, legs {doc['legs']}")
     return doc
 
 
 # --- the sections ---------------------------------------------------------------------------
 
-def min_radius(meshes, z_lo, z_hi, step=2.0):
-    """The smallest distance from the pan axis to any of those meshes' material, over a z band."""
-    best = None
-    for z in np.arange(z_lo, z_hi + 1e-9, step):
-        for m in meshes:
-            segs = segments_at(m, z)
-            if len(segs):
-                r = float(np.hypot(segs[..., 0], segs[..., 1]).min())
-                best = r if best is None else min(best, r)
-    return best
+def ball(r, sub=5):
+    """A sphere about C = (0, 0, Z_NOD). Its facets are 0.05 mm inside the true sphere at r 100,
+    which is inside TURN_GAP and on the safe side for the coat and the unsafe side for the
+    turning unit by the same 0.05 mm - a fortieth of the gap."""
+    m = trimesh.creation.icosphere(subdivisions=sub, radius=r)
+    m.apply_translation((0.0, 0.0, P.Z_NOD))
+    return m
 
 
-def max_radius(mesh, z_lo, z_hi, step=2.0):
-    """The largest radius `mesh` reaches over a z band, and the band where it passes `limit`."""
-    out = {}
-    for z in np.arange(z_lo, z_hi + 1e-9, step):
-        segs = segments_at(mesh, z)
-        if len(segs):
-            out[float(z)] = float(np.hypot(segs[..., 0], segs[..., 1]).max())
+def wedge(half, z0, z1, r=FAR):
+    """The solid |azimuth| <= half, as a prism. A sector is star-shaped about the axis, so the
+    fan of triangles from it tiles the face whatever the angle; shapely is not in this venv."""
+    n = max(12, int(half))
+    a = np.radians(np.linspace(-half, half, n + 1))
+    p2 = np.vstack([[0.0, 0.0], np.column_stack([r * np.cos(a), r * np.sin(a)])])
+    m = len(p2)
+    v = np.vstack([np.column_stack([p2, np.full(m, z0)]),
+                   np.column_stack([p2, np.full(m, z1)])])
+    f = [[0, i, i + 1] for i in range(1, m - 1)] + [[m, m + i + 1, m + i] for i in range(1, m - 1)]
+    for i in range(m):
+        j = (i + 1) % m
+        f += [[i, m + i, m + j], [i, m + j, j]]
+    out = trimesh.Trimesh(vertices=v, faces=np.array(f), process=True)
+    out.fix_normals()
     return out
 
 
-def lathe(bell, fixed, skin, cavity, z_lo, z_hi):
-    """Turn the bell down over the band where it would foul the fixed panels as it sweeps.
+def rays(mesh, zs, naz=72):
+    """The outermost crossing of `mesh` in each of `naz` directions from the axis, at each z.
 
-    Rotation about the pan axis is the whole design: under PANEL_TOP the bell has to live inside
-    a cylinder, because anything of it at a radius the panels also occupy meets them within
-    sixty-five degrees. The radius is the panels' own closest approach to the axis less TURN_GAP,
-    measured on their cut sections rather than assumed from PANEL_Y - the coat's wall crosses
-    that plane out at the sides, not in front, so there is a little more room than the plane says.
-
-    A lathe turns a surface down; it does not punch a hole. Cutting the wall with the cylinder
-    would have done the latter - the wall is 2.4 mm thick and stands out at r 105, so the cut
-    took all of it and left the beard's front open. So the skin is turned down instead: inside
-    the band the outer solid is intersected with the cylinder and the cavity with a cylinder one
-    wall thinner, and the wall between them comes out as a cylindrical face where the beard's
-    locks used to stand proud.
+    One `mesh_multiplane` for the whole stack and then plain 2D line-line algebra, which is what
+    makes a 72 x 61 table of a 200 000-triangle solid a second's work rather than a minute's.
+    A section may be empty (above the statue, below the floor); that row comes back zeros.
     """
-    r_fixed = min_radius(fixed, z_lo, z_hi)
-    r = r_fixed - P.TURN_GAP
-    before = max_radius(bell, z_lo, z_hi)
-    over = [z for z, rr in before.items() if rr > r]
-    if not over:
-        print(f"statue lathe    nothing to do: the bell clears r {r:.1f} under z {z_lo:.0f}..{z_hi:.0f}")
-        return bell, r, None, 0.0
-    band = (min(over), max(over))
-    slab = box((-FAR, -FAR, z_lo), (FAR, FAR, z_hi))
-    turned = trimesh.boolean.boolean_manifold(
-        [trimesh.boolean.boolean_manifold([skin, slab, cylinder(r, z_lo - 2.0, z_hi + 2.0)], "intersection"),
-         trimesh.boolean.boolean_manifold([cavity, slab, cylinder(r - P.WALL, z_lo - 2.0, z_hi + 2.0)],
-                                          "intersection")], "difference")
-    out = trimesh.boolean.boolean_manifold(
-        [trimesh.boolean.boolean_manifold([bell, slab], "difference"), turned], "union")
-    print(f"statue lathe    bell turned down to r {r:.1f} (the panels reach r {r_fixed:.1f}) over "
-          f"z {band[0]:.0f}..{band[1]:.0f}, where it stood out to r {max(before.values()):.1f}; "
-          f"{(out.volume - bell.volume) / 1e3:+.1f} cm3 of wall (locks off, a turned face on)")
-    return out, r, band, out.volume - bell.volume
+    lines, _, _ = trimesh.intersections.mesh_multiplane(
+        mesh, np.zeros(3), np.array([0.0, 0.0, 1.0]), np.asarray(zs, float))
+    out = np.zeros((len(zs), naz))
+    ang = np.radians(np.arange(naz) * (360.0 / naz))
+    d = np.stack([np.cos(ang), np.sin(ang)], axis=1)
+    for k, segs in enumerate(lines):
+        if not len(segs):
+            continue
+        segs = np.asarray(segs)
+        a, e = segs[:, 0], segs[:, 1] - segs[:, 0]
+        den = d[:, None, 0] * e[None, :, 1] - d[:, None, 1] * e[None, :, 0]
+        ok = np.abs(den) > 1e-12
+        q = np.where(ok, den, 1.0)
+        t = (a[None, :, 0] * e[None, :, 1] - a[None, :, 1] * e[None, :, 0]) / q
+        u = (a[None, :, 0] * d[:, None, 1] - a[None, :, 1] * d[:, None, 0]) / q
+        keep = ok & (t > 1e-9) & (u >= 0.0) & (u <= 1.0)
+        r = np.where(keep, t, -np.inf).max(axis=1)
+        out[k] = np.where(np.isfinite(r), r, 0.0)
+    return out
 
 
-def sweep(bell, fixed, step=5.0):
-    """Turn the bell through its stops against the fixed shell and report what it touches."""
+PROF_Z = (300.0, 420.0, 2.0)     # the profile's band and step; the parting lives inside it
+PROF_AZ = 72                     # every 5 degrees, az 0 = +x = the front, counterclockwise
+
+
+def profile(skin, cavity):
+    """The skin's and the cavity's outer radius, every 5 degrees, every 2 mm through the parting.
+
+    `reach` answers the mechanism's question - how far out may a part go before it hits a wall -
+    in five directions. This answers the parting's question, which is the opposite one and needs
+    every direction: how far out does the statue itself stand, so that a sphere about C can be
+    put between the coat and the beard. Rows are keyed by z, columns run az 0, 5, ... 355.
+    """
+    zs = np.arange(PROF_Z[0], PROF_Z[1] + 1e-9, PROF_Z[2])
+    out = {}
+    for name, mesh in (("profile_outer", skin), ("profile_cavity", cavity)):
+        tab = rays(mesh, zs, PROF_AZ)
+        out[name] = {str(int(round(z))): [round(float(x), 1) for x in row]
+                     for z, row in zip(zs, tab)}
+    return out, zs, rays(skin, zs, PROF_AZ)
+
+
+def collar_height(skin):
+    """Where the sphere leaves the skin at the nape: the parting's highest point, measured.
+
+    Z_COLLAR is not a choice - it is this number - and the stage refuses to go on if the sculpt
+    or the sphere has moved it, because every section's z bounds are cut from it.
+    """
+    zs = np.arange(380.0, 425.0, 1.0)
+    r = rays(skin, zs, 72)[:, 36]                       # az 180, the back
+    d = np.hypot(r, zs - P.Z_NOD)
+    over = np.flatnonzero(d >= P.NECK_SPHERE_R)
+    if not len(over):
+        raise RuntimeError("the sphere never leaves the skin at the nape; NECK_SPHERE_R is too big")
+    return float(zs[over[0]])
+
+
+def parting(skin, cavity, shell):
+    """Cut the statue into the fixed coat and the turning unit on the sphere about C.
+
+    The coat is the skin clipped into the ball, with its cavity clipped one wall further in so
+    the clipped face comes out as wall and not as a hole; under the beard the ball is filled in
+    as well, so the beard rests on a smooth bib rather than on the relief it used to be part of.
+    The turning unit is simply the shell outside the sphere, above the beard's bottom.
+
+    The one plane left in the parting is that bottom: the sphere goes on down through the coat's
+    belly, which has to stay, so the turning unit is cut off flat at `Z_BEARD_BOT` and the coat's
+    own skin stops `TURN_GAP` under it. That plane is what the nod runs into.
+    """
+    zb, gap = P.Z_BEARD_BOT, P.TURN_GAP
+    ro = P.NECK_SPHERE_R - gap                          # the coat may not pass this
+    ri = ro - P.WALL                                    # the bib's inner face
+    # The ball's own top is up inside the head (z Z_NOD + r), and `skin` is a solid, so a plain
+    # intersection would hand the coat a spherical cap of the head's inside. The coat is cut off
+    # TURN_GAP under the collar instead, which at the nape is exactly where the sphere leaves
+    # the skin anyway, and everywhere else is deep inside the turning unit and never seen.
+    lid = P.Z_COLLAR - gap
+    above = box((-FAR, -FAR, zb - gap), (FAR, FAR, lid))
+    bib = wedge(P.BEARD_AZ, zb - gap, lid)
+    bo, bi, bm = ball(ro), ball(ri), ball(P.NECK_SPHERE_R)
+    o1 = trimesh.boolean.boolean_manifold(
+        [cut(skin, (-FAR, -FAR, -1.0), (FAR, FAR, zb - gap)),
+         trimesh.boolean.boolean_manifold([skin, above, bo], "intersection"),
+         trimesh.boolean.boolean_manifold([bo, bib], "intersection")], "union")
+    c1 = trimesh.boolean.boolean_manifold(
+        [cut(cavity, (-FAR, -FAR, -1.0), (FAR, FAR, zb - gap)),
+         trimesh.boolean.boolean_manifold([cavity, above, bi], "intersection"),
+         trimesh.boolean.boolean_manifold([bi, bib], "intersection")], "union")
+    fixed = trimesh.boolean.boolean_manifold([o1, c1], "difference")
+    moving = trimesh.boolean.boolean_manifold(
+        [cut(shell, (-FAR, -FAR, zb), (FAR, FAR, P.Z_TOP + 1.0)), bm], "difference")
+    # The flat bottom is the one face of the unit that is not on the sphere, and the coat under
+    # it is outside the ball, so a nod would drive it in. The coat is not cut; the unit keeps
+    # only what stays above Z_BEARD_BOT at every nod in NOD_RANGE. Pan is about Z and leaves z
+    # alone, so this one envelope covers every pan as well.
+    whole = moving.volume
+    nods = np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, P.NOD_STEP)
+    keep = [turned(box((-FAR, -FAR, zb), (FAR, FAR, FAR)), 0.0, -float(n)) for n in nods]
+    moving = trimesh.boolean.boolean_manifold([moving] + keep, "intersection")
+    print(f"statue nod trim  the unit's bottom rim cut to the envelope of nods "
+          f"{P.NOD_RANGE[0]:+.0f}..{P.NOD_RANGE[1]:+.0f}: {(whole - moving.volume) / 1e3:.1f} cm3 off the beard")
+    shaved = shell.volume - fixed.volume - moving.volume
+    print(f"statue parting  sphere r {P.NECK_SPHERE_R:.0f} about (0, 0, {P.Z_NOD:.0f}); coat "
+          f"<= r {ro:.0f}, turning unit >= r {P.NECK_SPHERE_R:.0f}\n"
+          f"       fixed {fixed.volume / 1e3:.0f} cm3 ({fixed.body_count} body), turning "
+          f"{moving.volume / 1e3:.0f} cm3 ({moving.body_count} body), "
+          f"{-shaved / 1e3:+.1f} cm3 of new wall net (the socket and the bib, less the seam and the trim)")
+    return fixed, moving
+
+
+def turned(mesh, pan, nod):
+    """`mesh` panned about Z and nodded about Y, both about C.
+
+    `nod` is the firmware's sign: positive is nose up, which about +Y is a negative rotation,
+    because the nose is on +X. Nod first: the two share a centre, so the order only decides
+    whether the nod is in the head's frame or the world's, and the firmware nods the head after
+    it has pointed it.
+    """
+    c = np.array([0.0, 0.0, P.Z_NOD])
+    m = mesh.copy()
+    m.apply_translation(-c)
+    m.apply_transform(trimesh.transformations.rotation_matrix(math.radians(-nod), (0.0, 1.0, 0.0)))
+    m.apply_transform(trimesh.transformations.rotation_matrix(math.radians(pan), (0.0, 0.0, 1.0)))
+    m.apply_translation(c)
+    return m
+
+
+def overlap(moving, still, pan, nod):
+    hit = trimesh.boolean.boolean_manifold([turned(moving, pan, nod), still], "intersection")
+    return abs(hit.volume) if len(hit.faces) else 0.0
+
+
+def sweep(moving, fixed):
+    """Turn and tip the unit through its stops against the fixed shell and report what it touches.
+
+    Pan every five degrees at nod 0, then the pan stops and the middle against every five
+    degrees of NOD_RANGE, so a path through the coat between the ends is caught too. Anything
+    above nothing is an overlap and the stage stops.
+    """
     still = trimesh.boolean.boolean_manifold(list(fixed), "union")
-    worst = (0.0, 0.0)
-    for deg in np.arange(-P.PAN_STOP_DEG, P.PAN_STOP_DEG + 1e-9, step):
-        turned = bell.copy()
-        turned.apply_transform(trimesh.transformations.rotation_matrix(
-            math.radians(float(deg)), (0.0, 0.0, 1.0)))
-        hit = trimesh.boolean.boolean_manifold([turned, still], "intersection")
-        v = abs(hit.volume) if len(hit.faces) else 0.0
-        if v > worst[0]:
-            worst = (v, float(deg))
-    print(f"statue sweep    +-{P.PAN_STOP_DEG:.0f} deg every {step:.0f}: worst overlap "
-          f"{worst[0]:.1f} mm3 at {worst[1]:+.0f} deg")
-    return worst
+    grid = {(float(p), 0.0): 0.0 for p in np.arange(-P.PAN_STOP_DEG, P.PAN_STOP_DEG + 1e-9, 5.0)}
+    nods = sorted(set(np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 5.0)) | set(P.NOD_RANGE))
+    for n in nods:
+        for p in (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG):
+            grid[(float(p), float(n))] = 0.0
+    for k in grid:
+        grid[k] = overlap(moving, still, *k)
+    worst = max(grid.items(), key=lambda t: t[1])
+    print(f"statue sweep    {len(grid)} poses, pan +-{P.PAN_STOP_DEG:.0f} x nod "
+          f"{P.NOD_RANGE[0]:+.0f}..{P.NOD_RANGE[1]:+.0f}: worst overlap {worst[1]:.1f} mm3 at "
+          f"pan {worst[0][0]:+.0f} nod {worst[0][1]:+.0f}")
+    # how the unit's lowest edges move at the ends of the nod
+    v = np.asarray(moving.vertices)
+    for sign, nod, what in ((1, P.NOD_RANGE[0], "beard's bottom edge"), (-1, P.NOD_RANGE[1], "back edge")):
+        side = v[sign * v[:, 0] > 0]
+        p0 = side[np.argmin(side[:, 2])]
+        p1 = turned(trimesh.Trimesh(vertices=[p0], faces=np.zeros((0, 3), int), process=False),
+                    0.0, nod).vertices[0]
+        print(f"       nod {nod:+.0f}: the {what} at x {p0[0]:+.0f} z {p0[2]:.0f} moves "
+              f"{p1[0] - p0[0]:+.1f} mm in x and {p1[2] - p0[2]:+.1f} mm in z, to z {p1[2]:.1f}")
+    return worst[1]
 
 
-def sections(shell, skin, cavity):
-    """Cut the shell into the printable raw sections.
+def sections(fixed, moving):
+    """Cut the fixed coat and the turning unit into the printable raw sections.
 
-    Three things are fixed and three turn. The coat's belt ring and the two side panels - the
-    sleeves, the mittens under them and the shoulders' sides - never move; the bell, which is
-    everything above Z_TURN inside the panels and everything at all above PANEL_TOP, turns with
-    the shroud and carries the beard, the face and the hat. The mitten caps come off the base
-    halves for the bed and glue back on, and the panels glue to the ring.
-
-    The bell is lathed where it would foul the panels; `lathe` says what that cost.
+    Six pieces are fixed - the two base halves, the two mitten caps, the two sleeve panels - and
+    the coat above the belt is one ring that now runs all the way to the collar, because above
+    `Z_BEARD_BOT` the coat is inside the ball and never reaches `PANEL_Y` again. Three turn: the
+    beard with the collar ring it hangs from, the head, and the hat.
     """
     RAW.mkdir(parents=True, exist_ok=True)
     py, pb, pt = P.PANEL_Y, P.PANEL_BOTTOM, P.PANEL_TOP
-    top = P.Z_TURN - P.TURN_GAP           # the coat's ring stops TURN_GAP under the bell's rim
-    chin = P.SECTIONS_STATUE["beard"][1]  # where the bell is split for the bed, at the chin
-    sides = {                             # the fixed sides: panels above the belt, mittens below
+    top = P.Z_COLLAR - P.TURN_GAP
+    chin = P.SECTIONS_STATUE["beard"][1]
+    sides = {
         "panel_left":  ((-FAR, py, P.Z_BELT), (FAR, FAR, pt)),
         "panel_right": ((-FAR, -FAR, P.Z_BELT), (FAR, -py, pt)),
         "hand_left":   ((-FAR, py, pb), (FAR, FAR, P.Z_BELT)),
         "hand_right":  ((-FAR, -FAR, pb), (FAR, -py, P.Z_BELT)),
     }
-    out = {name: cut(shell, lo, hi) for name, (lo, hi) in sides.items()}
-    # the base halves keep everything below the belt except the mitten caps
-    below = cut(shell, (-FAR, -FAR, -1.0), (FAR, FAR, P.Z_BELT))
+    out = {name: cut(fixed, lo, hi) for name, (lo, hi) in sides.items()}
+    below = cut(fixed, (-FAR, -FAR, -1.0), (FAR, FAR, P.Z_BELT))
     for name in ("hand_left", "hand_right"):
         below = trimesh.boolean.boolean_manifold([below, out[name]], "difference")
     out["base_left"] = cut(below, (-FAR, KERF / 2, -1.0), (FAR, FAR, P.Z_BELT))
     out["base_right"] = cut(below, (-FAR, -FAR, -1.0), (FAR, -KERF / 2, P.Z_BELT))
-    # the ring: the coat between the panels, from the belt to under the bell's rim
-    out["torso"] = cut(shell, (-FAR, -py, P.Z_BELT), (FAR, py, top))
-    # the bell: inside the panels above Z_TURN, everything above them
-    bell = trimesh.boolean.boolean_manifold(
-        [cut(shell, (-FAR, -py, P.Z_TURN), (FAR, py, pt)),
-         cut(shell, (-FAR, -FAR, pt), (FAR, FAR, P.Z_TOP + 1.0))], "union")
-    bell, r_lathe, band, turned_off = lathe(bell, [out["panel_left"], out["panel_right"]],
-                                            skin, cavity, P.Z_TURN, pt)
-    worst = sweep(bell, [out["torso"], out["panel_left"], out["panel_right"],
-                         out["hand_left"], out["hand_right"]])
-    if worst[0] > 0.0:
-        raise SystemExit(f"the bell fouls the fixed shell by {worst[0]:.1f} mm3 at {worst[1]:+.0f} deg")
-    rim = bell.bounds
-    print(f"statue bell     z {rim[0][2]:.1f}..{rim[1][2]:.1f}, "
-          f"{bell.volume / 1e3:.0f} cm3; rim at the sides {pt:.0f}, in front {P.Z_TURN:.0f}")
-    if rim[0][2] < P.Z_TURN - 1e-6:
-        raise RuntimeError(f"the bell dips to z {rim[0][2]:.1f}, under Z_TURN")
-    side_low = cut(bell, (-FAR, py - 1.0, -1.0), (FAR, FAR, P.Z_TOP + 1.0)).bounds[0][2]
-    if side_low < pt - 1e-6:
-        raise RuntimeError(f"the bell reaches z {side_low:.1f} outside the panels, under their top {pt}")
-    for name, (lo, hi) in {"beard": (P.Z_TURN, chin), "head": (chin, P.Z_HAT),
+    ring = cut(fixed, (-FAR, -FAR, P.Z_BELT), (FAR, FAR, top))
+    for name in ("panel_left", "panel_right"):
+        ring = trimesh.boolean.boolean_manifold([ring, out[name]], "difference")
+    out["torso"] = ring
+    for name, (lo, hi) in {"beard": (P.Z_BEARD_BOT - 1.0, chin), "head": (chin, P.Z_HAT),
                            "hat": (P.Z_HAT, P.Z_TOP + 1.0)}.items():
-        out[name] = cut(bell, (-FAR, -FAR, lo), (FAR, FAR, hi))
+        out[name] = cut(moving, (-FAR, -FAR, lo), (FAR, FAR, hi))
+    glue = cut(moving, (-FAR, -FAR, chin - 0.5), (FAR, FAR, chin + 0.5)).volume
+    print(f"statue glue     the beard meets the head at z {chin:.0f} over "
+          f"{glue:.0f} mm2 of face (a 1 mm slice of the unit, by volume)")
     total = 0.0
     for name in P.SECTIONS_STATUE:
         back = write(out[name], RAW / f"{name}.stl", quiet=True)
@@ -756,15 +876,14 @@ def sections(shell, skin, cavity):
         total += back.volume
         if max(back.extents) > P.BED:
             raise RuntimeError(f"{name} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
-    kerf = cut(shell, (-FAR, -KERF / 2, -1.0), (FAR, KERF / 2, P.Z_BELT)).volume
-    seam = cut(shell, (-FAR, -py, top), (FAR, py, P.Z_TURN)).volume
-    want = shell.volume - kerf - seam + turned_off
-    err = (total - want) / shell.volume
-    print(f"statue sections  {total / 1e3:.1f} cm3 against the shell's {shell.volume / 1e3:.1f} "
-          f"less the y-kerf ({kerf / 1e3:.1f}) and the bell's seam ({seam / 1e3:.1f}), "
-          f"plus the lathe ({turned_off / 1e3:+.1f}): {err * 100:+.2f} %")
+    kerf = cut(fixed, (-FAR, -KERF / 2, -1.0), (FAR, KERF / 2, P.Z_BELT)).volume
+    want = fixed.volume + moving.volume - kerf
+    err = (total - want) / want
+    print(f"statue sections  {total / 1e3:.1f} cm3 against the coat's {fixed.volume / 1e3:.1f} "
+          f"and the unit's {moving.volume / 1e3:.1f} less the y-kerf ({kerf / 1e3:.1f}): "
+          f"{err * 100:+.2f} %")
     if abs(err) > 0.01:
-        raise RuntimeError(f"the sections and the shell disagree by {err * 100:.2f} %")
+        raise RuntimeError(f"the sections and the parting disagree by {err * 100:.2f} %")
     return out
 
 
@@ -777,7 +896,20 @@ def main():
     skin = outer()
     cavity, grown, shell = hollow()
     features(skin, cavity, shell)
-    sections(shell, skin, cavity)
+    measured_collar = collar_height(skin)
+    if abs(measured_collar - P.Z_COLLAR) > 1.5:
+        raise RuntimeError(f"the sphere leaves the skin at the nape at z {measured_collar:.1f}, "
+                           f"not Z_COLLAR {P.Z_COLLAR}; set Z_COLLAR to that and rebuild")
+    print(f"statue collar   the sphere leaves the nape at z {measured_collar:.1f} "
+          f"(Z_COLLAR {P.Z_COLLAR})")
+    fixed, moving = parting(skin, cavity, shell)
+    out = sections(fixed, moving)
+    worst = sweep(moving, [out[n] for n in ("torso", "panel_left", "panel_right",
+                                            "hand_left", "hand_right",
+                                            "base_left", "base_right")])
+    if worst > 0.0:
+        raise SystemExit(f"the turning unit fouls the fixed coat by {worst:.1f} mm3 inside "
+                         f"pan +-{P.PAN_STOP_DEG:.0f} and nod {P.NOD_RANGE}")
     preview()
 
 

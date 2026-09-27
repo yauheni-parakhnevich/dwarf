@@ -335,27 +335,53 @@ STATUE_FEATURES = {                         # fraction of height, from the fit a
     "beard_bottom": 0.441, "chin": 0.589, "mouth": 0.603, "nose": 0.645, "eye": 0.679,
     "ear": 0.684, "brim_side": 0.713, "brim_front": 0.735,
 }
-Z_TURN = 309.0                              # the turning bell starts at the beard's bottom (0.441 H)
-TURN_GAP = 2.0                              # air between the bell's rim and the fixed coat below it
-# The bell is everything above Z_TURN except the sleeves: the coat's side panels with the mittens,
-# |y| >= PANEL_Y, stay fixed up to PANEL_TOP so the arms do not twist with the head. The bell
-# sweeps +-PAN_STOP_DEG inside them; where its lower front (the beard's ends) would touch a
-# panel, the statue stage lathes the bell there and reports it.
-PANEL_Y = 105.0                             # at 95 the beard's front had to be lathed 12 mm and 14 mm slots opened
-                                            # beside the chest. At 105 the bell turns down to r 103, which off the
-                                            # front meridian is not one number: the skin reached 105.8 at 0 deg
-                                            # (2.8 mm off), 107.3 at +-30 (4.3), 114.0 at +-40 (11.0), 115.5 at
-                                            # +-50 (12.5) and 112.7 at +-60 (9.7), measured on out/statue/outer.stl
-                                            # over z 309..399. The front loses the tips of two locks; the sides
-                                            # lose a centimetre of beard to a cylindrical face
-PANEL_TOP = 400.0
+# --- how the statue parts, and where it hinges -----------------------------------------------
+# The head does two things: it pans +-PAN_STOP_DEG about Z and it nods about Y. Both are
+# rotations about ONE point, C = (0, 0, Z_NOD), on the pan axis. A rotation about a point maps
+# every sphere about that point to itself, so if the fixed coat lies wholly inside the ball of
+# radius NECK_SPHERE_R - TURN_GAP about C, and the moving unit lies wholly outside the sphere of
+# radius NECK_SPHERE_R, the two can never meet, at any pan and any nod. That one sphere is
+# therefore the whole parting: the beard's back face, the bib the beard rests on, and the collar
+# seam round the shoulders and the back. The seam is where the sculpt's own skin crosses it -
+# low over the shoulders, high at the nape - and in front it is handed over to the beard's own
+# outline, which is simply where the beard's relief stands proud of the sphere.
+Z_NOD = 350.0                               # the pan/nod centre, on the pan axis, in the neck
+NECK_SPHERE_R = 100.0                       # the moving unit's inner boundary about C
+TURN_GAP = 2.0                              # air in the seam: the coat is kept inside R - this
+BEARD_GAP = 2.0                             # air under the beard: the bib is filled to R - this
+NOD_RANGE = (-15.0, 5.0)                    # the owner's aim, + is nose up (the firmware's sign).
+                                            # The sphere frees pan and nod for everything near the
+                                            # joint; what it cannot free is the unit's flat bottom
+                                            # at Z_BEARD_BOT, because the coat's belly under it is
+                                            # outside the ball. The coat stays uncut, so the unit
+                                            # gives way instead: its bottom rim is trimmed to the
+                                            # envelope of the coat's top plane seen from every nod
+                                            # in this range - 24 mm off the beard's front tips
+                                            # (x +92 nosing down 15 deg), 4.6 mm off its back edge
+                                            # (x -53 nosing up 5 deg), nothing at the sides.
+NOD_STEP = 1.0                              # the envelope is built from a plane every this many
+                                            # degrees; the chord it leaves is 0.002 mm at r 41
+Z_BEARD_BOT = 309.0                         # the beard's bottom edge (0.441 H): below it nothing
+                                            # turns, and the coat keeps its own skin
+Z_TURN = Z_BEARD_BOT                        # kept: every reader means "everything above this may
+                                            # turn", which is still true of the beard's bottom and
+                                            # would not be true of Z_COLLAR
+Z_COLLAR = 407.0                            # derived, not chosen: where the sphere crosses the
+                                            # skin at the nape (az 180). The statue stage measures
+                                            # it on outer.stl and raises if it has moved
+BEARD_AZ = 85.0                             # the bib's fill sector: inside +-this the coat is
+                                            # filled out to the sphere, so the beard sits on a
+                                            # smooth bib instead of on its own old relief
+PANEL_Y = 105.0                             # the sleeves' plane; above Z_BEARD_BOT the coat is
+                                            # inside the ball (r <= 98) and never reaches it
+PANEL_TOP = Z_BEARD_BOT                     # so the side panels stop where the beard's bottom is
 PANEL_BOTTOM = 196.0                        # the mittens' lower edge; below Z_BELT the panel belongs to the base halves
 SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed
     "base_left": (0.0, Z_BELT), "base_right": (0.0, Z_BELT),        # split at y = 0, sand ballast inside
     "hand_left": (PANEL_BOTTOM, Z_BELT), "hand_right": (PANEL_BOTTOM, Z_BELT),   # mitten caps glued to the base halves
-    "torso": (Z_BELT, Z_TURN - TURN_GAP),                             # the coat's belt ring, fixed
-    "panel_left": (Z_BELT, PANEL_TOP), "panel_right": (Z_BELT, PANEL_TOP),      # sleeves and shoulders' sides, fixed, glued to the ring
-    "beard": (Z_TURN, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),    # the turning bell, glued
+    "torso": (Z_BELT, Z_COLLAR - TURN_GAP),                          # the coat: belt ring, chest, shoulders, back, fixed
+    "panel_left": (Z_BELT, PANEL_TOP), "panel_right": (Z_BELT, PANEL_TOP),      # the sleeves' sides, fixed, glued to the ring
+    "beard": (Z_BEARD_BOT, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),   # the turning unit, glued
 }
 # With the bell off, everything inside is reached from the top: there is no belly hatch. The
 # window is cut in the ring; the exhaust fan sits on the left panel's inner face, the intake

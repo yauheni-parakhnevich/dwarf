@@ -1,10 +1,16 @@
-"""Render the statue and its sections. Blender only; `statue.py` drives it.
+"""Render the statue, its sections, and the parting as it moves. Blender only; `statue.py` drives it.
 
-Three questions, three pictures. Does the skin still look like the gnome the image-to-3D made
+Three questions and then a fourth. Does the skin still look like the gnome the image-to-3D made
 (front, side, iso, off `outer.stl`)? Where does every cut fall (`preview_sections`, the raw
 sections in their own colours, pulled apart along the axis)? And is there a cavity in there at
 all (`preview_cut`, the shell bisected at y = 0)? The cut is a bmesh bisect, not a boolean, so
 the walls show as open edges - which is what a section drawing looks like anyway.
+
+The fourth is the parting, and it is the only one that has to be looked at in motion: the
+`parting_*.png` set in `out/preview/` puts the turning unit - beard, head, hat - in a colour
+over the fixed coat in clay, and turns it about C = (0, 0, Z_NOD) through pan and nod. What to
+look for is the bib the pan uncovers, the beard's outline against it, the collar seam round the
+nape, and, at nose-down, how close the beard's trimmed bottom edge comes to the coat.
 """
 import math
 import sys
@@ -12,7 +18,7 @@ from pathlib import Path
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 CAD = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CAD))
@@ -20,6 +26,7 @@ import params as P  # noqa: E402
 
 OUT = CAD / "out" / "statue"
 RAW = OUT / "raw"
+PNG = CAD / "out" / "preview"
 SIZE = 900
 CLAY = (0.62, 0.60, 0.57)
 COLOURS = {
@@ -28,6 +35,7 @@ COLOURS = {
     "torso": (0.66, 0.30, 0.26), "panel_left": (0.40, 0.58, 0.40), "panel_right": (0.30, 0.48, 0.33),
     "beard": (0.78, 0.78, 0.80), "head": (0.80, 0.62, 0.52), "hat": (0.30, 0.45, 0.62),
 }
+MOVING = {"beard": (0.80, 0.42, 0.32), "head": (0.82, 0.50, 0.40), "hat": (0.62, 0.30, 0.26)}
 LIFT = {"base_left": 0, "base_right": 0, "hand_left": 20, "hand_right": 20,
         "torso": 45, "panel_left": 45, "panel_right": 45,
         "beard": 85, "head": 115, "hat": 145}
@@ -129,14 +137,57 @@ sc, co = scene()
 ob = halve(load(OUT / "shell.stl", CLAY))
 shoot(sc, co, "cut", [ob], 90.0, 0.0)
 
-# the bell alone, front and three-quarter: this is where the lathe shows
+# the turning unit alone, front and three-quarter
 for view, (rx, rz) in {"bell": (80.0, 90.0), "bell_iso": (75.0, 50.0)}.items():
     sc, co = scene()
     obs = [load(RAW / f"{n}.stl", COLOURS[n]) for n in ("beard", "head", "hat")]
     shoot(sc, co, view, obs, rx, rz)
 
-# the statue as it stands: the fixed shell in clay, the bell in a colour, so the seams read
+# the statue as it stands: the fixed shell in clay, the turning unit in a colour, so the seams read
 sc, co = scene()
-obs = [load(RAW / f"{n}.stl", CLAY if n not in ("beard", "head", "hat") else (0.72, 0.42, 0.34))
+obs = [load(RAW / f"{n}.stl", CLAY if n not in MOVING else (0.72, 0.42, 0.34))
        for n in COLOURS]
 shoot(sc, co, "assembled", obs, 80.0, 70.0)
+
+
+# --- the parting, in motion ------------------------------------------------------------------
+
+def pose(objects, pan, nod):
+    """Pan about Z and nod about Y, both about C = (0, 0, Z_NOD). Positive nod is nose up, which
+    about +Y is negative, because the nose is on +X - the same convention `statue.turned` uses."""
+    c = Vector((0.0, 0.0, P.Z_NOD))
+    m = (Matrix.Translation(c) @ Matrix.Rotation(math.radians(pan), 4, "Z")
+         @ Matrix.Rotation(math.radians(-nod), 4, "Y") @ Matrix.Translation(-c))
+    for ob in objects:
+        ob.matrix_world = m @ ob.matrix_world
+
+
+def parting(name, pan, nod, views, halve_fixed=False, centre=None, span=None, pad=1.08):
+    for view, (rx, rz) in views.items():
+        sc, co = scene()
+        fixed = [load(RAW / f"{n}.stl", CLAY) for n in COLOURS if n not in MOVING]
+        if halve_fixed:
+            for ob in fixed:
+                halve(ob)
+        unit = [load(RAW / f"{n}.stl", MOVING[n]) for n in MOVING]
+        pose(unit, pan, nod)
+        cam = centre if centre is not None else (0.0, 0.0, P.Z_TOP / 2)
+        wide = span if span is not None else P.Z_TOP * 1.02
+        co.data.ortho_scale = wide * pad
+        co.location = [a + b * 2500.0 for a, b in zip(cam, offset(rx, rz))]
+        co.rotation_euler = (math.radians(rx), 0.0, math.radians(rz))
+        PNG.mkdir(parents=True, exist_ok=True)
+        sc.render.filepath = str(PNG / f"parting_{name}_{view}.png")
+        bpy.ops.render.render(write_still=True)
+        print(f"preview parting_{name}_{view}")
+
+
+VIEWS = {"front": (90.0, 90.0), "side": (90.0, 0.0), "quarter": (78.0, 50.0)}
+for name, (pan, nod) in {"rest": (0.0, 0.0), "pan65": (65.0, 0.0), "noddown15": (0.0, -15.0),
+                         "nodup5": (0.0, 5.0), "pan65_noddown15": (65.0, -15.0)}.items():
+    parting(name, pan, nod, VIEWS)
+# the bib, the beard's edge and the shoulder, close up, with the head turned and nodded down
+parting("closeup", 65.0, -15.0, {"quarter": (74.0, 34.0)}, centre=(0.0, 0.0, 352.0), span=250.0)
+# and the cutaway at rest, in the existing style: the coat halved at y = 0, the unit whole over it
+parting("cutaway", 0.0, 0.0, {"side": (90.0, 0.0)}, halve_fixed=True,
+        centre=(0.0, 0.0, 380.0), span=420.0)
