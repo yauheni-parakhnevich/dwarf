@@ -422,7 +422,8 @@ def test_the_nod_servo_is_seated_and_drives_the_hub(parts):
     plate, stem, servo = parts["plate"], parts["stem"], nod_servo()
     assert (servo & plate).volume < 1e-3                                   # it lies on the posts
     assert (servo & stem).volume < 1e-6
-    yt = nod_servo_tab_y()
+    yt = nod_servo_tab_y() - P.SERVO_SHIM_T                     # the posts' ends, under the shims
+    assert (parts["servo_shim"] & servo).volume < 1e-3 and (parts["servo_shim"] & plate).volume < 1e-3
     for x, z in nod_servo_holes():
         insert = cyl_y(P.INSERT_D / 2 - 0.05, yt - P.INSERT_DEPTH + 0.1, yt - 0.01, x, z)
         assert (insert & plate).volume < 1e-6, (x, z)
@@ -432,7 +433,34 @@ def test_the_nod_servo_is_seated_and_drives_the_hub(parts):
     for deg in P.NOD_STOP:
         assert (posed(stem, 0, deg) & servo).volume < 1e-6, deg
     body = servo.bounding_box()                                            # inside the cage's +Y legs
-    assert math.hypot(body.max.X, body.max.Y) <= P.CAGE_LEG_R - P.CAGE_LEG / 2 - 6.0
+    assert math.hypot(body.max.X, body.max.Y) <= P.CAGE_LEG_R - P.CAGE_LEG / 2 - 3.0
+
+
+def test_the_stem_is_carried_by_two_bearings_not_by_the_servo(parts):
+    """Take the servo away and the stem is still located radially at both cheeks: the pin in the
+    -Y cheek's bushing and the collar on the hub's +Y face in the +Y cheek's bore, each over 6 mm
+    or more of its length, with 0.2 of clearance at the collar. So a side load on the unit rolls
+    the stem against its bearings, not the servo's output shaft."""
+    from mech.nod import bushing, pin
+    stem, plate = parts["stem"], parts["plate"]
+    # -Y: how long the pin runs in the bushing
+    bb = bushing().bounding_box()
+    pb = pin().bounding_box()
+    assert min(bb.max.Y, pb.max.Y) - max(bb.min.Y, pb.min.Y) >= 6.0
+    # +Y: the collar's journal inside the cheek's bore
+    co = P.HUB_COLLAR[1]
+    journal = (cyl_y(co + 0.01, -30, 30, 0.0, P.Z_NOD) - cyl_y(co - 0.3, -31, 31, 0.0, P.Z_NOD)) & stem
+    jb = journal.bounding_box()
+    y0, y1 = P.SERVO_CHEEK_Y
+    overlap = min(jb.max.Y, y1) - max(jb.min.Y, y0)
+    assert overlap >= 6.0, overlap
+    bore = (cyl_y(co + P.COLLAR_FIT + 0.3, y0 + 0.1, y1 - 0.1, 0.0, P.Z_NOD)
+            - cyl_y(co + P.COLLAR_FIT - 0.02, y0, y1, 0.0, P.Z_NOD))
+    assert (bore & plate).volume > 0.9 * bore.volume                 # the cheek is all round it
+    assert (cyl_y(co + P.COLLAR_FIT - 0.05, y0 + 0.1, y1 - 0.1, 0.0, P.Z_NOD) & plate).volume < 1e-6
+    for deg in P.NOD_STOP:
+        assert (posed(stem, 0, deg) & plate).volume < 1e-6, deg     # it turns in it
+    assert 0.1 <= P.COLLAR_FIT <= 0.3
 
 
 def test_the_pin_is_held_in_the_hub_and_turns_in_the_bushing(parts):
@@ -629,7 +657,7 @@ def test_no_two_parts_in_a_group_overlap(placed):
     pans = set(PANS) | {n for n, (_, how) in bought.items() if how == "pans"}
     nods = (set(NODS) | {n for n, (_, how) in bought.items() if how == "nods"}) - set(section)
     contacts = [{"pin", "stem"}, {"bushing", "plate"}, {"stop_lug", "stem"}, {"nod_servo", "plate"},
-                {"pin", "bushing"}]
+                {"pin", "bushing"}, {"horn", "stem"}, {"nod_servo", "servo_shim"}, {"servo_shim", "plate"}]
     groups = [[n for n in placed if n not in pans | nods | set(LINKAGE) | {"stop_pin"}],
               sorted(pans), sorted(nods)]
     for group in groups:

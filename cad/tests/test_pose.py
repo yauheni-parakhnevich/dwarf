@@ -103,8 +103,8 @@ NEIGHBOURS = (
     ("plate", "deck_ring", 2.0, ""),
     ("plate", "deck", 0.25, "the column in its arc slot, CLEAR each side"),
     ("plate", "bearing_cap", 0.4, ""),
-    ("stem", "plate", 0.35, "0.4 each side between the blade and the cheeks; the neck's swing in "
-                            "the slot is NOD_CLEAR, test_mech's test_the_stem_swings_clear_of_the_yoke"),
+    ("stem", "plate", P.COLLAR_FIT - 0.05, "the collar in the +Y cheek's bore, COLLAR_FIT; the blade "
+                            "between the cheeks and the neck's swing in the slot are wider"),
     ("stem", "hub_ring", P.NOD_CLEAR, ""),
     ("stem", "collar", 1.5, "the dome's bore"),
     ("spider", "collar", 1.5, "the dome's bore and its sphere"),

@@ -291,10 +291,11 @@ def plate():
                             (CHEEK_R, P.Z_NOD), (-CHEEK_R, P.Z_NOD)], -y1, -y0)
     sy0, _ = P.SERVO_CHEEK_Y
     sy1 = P.SERVO_CHEEK_Y[1]
-    ytab = N.nod_servo_tab_y()
+    ytab = N.nod_servo_tab_y() - P.SERVO_SHIM_T                  # the posts' ends, under the shims
     pos = box(-CHEEK_W, CHEEK_W, sy0, sy1, SERVO_POST_Z[0], P.Z_HUB_BOTTOM + 0.01)
+    pw = P.SERVO_POST_W / 2
     for za, zb in ((SERVO_POST_Z[0], SERVO_POST_Z[1]), (SERVO_POST_Z[2], SERVO_POST_Z[3] + 0.01)):
-        pos = pos + box(-CHEEK_W, CHEEK_W, sy0, ytab, za, zb)
+        pos = pos + box(-pw, pw, sy0, ytab, za, zb)
     p = p + neg + pos
     # the column from the stop tab's underside through the deck's slot, and the foot bar to the pin
     r_in, r_out, w = P.PAN_COLUMN
@@ -319,10 +320,25 @@ def plate():
     slot = (cyl_y(P.STOP_LUG_R + P.STOP_LUG_D / 2 + 0.2, -y1 - 1, -y0 + 1, 0.0, P.Z_NOD)
             - cyl_y(P.STOP_LUG_R - P.STOP_LUG_D / 2 - 0.2, -y1 - 2, -y0 + 2, 0.0, P.Z_NOD))
     p = p - (slot & N.xz_wedge(a0, a1, CHEEK_R + 5, -y1 - 1, -y0 + 1))
-    p = p - cyl_y(P.SPLINE_BOSS[0] / 2 + 1.0, sy0 - 1, sy1 + 1, 0.0, P.Z_NOD)
+    # the +Y cheek is a ring round C here, bored for the collar on the stem's hub: the second bearing
+    p = p + cyl_y(P.HUB_COLLAR[1] + P.COLLAR_FIT + 4.5, sy0, sy1, 0.0, P.Z_NOD)
+    p = p - cyl_y(P.HUB_COLLAR[1] + P.COLLAR_FIT, sy0 - 1, sy1 + 1, 0.0, P.Z_NOD)
     for x, z in N.nod_servo_holes():
         p = p - cyl_y(P.INSERT_D / 2, ytab - P.INSERT_DEPTH, ytab + 0.01, x, z)
     return p
+
+
+@part("servo_shim")
+def servo_shim():
+    """A shim between one of the nod servo's tabs and its post: SERVO_SHIM_T thick, across both of
+    the tab's holes. Print two; drawn on the upper post, where one of them sits."""
+    ytab = N.nod_servo_tab_y()
+    zc = N.nod_servo_holes()[2][1]
+    pw = P.SERVO_POST_W / 2
+    s = box(-pw, pw, ytab - P.SERVO_SHIM_T, ytab, zc - 3.0, zc + 3.0)
+    for x, z in N.nod_servo_holes()[2:]:
+        s = s - cyl_y(P.M3_CLEAR / 2, ytab - 5, ytab + 1, x, z)
+    return s
 
 
 @part("servo_crank")

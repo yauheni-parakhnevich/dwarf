@@ -298,16 +298,30 @@ PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y 
 # 4 x 6 bushing: 0.5 MPa. The stem's neck is 15 x 12 with a 7 mm channel: at the deck, 56 mm under
 # the wind's centre of pressure, 9.7 N bends it to 1.3 MPa.
 NOD_STOP = (-16.0, 6.0)        # the hard stops, a degree outside NOD_RANGE
-NOD_SERVO_FACE_Y = 10.5        # the nod servo's case face; its body runs out to y 48.5, 7 mm inside
+NOD_SERVO_FACE_Y = 13.5        # the nod servo's case face; its body runs out to y 51.5, 3.7 inside
                                # the cage's +Y legs (r 56) at every pan
 PIN_D = 4.0                    # a steel dowel along Y through C, pressed and set-screwed into the
 PIN_L = 14.0                   # stem's hub, turning in a bronze bushing in the -Y cheek
 BUSH_OD, BUSH_L = 6.0, 6.0     # a plain 4 x 6 x 6 bushing, pressed into the cheek
 CHEEK_Y = (6.4, 12.4)          # the -Y cheek's faces, |y|: it carries the bushing and the stop slot
-SERVO_CHEEK_Y = (6.4, 9.9)     # the +Y cheek, which only joins the servo's two posts round its spline
+SERVO_CHEEK_Y = (6.4, 13.0)    # the +Y cheek: it joins the servo's two posts, and it is the stem's
+                               # second bearing - a bore round the collar on the hub's +Y face, so
+                               # the servo's output shaft carries the nod's torque and nothing else.
+                               # Side wind on the unit (0.03 m2, Cd 1.2, 112 above C) rolls the stem:
+                               # the two bearings 19.1 apart take 12, 26 and 52 N at 10, 15 and 20
+                               # m/s, on a 26 x 6.6 journal here (0.3 MPa at 20 m/s) and the 4 x 6
+                               # bushing on the other side (2.3 MPa); the servo used to take them
+HUB_COLLAR = (11.0, 13.0)      # the collar on the hub's +Y face: a cup the horn sits in, its outside
+                               # the journal
+SERVO_SHIM_T = 2.0             # the nod servo's tabs stand this far off the ends of its posts on two
+                               # printed shims each side: the posts stop short so the plate and yoke
+                               # still drop through the bearing's 50 mm bore (they reach r 23.7)
+SERVO_POST_W = 15.0            # the posts' width across, round the tabs' two holes 10 apart
+COLLAR_FIT = 0.2               # radial clearance in the cheek's bore: the unit rolls 0.75 degrees on
+                               # it and the bushing, 4 mm at the hat's tip
 STEM_T = 12.0                  # the stem is a blade |y| <= STEM_T / 2 between the cheeks
 STEM_W = 15.0                  # the neck's width in the plane of the nod
-STEM_HUB_R = 13.0              # the hub at C: the round horn is let into its +Y face
+STEM_HUB_R = 13.0              # the hub at C
 STEM_LEAN = 5.0                # the neck leans back this much at rest, so that over NOD_RANGE it swings
                                # -10..+10 degrees from vertical and its sweep is centred in the bore
 STEM_HEAD = (14.0, 420.0, 432.0)   # the stem's head the spider sits on: half-width, bottom, top

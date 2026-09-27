@@ -20,7 +20,7 @@ stays in the dome's bore at every nod instead, so outside that radius the arms' 
 the sphere.
 """
 import math
-from build123d import Axis, Plane, Polygon, Pos, extrude
+from build123d import Axis, Location, Plane, Polygon, Pos, extrude
 import params as P
 from mech import part
 from mech.common import (ball, box, cyl_x, cyl_y, cyl_z, insert_holes, polar, polyline, servo_body)
@@ -118,9 +118,12 @@ def tube_route(pan=0.0, nod=0.0, r=None):
 
 # --- the stem --------------------------------------------------------------------------------
 PIN_BORE = P.PIN_D - 0.1                      # the dowel is pressed into the hub (and set-screwed)
-POCKET_R = P.HORN_D / 2 + 0.15
-POCKET_FLOOR_Y = HALF_T - P.HORN_T - 0.2      # 3.3: the horn lies in the hub's +Y face
-HORN_SCREW_ANGLES = (45.0, 135.0, 225.0, 315.0)
+HORN_Y = P.NOD_SERVO_FACE_Y - P.SPLINE_BOSS[1] - P.HORN_T    # 6.3: the horn's near face, in the cup
+DRIVE_ANGLES = (45.0, 225.0)                  # two of the horn's four holes carry drive pins ...
+DRIVE_SLOT = (3.4, 4.5, 9.5, 3.0)             # ... into two radial slots in the hub's face: width,
+                                              # r from, r to, depth. An Oldham-style drive: torque
+                                              # passes, a millimetre of misalignment between the
+                                              # servo's shaft and the collar's bore does not
 SPIDER_SCREW_X = 9.0                          # the spider's two screws into the stem's head
 SET_SCREW_Y = -2.5                            # the pin's M2 set screw, from behind
 
@@ -149,11 +152,15 @@ def stem():
     pts = tube_stem_points()
     s = s - polyline([(0.0, 0.0, z1 + 1.0)] + pts[2:4] + [(pts[3][0] - 8.0, 0.0, pts[3][2] - 17.0)],
                      P.STEM_CHANNEL_D / 2)
-    # the round horn, let into the +Y face and screwed into the hub from that side
-    s = s - cyl_y(POCKET_R, POCKET_FLOOR_Y, HALF_T + 1.0, 0.0, x0)
-    for a in HORN_SCREW_ANGLES:
-        hx, hz = polar(P.HORN_SCREW_R, a)
-        s = s - cyl_y(2.2 / 2, POCKET_FLOOR_Y - 6.0, POCKET_FLOOR_Y + 0.1, hx, x0 + hz)
+    # the collar on the +Y face: a cup the round horn sits in, its outside the stem's second journal
+    ci, co = P.HUB_COLLAR
+    s = s + (cyl_y(co, HALF_T - 0.01, P.NOD_SERVO_FACE_Y - 0.5, 0.0, x0)
+             - cyl_y(ci, HALF_T, P.NOD_SERVO_FACE_Y, 0.0, x0))
+    # two radial slots in the hub's face the horn's drive pins run in
+    w, r0, r1, depth = DRIVE_SLOT
+    for a in DRIVE_ANGLES:
+        slot = box(r0, r1, HALF_T - depth, HALF_T + 0.01, -w / 2, w / 2)
+        s = s - slot.rotate(Axis.Y, -a).moved(Location((0.0, 0.0, x0)))
     # the pin, pressed in from the -Y face and held by an M2 set screw on its flat from behind:
     # in front the plate's column stands in a driver's way
     s = s - cyl_y(PIN_BORE / 2, -HALF_T - 1.0, 2.5, 0.0, x0)
@@ -237,8 +244,13 @@ def nod_servo_holes():
 
 
 def horn():
-    """The round horn, in the stem's pocket; it nods with the stem."""
-    return cyl_y(P.HORN_D / 2, POCKET_FLOOR_Y, POCKET_FLOOR_Y + P.HORN_T, 0.0, P.Z_NOD)
+    """The round horn on the servo's spline, in the collar's cup, and its two drive pins - M2.5
+    screws through it standing 3 mm out into the hub's slots; it nods with the stem."""
+    h = cyl_y(P.HORN_D / 2, HORN_Y, HORN_Y + P.HORN_T, 0.0, P.Z_NOD)
+    for a in DRIVE_ANGLES:
+        x, z = polar(P.HORN_SCREW_R, a)
+        h = h + cyl_y(1.25, HORN_Y - 3.0, HORN_Y + 0.01, x, P.Z_NOD + z)
+    return h
 
 
 def pin():
