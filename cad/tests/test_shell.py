@@ -4,10 +4,12 @@ These are slow by the standards of the rest of the suite - several run manifold 
 quarter of a million triangles - so every mesh is loaded once per session and the derived solids,
 the bell above all, are cached with it.
 
-The shell is now the statue: a reconstruction hollowed and cut into three fixed pieces around the
-belt, two side panels with the sleeves on them, two mitten caps, and a bell - beard, face and hat
-in one - that turns on the shroud. Most of what follows is about that bell: it has to turn to its
-stops without touching anything, and the jet has to leave through it at every tilt.
+The shell is now the statue: a reconstruction hollowed and cut into fixed pieces - the two base
+halves, the belt ring, the collar over it, two side panels with the sleeves on them, two mitten
+caps - and a turning unit, beard, head and hat glued into one, that pans and nods on the spider.
+Most of what follows is about that unit: it has to turn to its stops without touching anything,
+it has to go on over the spider, and the jet has to leave it. test_pose.py poses the whole
+machine; here the unit is panned at nod 0.
 """
 import itertools
 import math
@@ -23,9 +25,9 @@ CAD = Path(__file__).resolve().parents[1]
 STL = CAD / "out" / "stl"
 STATUE = CAD / "out" / "statue"
 ENGINE = "manifold"
-SECTIONS = tuple(P.SECTIONS_STATUE)
-BELL = ("beard", "head", "hat")
-FIXED = ("base_left", "base_right", "hand_left", "hand_right", "torso", "panel_left", "panel_right")
+SECTIONS = tuple(P.PRINTED_SECTIONS)
+BELL = ("beard_left", "beard_right", "head", "hat")
+FIXED = ("base_left", "base_right", "hand_left", "hand_right", "torso", "collar", "panel_left", "panel_right")
 # Sections are cut from one shell along planes, so neighbours share faces and no volume. The
 # budget is for the two microns each pinched vertex was moved by before the file was written.
 SHARED_MM3 = 5.0
@@ -113,10 +115,12 @@ def test_every_interface_part_is_welded_into_its_section(sections):
             continue
         for target in targets:
             raw = trimesh.load(STATUE / "raw" / f"{target}.stl")
+            printed = (trimesh.boolean.union([sections[h] for h, _ in P.FITTING_SPLIT[target]], engine=ENGINE)
+                       if target in P.FITTING_SPLIT else sections[target])
             for piece in A.blanks(target, raw, grown):
                 seen += 1
                 outside = volume_of(trimesh.boolean.difference(
-                    [piece, sections[target]], engine=ENGINE))
+                    [piece, printed], engine=ENGINE))
                 assert outside <= 0.02 * abs(piece.volume) + 50.0, (
                     f"{name}: {outside / 1e3:.2f} cm3 of it stands outside {target}")
     assert seen, "no interface part was found at all"
@@ -143,73 +147,60 @@ def test_the_intake_is_open(sections):
         "the intake is blocked"
 
 
-def test_the_neck_gap_is_the_exhaust(sections):
-    """The fan blows up through the deck, and the air leaves by the bell's turning gap.
-
-    So that gap is not slack any more, it is the exhaust: at the height between the ring's top
-    and the bell's rim the shell has to be open all the way round, except where the sleeve
-    panels pass through it, and nothing - no interface part clipped into the ring, no boss - may
-    stand in it.
-    """
-    z = P.Z_TURN - P.TURN_GAP / 2
-    open_at, blocked_by = 0, {}
-    for deg in range(0, 360, 5):
-        a = math.radians(deg)
-        d = (math.cos(a), math.sin(a), 0.0)
-        hit = [n for n, m in sections.items() if hits(m, (0.0, 0.0, z), d) is not None]
-        if hit:
-            blocked_by.setdefault(tuple(hit), []).append(deg)
-        else:
-            open_at += 1
-    stray = {k: v for k, v in blocked_by.items() if any(not n.startswith("panel_") for n in k)}
-    assert not stray, f"something other than the sleeves stands in the neck gap: {stray}"
-    assert open_at >= 62, f"only {open_at} of 72 directions out of the neck gap are open"
-    for deg in (0, 180):                       # the front and the back, whatever the panels do
-        a = math.radians(deg)
-        assert all(hits(m, (0.0, 0.0, z), (math.cos(a), math.sin(a), 0.0)) is None
-                   for m in sections.values()), f"the neck gap is closed at {deg} deg"
+def test_the_exhaust_path_is_open(sections):
+    """The fan blows up through the deck; the air goes up through the dome's bore into the head
+    and out down the 2 mm seam between the collar's sphere (98 from C) and the unit's (100). So
+    the bore is open on the axis, and the seam is air - in no section - all the way round at the
+    height of the beard's back, 20 degrees above C."""
+    for name in FIXED + BELL:
+        assert hits(sections[name], (0.0, 0.0, 400.0), (0.0, 0.0, 1.0), limit=60.0) is None, \
+            f"{name} closes the dome's bore"
+    r = P.NECK_SPHERE_R - P.TURN_GAP / 2
+    e = math.radians(20.0)
+    pts = np.array([(r * math.cos(e) * math.cos(math.radians(a)), r * math.cos(e) * math.sin(math.radians(a)),
+                     P.Z_NOD + r * math.sin(e)) for a in range(0, 360, 5)])
+    for name in FIXED + BELL:
+        inside = sections[name].contains(pts)
+        assert not inside.any(), f"{name} fills the seam at {np.flatnonzero(inside) * 5} deg"
 
 
-def test_the_mouth_and_the_parting_are_open(sections):
+def test_the_mouth_is_open_in_front_of_the_nozzle(sections):
+    """The mouth is cut through the skin in front of the holder, and the holder's bore behind it
+    is the nozzle's own diameter less its press: a ray down the axis from the nozzle's back leaves
+    the head, and one at the mouth's own radius does not get past the holder."""
     head = sections["head"]
-    assert hits(head, P.NOZZLE_PIVOT, (1.0, 0.0, 0.0)) is None, "the mouth is blocked"
-    for deg in (P.TILT_STOP[0], 0.0, P.TILT_STOP[1]):
-        a = math.radians(deg)
-        d = (math.cos(a), 0.0, math.sin(a))
-        origin = (P.NOZZLE_PIVOT[0] + 2.0 * d[0], 0.0, P.NOZZLE_PIVOT[2] + 2.0 * d[2])
-        blocked = [n for n in ("beard", "head") if hits(sections[n], origin, d) is not None]
-        assert not blocked, f"the parting is closed at {deg:+.0f} deg by {blocked}"
+    back = P.NOZZLE_TIP_X - P.NOZZLE_L + 0.5
+    assert hits(head, (back, 0.0, P.Z_MOUTH), (1.0, 0.0, 0.0)) is None, "the mouth is blocked"
+    for dy, dz in ((0.0, P.MOUTH_D / 2 - 0.3), (P.MOUTH_D / 2 - 0.3, 0.0)):
+        assert hits(head, (back, dy, P.Z_MOUTH + dz), (1.0, 0.0, 0.0)) is None, "the mouth is too small"
+    assert hits(head, (back, 0.0, P.Z_MOUTH + P.NOZZLE_D / 2 + 0.2), (1.0, 0.0, 0.0), limit=6.0) is not None, \
+        "the holder's bore is wider than the nozzle"
 
 
-def test_the_shroud_screws_reach_their_bosses(sections):
-    """Four radial screws through the bell, into the shroud that carries it."""
-    from mech.turntable import BOSS_OUT
-    shroud = trimesh.load(STL / "neck_shroud.stl")
+def test_the_head_screws_reach_the_spider(sections):
+    """Four radial screws through the head, into the spider that carries the unit."""
+    spider = trimesh.load(STL / "spider.stl")
     head = sections["head"]
     # the screw's own axis runs down the insert's bore and stops on its floor; a ray beside it
-    # lands on the boss's face, and that is what tells a boss from the bare barrel behind it
-    floor = P.SHROUD_R_OUT + BOSS_OUT - P.INSERT_DEPTH
-    for deg in P.SHROUD_SCREW_ANGLES:
+    # lands on the boss's face, and that is what tells a boss from nothing at all
+    floor = P.SPIDER_BOSS_R - P.INSERT_DEPTH
+    for deg in P.HEAD_SCREW_ANGLES:
         a = math.radians(deg)
         out = (math.cos(a), math.sin(a), 0.0)
-        start = (300.0 * out[0], 300.0 * out[1], P.SHROUD_SCREWS_Z)
+        start = (300.0 * out[0], 300.0 * out[1], P.HEAD_SCREWS_Z)
         inward = (-out[0], -out[1], 0.0)
         assert hits(head, start, inward) is None, f"the screw at {deg:.0f} deg has no hole"
-        d = hits(shroud, start, inward)
-        assert d is not None, f"the screw at {deg:.0f} deg meets no boss on the shroud"
+        d = hits(spider, start, inward)
+        assert d is not None, f"the screw at {deg:.0f} deg meets no boss on the spider"
         assert abs((300.0 - d) - floor) <= 0.5, \
             f"the screw at {deg:.0f} deg bottoms at r {300.0 - d:.1f}, not on its insert's floor {floor:.1f}"
-        beside = (start[0], start[1], P.SHROUD_SCREWS_Z + P.INSERT_D / 2 + 0.5)
-        f = hits(shroud, beside, inward)
-        assert f is not None and 300.0 - f >= P.SHROUD_R_OUT + BOSS_OUT - 1.0, \
+        beside = (start[0], start[1], P.HEAD_SCREWS_Z + P.INSERT_D / 2 + 0.5)
+        f = hits(spider, beside, inward)
+        assert f is not None and 300.0 - f >= P.SPIDER_BOSS_R - 1.0, \
             f"the screw at {deg:.0f} deg has no boss under its head"
 
 
 # --- the bell turns ----------------------------------------------------------------------------
-# What turns with the plate, from mech.common.assembly's own grouping: everything else that the
-# mechanism leaves standing above the bell's rim is what the bell has to turn over.
-TURNS_WITH_THE_HEAD = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank",
-                       "pan_link", "nozzle_arm"}
 SWEEP = tuple(range(-int(P.PAN_STOP_DEG), int(P.PAN_STOP_DEG) + 1, 5))
 
 
@@ -217,14 +208,15 @@ SWEEP = tuple(range(-int(P.PAN_STOP_DEG), int(P.PAN_STOP_DEG) + 1, 5))
 def fixed_mech():
     """Every printed mechanism part that does not turn and stands over the bell's rim, placed.
 
-    Read out of out/placements.json so this is not a second copy of where the parts go. The
-    stop pin is printed once and fitted twice, so its mirror is added the way assembly() does.
+    Read out of out/placements.json so this is not a second copy of where the parts go or of
+    what moves. The stop pin is printed once and fitted twice, so its mirror is added the way
+    assembly() does.
     """
     import json
     places = json.loads((CAD / "out" / "placements.json").read_text())
     out = {}
     for name, info in sorted(places.items()):
-        if name in TURNS_WITH_THE_HEAD or not (STL / f"{name}.stl").exists():
+        if info.get("moves", "fixed") != "fixed" or info.get("section") or not (STL / f"{name}.stl").exists():
             continue
         m = trimesh.load(STL / f"{name}.stl")
         m.apply_transform(np.array(info["matrix"], float))
@@ -239,15 +231,23 @@ def fixed_mech():
     return out
 
 
+NEAR_BELL = P.NECK_SPHERE_R - 15.0
+
+
 def bell_gap(query, mesh, deg):
     """The least distance from `mesh` to the bell with the bell turned `deg`, in millimetres.
 
     The bell is rigid and its query tree costs seconds to build, so it is built once at rest
     and the points are turned the other way instead. Only the points that could be nearest are
-    asked about - over the bell's rim, and outside the bore of anything inboard.
+    asked about.
     """
     v = mesh.vertices
-    near = v[(v[:, 2] >= P.Z_TURN - 10.0) & (np.hypot(v[:, 0], v[:, 1]) >= 45.0)]
+    # the bell is the shell outside the sphere NECK_SPHERE_R about C, so a point nearer C than
+    # NEAR_BELL is that much less far from it, and only the points past it are asked about
+    near = v[(np.linalg.norm(v - np.array([0.0, 0.0, P.Z_NOD]), axis=1) >= NEAR_BELL)
+             & (v[:, 2] >= P.Z_TURN - 10.0)]
+    if not len(near):
+        return math.inf
     a = math.radians(-deg)
     c, s = math.cos(a), math.sin(a)
     spun = near @ np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]])
@@ -260,40 +260,33 @@ def test_the_bell_turns_over_the_fixed_mechanism(bell, fixed_mech):
     test_mech holds the cage inside the narrowest radius the statue's reach table has over the
     bell's height, which is a proxy: the real question is what the bell's own inner wall does as
     it comes round, and this asks it. Every 5 degrees of the pan travel, the built bell is turned
-    and intersected with each fixed part, and then measured: the nearest the cage comes to the
-    bell is **2.98 mm at +30 degrees**, the sled 10.6 and the stop pins 12.0.
-
-    The turntable deck is the one part not in here. It fouls the bell, and has its own test.
+    and intersected with each fixed part, and then measured. Everything fixed under the collar is
+    inside its socket, so the least gap is at least the socket's 2 mm seam plus the margin the
+    parts keep inside it.
     """
+    together = trimesh.boolean.union(list(fixed_mech.values()), engine=ENGINE)
     for deg in SWEEP:
-        spun = turned(bell, deg)
-        for name, part in fixed_mech.items():
-            if name == "deck":
-                continue
-            v = clash(spun, part)
-            assert v < 1e-6, f"the bell fouls {name} by {v:.1f} mm3 at {deg:+.0f} deg"
+        v = clash(turned(bell, deg), together)
+        assert v < 1e-6, f"the bell fouls the fixed mechanism by {v:.1f} mm3 at {deg:+.0f} deg"
     query = trimesh.proximity.ProximityQuery(bell)
-    gaps = {name: min((bell_gap(query, part, deg), deg) for deg in SWEEP)
-            for name, part in fixed_mech.items() if name != "deck"}
-    said = ", ".join(f"{n} {g:.2f} mm at {d:+.0f}" for n, (g, d) in sorted(gaps.items()))
+    gaps = {name: min((bell_gap(query, part, deg), deg) for deg in SWEEP[::2] + (SWEEP[-1],))
+            for name, part in fixed_mech.items()}
+    said = ", ".join(f"{n} {g:.2f} mm at {d:+.0f}" for n, (g, d) in sorted(gaps.items()) if g < math.inf)
     assert min(g for g, _ in gaps.values()) >= 1.0, said
 
 
-@pytest.mark.xfail(strict=True, reason="the deck is trimmed to the statue's section at one pan "
-                                       "angle, and the bell sweeps that section 130 degrees "
-                                       "round over it: see the known limits in the README")
 def test_the_bell_clears_the_turntable_deck(bell, fixed_mech):
-    """The deck fills the statue's section at z 394..400, and the section is not a circle.
-
-    `_neck_prism` in mech/turntable.py trims the deck to the cavity measured at those heights,
-    so its rim touches the coat's inner wall at every azimuth - and the coat's back is 69 mm out
-    where its flanks are 105. Turn the bell and its back comes round onto the deck's lobe. It
-    takes up to 1.8 cm3 at the +65 stop, all of it the rim between r 69 and the deck's own 86,
-    and one of the pan servo's hangers at the -Y end of the same arc.
-    """
+    """The deck used to be trimmed to the statue's section at one pan angle, and the bell swept
+    that section 130 degrees round over it: 1.8 cm3 at the +65 stop. Now the unit is outside the
+    sphere NECK_SPHERE_R about C and the deck inside the collar's socket, 94.1 from C, so no pan
+    and no nod can bring them together - measured here, at the whole pan travel, and the least
+    gap is the seam's 2 mm and the socket's wall and the deck's margin: 6 mm or more."""
     for deg in SWEEP:
         v = clash(turned(bell, deg), fixed_mech["deck"])
         assert v < 1e-6, f"the bell fouls the deck by {v:.0f} mm3 at {deg:+.0f} deg"
+    query = trimesh.proximity.ProximityQuery(bell)
+    g = min(bell_gap(query, fixed_mech["deck"], deg) for deg in SWEEP)
+    assert g >= P.TURN_GAP + P.WALL + P.DECK_SOCKET_MARGIN - 0.2, g
 
 
 @pytest.mark.parametrize("deg", (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG))
@@ -316,23 +309,15 @@ def test_the_bells_rim_stays_between_its_neighbours(sections, bell):
 
 
 # --- the jet -----------------------------------------------------------------------------------
-def _jet_rays(deg, n=9, seed=5):
-    """The jet's envelope leaving the nozzle: a JET_D disc of rays along the arm's line."""
-    a = math.radians(deg)
-    d = np.array([math.cos(a), 0.0, math.sin(a)])
-    tip = np.array([P.NOZZLE_PIVOT[0], 0.0, P.NOZZLE_PIVOT[2]]) + d * P.NOZZLE_ARM_L
-    up = np.cross(d, [0.0, 1.0, 0.0])
-    rng = np.random.default_rng(seed)
-    r = P.JET_D / 2 * np.sqrt(rng.uniform(0.0, 1.0, n))
-    th = rng.uniform(0.0, 2 * math.pi, n)
-    pts = tip + np.outer(r * np.cos(th), up) + np.outer(r * np.sin(th), [0.0, 1.0, 0.0])
-    return pts, np.tile(d, (n, 1))
-
-
-@pytest.mark.parametrize("deg", tuple(np.arange(P.TILT_STOP[0], P.TILT_STOP[1] + 1, 5.0)))
-def test_the_jet_leaves_the_statue(sections, deg):
-    """Nothing of the shell stands in the jet's way, at any tilt the firmware allows."""
-    origins, dirs = _jet_rays(deg)
-    for name in ("beard", "head", "torso", "panel_left", "panel_right"):
-        loc, idx, _ = sections[name].ray.intersects_location(origins, dirs)
-        assert not len(loc), f"the jet at {deg:+.0f} deg hits {name}"
+def test_the_jet_leaves_the_statue(sections):
+    """The jet leaves the nozzle's tip along +X in a JET_HALF_DEG cone and meets nothing of the
+    statue - the beard and the moustache least of all. The nozzle and the beard nod together, so
+    one look at rest is every nod; and the fixed coat is all below the mouth and behind it."""
+    tip = np.array([P.NOZZLE_TIP_X, 0.0, P.Z_MOUTH])
+    a = math.radians(P.JET_HALF_DEG)
+    dirs = [(1.0, 0.0, 0.0)] + [(math.cos(a), math.sin(a) * math.cos(t), math.sin(a) * math.sin(t))
+                                for t in np.radians(np.arange(0.0, 360.0, 30.0))]
+    origins = np.tile(tip, (len(dirs), 1))
+    for name, m in sections.items():
+        loc, _, _ = m.ray.intersects_location(origins, np.array(dirs))
+        assert not len(loc), f"the jet's cone hits {name} at {np.round(loc[:3], 1).tolist()}"

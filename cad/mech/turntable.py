@@ -1,22 +1,23 @@
-"""The neck: what the head stands on and what turns it."""
+"""The neck: what the head's pan runs on and what turns it.
+
+The deck stands on the cage and carries the pan bearing's outer ring, the pan servo under it and
+the fan; the plate rides the bearing's inner ring and carries, in one print, the hub in the
+bearing, the two cheeks that hang from the hub down to C and hold the nod drive, the posts the
+nod servo's tabs screw to, and the column down to the pan linkage. mech/nod.py has the stem, the
+spider and the bought parts of the nod drive.
+"""
 import math
-from build123d import Location, Polygon, extrude, Pos, Axis
+from build123d import Axis, Location, Polygon, Pos, extrude
 import params as P
 from mech import part
-from mech.common import cyl_x, cyl_y, cyl_z, box, insert_holes, polar, servo_body
+from mech.common import (ball, box, cyl_x, cyl_y, cyl_z, inner_table, insert_holes, polar,
+                         servo_body)
+from mech import nod as N
 
 
 def _polar(r, deg, z):
     """polar() with the height this module's insert_holes calls want."""
     return (*polar(r, deg), z)
-
-
-def _bearing_holes(part, z0, z1):
-    """The lazy susan's four screws, on the diagonal of its bolt square."""
-    for a in (45, 135, 225, 315):
-        x, y, _ = _polar(P.BEARING_PITCH / 2 * math.sqrt(2), a, 0)
-        part = part - cyl_z(P.BEARING_HOLE / 2, z0, z1, x, y)
-    return part
 
 
 # The cavity's own section over the deck's band, measured from out/statue/cavity.stl at z 394,
@@ -40,10 +41,50 @@ NECK_SECTION = {0: 82.2, 10: 83.2, 20: 88.0, 30: 93.3, 40: 89.7, 50: 89.5, 60: 9
 NECK_MARGIN = 1.0
 
 
-def _neck_prism(z0, z1):
-    """The measured section less NECK_MARGIN, as a prism: what the deck may occupy."""
-    pts = [polar(NECK_SECTION[a] - NECK_MARGIN, a) for a in sorted(NECK_SECTION)]
+def collar_shadow(z_top=P.Z_DECK - P.DECK_T):
+    """The narrowest the collar is, in each direction, anywhere from its bottom up to z_top.
+
+    The collar goes on after the deck, lowered over it from above, so a fixed part may stand no
+    further out in any direction than the collar comes in anywhere below it - at the back that is
+    the coat's own wall at 71, well inside the section at the deck's own height. Read from the
+    statue's `collar_inner` table; (angles in degrees, radii).
+    """
+    t = inner_table("collar")
+    if t is None:
+        return None
+    rows, step = t
+    n = len(next(iter(rows.values())))
+    out = []
+    from mech.collar import tab_in_r
+    tabs = {a: tab_in_r(a) for a in P.COLLAR_SCREW_ANGLES}      # and its spigot's tabs under it
+    for i in range(n):
+        seen = [row[i] for z, row in rows.items() if z <= z_top and row[i] > 0]
+        seen += [r for a, r in tabs.items()
+                 if abs((i * step - a + 180.0) % 360.0 - 180.0) <= P.SPIGOT_HALF_DEG + step]
+        out.append(min(seen) if seen else 0.0)
+    return [i * step for i in range(n)], out
+
+
+def _neck_prism(z0, z1, margin=None):
+    """What the deck may occupy in plan: inside the collar's shadow less DECK_SHADOW_MARGIN, or,
+    before the statue stage has published it, the hand-measured NECK_SECTION less NECK_MARGIN."""
+    sh = collar_shadow()
+    if sh is None:
+        pts = [polar(NECK_SECTION[a] - NECK_MARGIN, a) for a in sorted(NECK_SECTION)]
+    else:
+        m = P.DECK_SHADOW_MARGIN if margin is None else margin
+        a, r = sh
+        n = len(r)
+        # each corner takes the least of its own and its neighbours' radii, so the straight edge
+        # between two samples never crosses a wall that steps in between them
+        low = [min(x for x in (r[(i - 1) % n], r[i], r[(i + 1) % n]) if x > 0) for i in range(n)]
+        pts = [polar(x - m, ai) for ai, x in zip(a, low)]
     return Pos(0, 0, z0) * extrude(Polygon(*pts), z1 - z0)
+
+
+def socket_ball():
+    """The collar's socket, less DECK_SOCKET_MARGIN: everything fixed under the dome stays in it."""
+    return ball(P.NECK_SPHERE_R - P.TURN_GAP - P.WALL - P.DECK_SOCKET_MARGIN)
 
 
 def _sector(a0, a1, z0, z1, far):
@@ -102,8 +143,8 @@ def deck_ring():
     for a in P.DECK_SCREW_ANGLES:
         leg = box(P.CAGE_LEG_R - half, P.CAGE_LEG_R + half, -half, half, foot, z1).rotate(Axis.Z, a)
         cage = leg if cage is None else cage + leg
-    top = foot + P.CAGE_FOOT_T                          # the foot ring, in the legs' own band
-    ring = (cyl_z(P.CAGE_LEG_R + half, foot, top)
+    top = foot + P.CAGE_FOOT_T                          # the foot ring, in the legs' own band but
+    ring = (cyl_z(P.CAGE_LEG_R + half - 1.5, foot, top)  # 1.5 short of their outside: the chassis's screws' drivers
             - cyl_z(P.CAGE_LEG_R - half, foot - 1, top + 1))
     reach = P.CAGE_LEG_R + half + 5.0
     ring = ring - _sector(-P.CAGE_FOOT_OPEN, P.CAGE_FOOT_OPEN, foot - 1, top + 1, reach)
@@ -123,24 +164,32 @@ def deck_ring():
                         depth=P.RING_T - 1)
 
 
+POCKET_R = P.BEARING_OD / 2 + P.BEARING_FIT          # 32.65, the outer ring's seat
+
+
 @part("deck")
 def deck():
-    """Carries the bearing's fixed ring, the pan servo hanging beneath it, and the pan hard stops.
+    """Carries the pan bearing's outer ring, the pan servo hanging beneath it, the fan, and the
+    pan hard stops.
 
-    The servo is wholly below the deck now, so there is no notch: only the arc slot the
-    plate's column swings in and four columns the servo's tabs screw up into.
+    The bearing drops into a pocket from above onto a millimetre's lip and stands 2 mm proud of
+    the deck's top; the printed cap clamps it there. The deck's outline is whatever the socket
+    leaves: the statue's section less its margin, the collar's narrowest opening under it (the
+    collar is lowered over it), and the socket's inner sphere, which bevels the rim.
     """
     z1, z0 = P.Z_DECK, P.Z_DECK - P.DECK_T
     far = P.DECK_LOBE["r"] + 10.0
     d = cyl_z(P.DECK_R, z0, z1)
-    lobe = P.DECK_LOBE                                     # a wider lobe where the hangers' corners are
+    lobe = P.DECK_LOBE                                     # a wider lobe where the hangers are
     d = d + (cyl_z(lobe["r"], z0, z1)
              & _sector(lobe["angle"] - lobe["half"], lobe["angle"] + lobe["half"], z0 - 1, z1 + 1, far))
     back = _sector(140.0, 220.0, z0 - 1, z1 + 1, far) - cyl_z(P.DECK_BACK_R, z0 - 2, z1 + 2)
     d = d - back                                           # ... and cut back where the coat closes in
-    d = d & _neck_prism(z0 - 1, z1 + 1)                    # ... then trimmed to the measured section
-    d = d - cyl_z(P.SHAFT_OD / 2 + P.CLEAR + 1.0, z0 - 1, z1 + 1)          # shaft passes with room
-    d = _bearing_holes(d, z0 - 1, z1 + 1)
+    d = d & _neck_prism(z0 - 1, z1 + 1)                    # ... then trimmed to what the collar passes
+    d = d - cyl_z(POCKET_R, P.Z_BEARING, z1 + 1)                           # the bearing's seat
+    d = d - cyl_z(P.BEARING_OUT_LAND_R, z0 - 1, z1 + 1)                    # ... and its lip
+    d = insert_holes(d, [_polar(P.CAP_SCREW_R, a, z1) for a in P.CAP_SCREW_ANGLES],
+                     depth=P.INSERT_DEPTH_SHORT)                           # the cap's screws, blind
     for a in P.DECK_SCREW_ANGLES:                                          # down into the ring
         x, y, _ = _polar(P.DECK_SCREW_R, a, 0)
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
@@ -158,8 +207,7 @@ def deck():
                 sy - W / 2 - P.PAN_SERVO_FIT, sy + W / 2 + P.PAN_SERVO_FIT,
                 P.Z_PAN_SHAFT_FACE - 1, P.Z_PAN_SHAFT_FACE + H + P.PAN_SERVO_FIT)
     # the fan hangs under the deck and blows up through it. Its screws take short inserts drilled
-    # blind into the deck itself: it is six thick and the insert four, so a boss would only foul
-    # the fan, whose FAN_PITCH square is inside its own forty.
+    # blind into the deck itself: it is six thick and the insert four
     fx, fy = P.FAN_XY
     d = d - cyl_z(P.FAN_HOLE_D / 2, z0 - 1, z1 + 1, fx, fy)
     d = insert_holes(d, [(fx + dx, fy + dy, z0) for dx in (-P.FAN_PITCH / 2, P.FAN_PITCH / 2)
@@ -167,11 +215,66 @@ def deck():
                      depth=P.INSERT_DEPTH_SHORT, direction="up")
     # seats for the two hard-stop pins, drilled from the top face. STOP_PIN_DEPTH is the deck's
     # own thickness, so they go right through: the pin is glued and its end shows underneath.
-    # The pins are separate parts, so nothing stands proud and the deck prints flat, hangers up.
     for sign in (1, -1):
         x, y, _ = _polar(P.STOP_POST_R, sign * P.stop_pin_deg(), 0)
         d = d - cyl_z(P.STOP_PIN_SEAT_D / 2, z1 - P.STOP_PIN_DEPTH, z1 + 0.01, x, y)
-    return d
+    return d & socket_ball()
+
+
+CAP_STEP_R = P.BEARING_OD / 2 + 0.8                  # the cap's inner band presses the outer ring out to here
+
+
+@part("bearing_cap")
+def bearing_cap():
+    """Clamps the bearing's outer ring down onto the deck's lip: three countersunk M3 x 8 into
+    short inserts in the deck.
+
+    Its underside steps: the inner band lies on the ring, which stands 2 mm proud of the deck,
+    and the outer band stands 0.2 mm off the deck, so the screws load the ring and not the deck.
+    It goes on over the plate's hub before the bearing does and waits under the plate; its
+    screws are driven through three holes in the plate at pan 0. Prints top face down.
+    """
+    zr = P.Z_BEARING + P.BEARING_B                    # 402, the ring's top face
+    top = zr + P.CAP_T
+    c = cyl_z(CAP_STEP_R, zr, top) + (cyl_z(P.CAP_R, P.Z_DECK + 0.2, top) - cyl_z(CAP_STEP_R, zr - 5, zr))
+    c = c - cyl_z(P.BEARING_OUT_LAND_R, zr - 5, top + 1)
+    fx, fy = P.FAN_XY
+    c = c - cyl_z(P.FAN_HOLE_D / 2, zr - 5, top + 1, fx, fy)       # the fan blows through here too
+    for a in P.CAP_SCREW_ANGLES:
+        x, y = polar(P.CAP_SCREW_R, a)
+        c = c - cyl_z(P.M3_CLEAR / 2, zr - 5, top + 1, x, y)
+        c = c - (Pos(x, y, top) * _countersink())
+    return c
+
+
+def _countersink():
+    """A 90 degree countersink for an M3 flat head, 6 across at the face, pointing down from z 0."""
+    from build123d import Cone
+    h = (6.0 - P.M3_CLEAR) / 2
+    return Pos(0, 0, -h / 2) * Cone(P.M3_CLEAR / 2, 3.0, h) + cyl_z(3.0, 0, 1.0)
+
+
+HUB_RING_SCREW_Z = P.Z_HUB_BOTTOM + 2.75             # 390.75
+
+
+@part("hub_ring")
+def hub_ring():
+    """Clamps the bearing's inner ring up against the plate's shoulder, from below.
+
+    It slides up the hub over the yoke - its bore is the hub's, and the yoke under the hub is
+    narrower - and two radial countersunk M3 x 10 go through it into inserts in the hub where
+    the hub is solid, beside the cheeks. That is done on the bench, before the plate goes into
+    the deck: under the deck no driver reaches them. It passes the deck's lip after. Prints flat.
+    """
+    z0, z1 = P.Z_HUB_BOTTOM, P.Z_BEARING
+    band = z1 - 1.5
+    r = cyl_z(P.HUB_RING_R, z0, band) + cyl_z(P.BEARING_IN_LAND_R, band - 0.01, z1)
+    r = r - cyl_z(P.HUB_R + 0.15, z0 - 1, z1 + 1)
+    for a in P.HUB_RING_SCREW_ANGLES:
+        hole = cyl_x(P.M3_CLEAR / 2, P.HUB_R - 1, P.HUB_RING_R + 1, 0.0, HUB_RING_SCREW_Z)
+        sink = Pos(P.HUB_RING_R, 0, HUB_RING_SCREW_Z) * (_countersink().rotate(Axis.Y, 90))
+        r = r - (hole + sink).rotate(Axis.Z, a)
+    return r
 
 
 @part("stop_pin")
@@ -181,21 +284,46 @@ def stop_pin():
     return cyl_z(P.STOP_POST_D / 2, P.Z_DECK - P.STOP_PIN_DEPTH, P.STOP_PIN_TOP, x, y)
 
 
+CHEEK_R = 16.0                                       # the -Y cheek round C: pin, bushing, stop slot
+CHEEK_W = 9.0                                        # both cheeks' half-width where they leave the hub
+SERVO_POST_Z = (332.0, P.Z_NOD - P.MG996R["shaft_off"] - 0.3,        # under the case ...
+                P.Z_NOD - P.MG996R["shaft_off"] + P.MG996R["body"][0] + 0.3, P.Z_HUB_BOTTOM)   # ... over it
+
+
 @part("plate")
 def plate():
-    """The head's foundation: sits on the bearing, carries the shaft and the pan hard-stop tab.
+    """The head's pan: rides the bearing's inner ring and carries the whole nod drive but the
+    stem, in one print.
 
-    Nothing of the drive is above it any more. Under the stop tab a column hangs down
-    through the deck's arc slot to a foot bar below the deck, and the foot carries the
-    plate's half of the parallelogram. The disc's top face has only the yoke's inserts.
+    The disc sits over the bearing's cap; under it a shoulder bears on the inner ring's face and
+    the hub goes down through the ring to Z_HUB_BOTTOM. The neck of the stem swings in a slot
+    through all of it, |y| <= 6.4, as long as its sweep over the hard stops plus NOD_CLEAR. From
+    the hub two cheeks hang down to C: the -Y cheek carries the pin's bushing and the arc slot
+    the stop lug runs in; the +Y cheek is thin and only joins the nod servo's two posts round the
+    servo's spline. Everything below the hub is inside r 23.3, so the plate and yoke drop through
+    the bearing's 50 mm bore. The column still hangs from the stop tab to the pan linkage.
+
+    Prints disc down, hub and cheeks up; the posts' undersides are the overhang.
     """
-    z0 = P.Z_DECK + P.BEARING_T
-    z1 = P.Z_PLATE_TOP
+    z0, z1 = P.Z_PLATE_BOTTOM, P.Z_PLATE_TOP
     p = cyl_z(P.PLATE_R, z0, z1)
-    p = p - cyl_z(P.SHAFT_OD / 2 + 0.1, z0 - 1, z1 + 1)                    # shaft bonds in here
-    p = _bearing_holes(p, z0 - 1, z1 + 1)                                  # bearing's top ring
-    p = p + box(P.PLATE_R - 1, P.STOP_POST_R + P.STOP_POST_D / 2 + 1, -P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, z0, z1)  # stop tab, front
-    # column from the stop tab's underside through the deck's slot, and the foot bar to the pin
+    p = p + box(P.PLATE_R - 1, P.STOP_POST_R + P.STOP_POST_D / 2 + 1, -P.STOP_TAB_W / 2, P.STOP_TAB_W / 2, z0, z1)
+    p = p + cyl_z(P.BEARING_IN_LAND_R, P.Z_BEARING + P.BEARING_B, z0 + 0.01)       # the shoulder
+    p = p + cyl_z(P.HUB_R, P.Z_HUB_BOTTOM, P.Z_BEARING + P.BEARING_B + 0.01)       # the hub
+    # the cheeks
+    y0, y1 = P.CHEEK_Y
+    neg = box(-CHEEK_W, CHEEK_W, -y1, -y0, P.Z_NOD, P.Z_HUB_BOTTOM + 0.01)
+    neg = neg + cyl_y(CHEEK_R, -y1, -y0, 0.0, P.Z_NOD)
+    neg = neg + N.xz_prism([(-CHEEK_W, P.Z_NOD + 30), (CHEEK_W, P.Z_NOD + 30),
+                            (CHEEK_R, P.Z_NOD), (-CHEEK_R, P.Z_NOD)], -y1, -y0)
+    sy0, _ = P.SERVO_CHEEK_Y
+    sy1 = P.SERVO_CHEEK_Y[1]
+    ytab = N.nod_servo_tab_y()
+    pos = box(-CHEEK_W, CHEEK_W, sy0, sy1, SERVO_POST_Z[0], P.Z_HUB_BOTTOM + 0.01)
+    for za, zb in ((SERVO_POST_Z[0], SERVO_POST_Z[1]), (SERVO_POST_Z[2], SERVO_POST_Z[3] + 0.01)):
+        pos = pos + box(-CHEEK_W, CHEEK_W, sy0, ytab, za, zb)
+    p = p + neg + pos
+    # the column from the stop tab's underside through the deck's slot, and the foot bar to the pin
     r_in, r_out, w = P.PAN_COLUMN
     p = p + box(r_in, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, z0 + 0.01)
     p = p + box(P.PAN_FOOT_R_IN, r_out, -w / 2, w / 2, P.Z_CRANK_BOTTOM, P.Z_CRANK_TOP)
@@ -204,21 +332,24 @@ def plate():
     p = p + cyl_z(P.PIN_BOSS_D / 2, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H, P.Z_CRANK_BOTTOM, px, py)
     p = insert_holes(p, [(px, py, P.Z_CRANK_BOTTOM - P.PIN_BOSS_H)],
                      depth=P.INSERT_DEPTH_SHORT + P.PIN_BOSS_H, direction="up")     # blind in a 5 mm bar
-    # the yoke and the shroud stack 3 + 3 above a 4 mm insert, so an M3 x 10 would bottom out;
-    # a millimetre more hole gives it daylight
-    p = insert_holes(p, [_polar(P.YOKE_SCREW_R, a, z1) for a in P.YOKE_SCREW_ANGLES],
-                     depth=P.INSERT_DEPTH_SHORT + 1)
+    # the stem's slot, the cap's three access holes, the hub ring's two inserts
+    p = p - N.neck_slot(P.Z_HUB_BOTTOM - 1.0, z1 + 1.0)
+    for a in P.CAP_SCREW_ANGLES:
+        x, y = polar(P.CAP_SCREW_R, a)
+        p = p - cyl_z(3.5, z0 - 1, z1 + 1, x, y)
+    for a in P.HUB_RING_SCREW_ANGLES:
+        bore = cyl_x(P.INSERT_D / 2, P.HUB_R - P.INSERT_DEPTH, P.HUB_R + 1.0, 0.0, HUB_RING_SCREW_Z)
+        p = p - bore.rotate(Axis.Z, a)
+    # the nod drive's seats: the bushing, the stop slot, the servo's spline, the tab inserts
+    p = p - cyl_y(P.BUSH_OD / 2 - 0.05, -y1 - 1, -y0 + 0.01, 0.0, P.Z_NOD)
+    a0, a1 = N.stop_slot_angles()
+    slot = (cyl_y(P.STOP_LUG_R + P.STOP_LUG_D / 2 + 0.2, -y1 - 1, -y0 + 1, 0.0, P.Z_NOD)
+            - cyl_y(P.STOP_LUG_R - P.STOP_LUG_D / 2 - 0.2, -y1 - 2, -y0 + 2, 0.0, P.Z_NOD))
+    p = p - (slot & N.xz_wedge(a0, a1, CHEEK_R + 5, -y1 - 1, -y0 + 1))
+    p = p - cyl_y(P.SPLINE_BOSS[0] / 2 + 1.0, sy0 - 1, sy1 + 1, 0.0, P.Z_NOD)
+    for x, z in N.nod_servo_holes():
+        p = p - cyl_y(P.INSERT_D / 2, ytab - P.INSERT_DEPTH, ytab + 0.01, x, z)
     return p
-
-
-@part("shaft")
-def shaft():
-    """Hollow, passive: bonded into the plate, turns inside the bearing's opening."""
-    z1 = P.Z_PLATE_TOP + 6.0                 # proud of the plate for a flared lip
-    z0 = P.SHAFT_BOTTOM                      # below the link's plane, so the tube leaves clear of the sweep
-    s = cyl_z(P.SHAFT_OD / 2, z0, z1) - cyl_z(P.SHAFT_ID / 2, z0 - 1, z1 + 1)
-    flare = cyl_z(P.SHAFT_OD / 2 + 3, z1 - 3, z1) - cyl_z(P.SHAFT_ID / 2, z1 - 4, z1 + 1)
-    return s + flare
 
 
 @part("servo_crank")
@@ -250,204 +381,3 @@ def pan_link():
     bar = box(0, length, -3.0, 3.0, z0, z1).rotate(Axis.Z, ang).moved(Location((ax, ay, 0)))
     link = bar + cyl_z(P.LINK_EYE_R, z0, z1, ax, ay) + cyl_z(P.LINK_EYE_R, z0, z1, bx, by)
     return link - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, ax, ay) - cyl_z(P.PIN_BORE / 2, z0 - 1, z1 + 1, bx, by)
-
-
-TAIL = 10.0             # how far the arm reaches back from the pivot, to the tube's barb
-BARB_D = 4.4            # the 6 x 4 tube pushes over this
-ARM_W = 12.0            # across the beard's parting, which is NOZZLE_SLOT_W wide
-ARM_T = 14.0            # the arm's depth, perpendicular to its length
-BRACKET_SCREW_ANGLES = (-24.0, 24.0)   # clear of the servo's body and of the arm's wedge
-BOSS_D = P.INSERT_D + 4.0
-BOSS_OUT = 5.0          # how far a radial insert boss stands off the shroud's wall
-
-
-def _tail_reach(deg):
-    """Where the arm's barb sits at a tilt of `deg`, in (r, z)."""
-    a = math.radians(deg)
-    return (P.NOZZLE_PIVOT[0] - TAIL * math.cos(a), P.NOZZLE_PIVOT[2] - TAIL * math.sin(a))
-
-
-def jet_notch_z():
-    """How low the shroud's front opening reaches.
-
-    The jet no longer crosses the shroud - it leaves an arm outside it - so what the opening
-    has to pass is the arm's tail, which swings inside the wall, and the tube behind it. The
-    lowest the barb gets is at the nose-up stop; the opening starts its radius and 2 mm below.
-    """
-    low = min(_tail_reach(d)[1] for d in P.TILT_STOP)
-    return low - BARB_D / 2 - 2.0
-
-
-def _arm_swing():
-    """The wedge the arm sweeps through the shroud's and the bracket's front walls.
-
-    The arm's corners reach lowest at the nose-up stop and highest at the nose-down one; the
-    wedge is JET_NOTCH_HALF_DEG either side of +X, which at the wall is wider than the arm.
-    """
-    lo = hi = P.NOZZLE_PIVOT[2]
-    for deg in P.TILT_STOP:
-        a = math.radians(deg)
-        for dx, dz in ((-TAIL, ARM_T / 2), (-TAIL, -ARM_T / 2)):
-            z = P.NOZZLE_PIVOT[2] + dx * math.sin(a) + dz * math.cos(a)
-            lo, hi = min(lo, z), max(hi, z)
-    half = P.JET_NOTCH_HALF_DEG
-    return _sector(-half, half, lo - 2.0, hi + 2.0, P.SHROUD_R_OUT + 20.0)
-
-
-def _jet_notch():
-    """The opening through the shroud's front: the arm's tail swings in it, the tube leaves by it."""
-    half = P.JET_NOTCH_HALF_DEG
-    return _sector(-half, half, jet_notch_z(), P.SHROUD_TOP_Z + 5.0, P.SHROUD_R_OUT + 10.0)
-
-
-def _radial_span(r0, r1, deg, z, half):
-    """A square bar lying along the radius at azimuth `deg`, from r0 to r1, 2*half across."""
-    bar = box(r0, r1, -half, half, z - half, z + half).rotate(Axis.Z, deg)
-    return bar & cyl_z(r1, z - half, z + half)
-
-
-def _radial_bore(r0, r1, deg, z, rad):
-    """A drilled hole lying along the radius at azimuth `deg`, from r0 to r1, `rad` in radius.
-
-    An insert is a cylinder, so its bore is one too: a box-shaped cutter left a square hole a
-    heat-set insert only touches at four corners.
-    """
-    return cyl_x(rad, r0, r1, 0.0, z).rotate(Axis.Z, deg)
-
-
-def _radial_boss(part, r, deg, z):
-    """A boss on the shroud's outside with an insert bored radially inward from its face."""
-    part = part + _radial_span(r - 3.0, r + BOSS_OUT, deg, z, BOSS_D / 2)
-    return part - _radial_bore(r + BOSS_OUT - P.INSERT_DEPTH, r + BOSS_OUT + 1, deg, z, P.INSERT_D / 2)
-
-
-@part("neck_shroud")
-def neck_shroud():
-    """Turns with the plate and carries the statue's beard, head and hat.
-
-    A plain cup now that nothing nods: a ring on the plate's rim held by the same four screws,
-    a barrel up to a closed top, an opening at the front the nozzle arm's tail swings in, and
-    four radial inserts the head shell screws into from outside, hidden in the beard's locks.
-
-    The four screws into the plate are driven downward from inside the cup, with 34 mm of barrel
-    and a closed roof above them, so the roof is bored SHROUD_ACCESS_D over each one and the
-    counterbore is carried the whole way up: a driver goes down a chimney onto the head. The
-    bores are at the ring's screw circle, which is nowhere near the jet's notch at the front.
-    """
-    r, w = P.SHROUD_R_OUT, P.WALL
-    z0, z1 = P.SHROUD_BASE_Z, P.SHROUD_TOP_Z
-    base_top = z0 + 3.0
-    s = cyl_z(r, z0, z1) - cyl_z(r - w, base_top, z1 - w)          # barrel, closed at the top
-    s = s - cyl_z(P.YOKE_RING_R_IN, z0 - 1, base_top + 0.01)       # the ring's bore
-    s = s - cyl_z(5.0, z1 - w - 1, z1 + 1)                         # the tube and the servo's lead
-    s = s - _jet_notch()
-    head_d = P.M3_CLEAR + 2.6                                      # an M3 socket head is 5.5 across
-    for a in P.YOKE_SCREW_ANGLES:
-        x, y = polar(P.YOKE_SCREW_R, a)
-        s = s - cyl_z(P.M3_CLEAR / 2, z0 - 1, z0 + 6, x, y)
-        s = s - cyl_z(head_d / 2, base_top, z0 + 8, x, y)          # head sunk, 3 mm of ring left
-        s = s - cyl_z(P.SHROUD_ACCESS_D / 2, z0 + 8 - 0.01, z1 + 1, x, y)     # ... and the driver's way out
-    for a in P.SHROUD_SCREW_ANGLES:                                # the head shell's four screws
-        s = _radial_boss(s, r, a, P.SHROUD_SCREWS_Z)
-    for a in BRACKET_SCREW_ANGLES:                                 # ... and the tilt bracket's two
-        s = _radial_boss(s, r, a, P.NOZZLE_PIVOT[2])
-    return s
-
-
-SERVO_SHAFT_Y = -8.0    # the micro servo's output face; its body runs on to -Y, beside the arm
-CHEEK_Y = (-17.5, -15.5)   # the servo's tabs land here: tab_z up the body from its far end
-FAR_CHEEK_Y = (6.5, 9.5)   # the far end of the pivot runs in this one
-LUG_R = 8.0             # the stop lug's radius from the pivot, along the arm
-LUG_D = 4.0
-
-
-def _tilt_servo():
-    """The MG92B where it sits: shaft along +Y at the pivot, body out to -Y and hanging downward.
-
-    Downward because the beard closes in above the chin: the same ray is good to r 84 at z 430
-    and only to 76 at 441, so the body's far corner has to be the low one.
-    """
-    return servo_body(P.MG92B, (P.NOZZLE_PIVOT[0], SERVO_SHAFT_Y, P.NOZZLE_PIVOT[2]), axis="y", up=False)
-
-
-def _pivot_sector(a0, a1, y0, y1):
-    """The wedge between two tilt angles about the nozzle's pivot; a1 - a0 must be under 180."""
-    px, pz = P.NOZZLE_PIVOT[0], P.NOZZLE_PIVOT[2]
-    axis = Axis((px, 0, pz), (0, 1, 0))
-    far = 60.0
-    ahead = box(px, px + far, y0, y1, pz - far, pz + far)      # machine angles -90 .. +90
-    return ahead.rotate(axis, -(a1 - 90.0)) & ahead.rotate(axis, -(a0 + 90.0))
-
-
-def stop_slot_angles():
-    """Where the bracket's slot ends, so the lug's flank meets them at exactly TILT_STOP.
-
-    The lug is a peg of LUG_D at LUG_R from the pivot; a radial end face is its own half-angle
-    past the lug's centre when they touch, and asin gives that half-angle exactly.
-    """
-    half = math.degrees(math.asin((LUG_D / 2) / LUG_R))
-    return P.TILT_STOP[0] - half, P.TILT_STOP[1] + half
-
-
-def nozzle_tip(deg):
-    """Where the nozzle's tip is, and which way it points, at a tilt of `deg`. Nose up is positive."""
-    px, _, pz = P.NOZZLE_PIVOT
-    a = math.radians(deg)
-    return (px + P.NOZZLE_ARM_L * math.cos(a), pz + P.NOZZLE_ARM_L * math.sin(a)), (math.cos(a), math.sin(a))
-
-
-@part("tilt_bracket")
-def tilt_bracket():
-    """Hangs off the shroud's front and carries the micro servo and the nozzle arm's pivot.
-
-    Two M3 into radial inserts in the shroud, a saddle that follows its wall, a cheek the
-    servo's tabs bolt to and a second cheek that takes the far end of the pivot. It is fitted
-    before the beard shell goes on, which is the only time a driver can reach those screws.
-    """
-    r, px, pz = P.SHROUD_R_OUT, P.NOZZLE_PIVOT[0], P.NOZZLE_PIVOT[2]
-    y0, y1 = CHEEK_Y[0], FAR_CHEEK_Y[1]
-    back = (cyl_z(r + 3.0, P.SHROUD_BASE_Z + 3.0, 446.0) - cyl_z(r + P.CLEAR, P.SHROUD_BASE_Z + 2.0, 447.0)) \
-        & _sector(-30.0, 30.0, 0, 600, r + 10.0)
-    back = back - _arm_swing()                                     # the arm's tail swings through it
-    sb = _tilt_servo().bounding_box()
-    b = back + box(50.0, 70.0, *CHEEK_Y, sb.min.Z - 5.0, sb.max.Z + 5.0)    # the servo's cheek
-    b = b + box(50.0, 74.0, *FAR_CHEEK_Y, 412.0, 436.0)            # ... and the far bearing's,
-    a0, a1 = stop_slot_angles()                                    # which carries the arm's stops
-    y0, y1 = FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1
-    slot = (cyl_y(LUG_R + LUG_D / 2 + P.CLEAR, y0, y1, px, pz)
-            - cyl_y(LUG_R - LUG_D / 2 - P.CLEAR, y0 - 1, y1 + 1, px, pz))
-    b = b - (slot & _pivot_sector(a0, a1, y0, y1))
-    b = b - box(sb.min.X - P.CLEAR, sb.max.X + P.CLEAR, CHEEK_Y[0] - 1, 0.0,
-                sb.min.Z - P.CLEAR, sb.max.Z + P.CLEAR)            # the body drops through its cheek
-    along = P.MG92B["holes"][0]
-    zc = (sb.min.Z + sb.max.Z) / 2
-    for dz in (-along / 2, along / 2):                             # the tabs' two M2 screws
-        b = b - cyl_y(2.4 / 2, y0 - 1, y1 + 1, px, zc + dz)
-    b = b - cyl_y(3.2 / 2, FAR_CHEEK_Y[0] - 1, FAR_CHEEK_Y[1] + 1, px, pz)   # the pivot pin
-    for a in BRACKET_SCREW_ANGLES:                                 # a pocket over the shroud's boss,
-        b = b - _radial_span(r - 1, r + BOSS_OUT + P.CLEAR, a, pz, BOSS_D / 2 + P.CLEAR)
-        b = b - _radial_span(r - 1, r + 20, a, pz, P.M3_CLEAR / 2)          # ... and the screw through it
-    b = b - cyl_z(P.SHROUD_R_OUT + P.CLEAR, P.SHROUD_BASE_Z - 2, P.SHROUD_TOP_Z + 2)   # off the wall
-    return b - _tilt_servo()
-
-
-@part("nozzle_arm")
-def nozzle_arm():
-    """The lever on the micro servo's horn that swings the nozzle through the beard's parting.
-
-    The tube pushes onto a barb behind the pivot, the water runs up the arm, and the brass
-    nozzle presses into the bore at the tip. Drawn at rest; it swings TILT_STOP about the pivot.
-    """
-    px, pz = P.NOZZLE_PIVOT[0], P.NOZZLE_PIVOT[2]
-    tip = px + P.NOZZLE_ARM_L
-    a = box(px - TAIL, tip, -ARM_W / 2, ARM_W / 2, pz - ARM_T / 2, pz + ARM_T / 2)
-    a = a + cyl_y(ARM_T / 2, -ARM_W / 2, ARM_W / 2, px, pz)                      # the hub, round
-    a = a + cyl_x(BARB_D / 2, px - TAIL - 6.0, px - TAIL + 1, 0, pz)             # the tube's barb
-    a = a - cyl_x(P.NOZZLE_D / 2, tip - 14.0, tip + 1, 0, pz)                    # the nozzle's press bore
-    a = a - cyl_x(3.2 / 2, px - TAIL - 7.0, tip - 13.0, 0, pz)                   # the feed
-    a = a - cyl_y(P.MICRO_HORN_D / 2 + P.CLEAR / 2, -ARM_W / 2 - 1, -ARM_W / 2 + 2.0, px, pz)   # horn pocket
-    for dz in (-5.0, 5.0):                                                       # the horn's two M2
-        a = a - cyl_y(2.4 / 2, -ARM_W / 2 - 1, ARM_W / 2 + 1, px, pz + dz)
-    # the stop lug, on the face away from the servo: it runs in the bracket's slot and meets
-    # its ends at exactly TILT_STOP, so a runaway command finds plastic, not the servo's limit
-    return a + cyl_y(LUG_D / 2, ARM_W / 2 - 1, FAR_CHEEK_Y[1] - 0.5, px + LUG_R, pz)

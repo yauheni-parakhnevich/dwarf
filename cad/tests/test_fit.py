@@ -21,14 +21,11 @@ pytestmark = pytest.mark.skipif(not CAVITY.exists(),
 
 
 def blanks():
-    """Every interface part, plus the floor plate: all are cut to the cavity by the assembler.
-
-    The nozzle arm is here for a different reason: its tip is meant to leave the cavity. It
-    exits through the mouth, which the assembler cuts, and through the beard's parting.
-    test_mech's test_the_nozzle_arm_leaves_only_through_the_mouth holds it to that.
-    """
+    """Every interface part, plus the floor plate: all are cut to the cavity by the assembler."""
+    import mech
+    mech.load_all()
     from mech import INTERFACES
-    return {n for names in INTERFACES.values() for n in names} | {"floor_plate", "nozzle_arm"}
+    return {n for names in INTERFACES.values() for n in names} | {"floor_plate"}
 
 
 def legs():
@@ -53,6 +50,26 @@ def test_every_placed_part_is_inside_the_cavity(placed):
             continue
         outside = [q for q in pts if not mesh.contains([q])[0]]
         assert not outside, (name, len(outside), outside[:3])
+
+
+def test_what_stands_under_the_dome_is_inside_the_socket(placed):
+    """The coat's cavity has a socket in it now: over the ring the collar's inside is the sphere
+    NECK_SPHERE_R - TURN_GAP - WALL about C wherever the coat was wider. Everything fixed or
+    panning that stands over the ring's top is inside that sphere, bought parts included - and
+    panning does not change a distance from C. What nods and reaches out through the dome's bore,
+    the stem, the spider and the holder, is test_pose's."""
+    import mech
+    from mech import nod as N
+    from mech.common import servo_body
+    inner = P.NECK_SPHERE_R - P.TURN_GAP - P.WALL
+    fixed = {n: p for n, p in placed.items() if n not in mech.NODS and n not in blanks()}
+    fixed["nod servo"] = N.nod_servo()
+    fixed["pan servo"] = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
+    z_joint = P.Z_TURN - P.TURN_GAP
+    for name, p in sorted(fixed.items()):
+        far = [math.dist((v.X, v.Y, v.Z), (0, 0, P.Z_NOD)) for v in p.vertices() if v.Z > z_joint]
+        if far:
+            assert max(far) <= inner, (name, max(far))
 
 
 def test_the_bought_parts_are_inside_the_cavity():

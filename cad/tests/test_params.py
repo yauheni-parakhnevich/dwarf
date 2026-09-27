@@ -53,16 +53,19 @@ def _segment_distance_from_origin(p, q):
 
 
 def test_pan_linkage_lives_below_the_deck_and_above_the_electronics():
+    from mech.nod import TUBE_UNDER
     assert P.Z_CRANK_TOP < P.Z_DECK - P.DECK_T - P.RING_T
-    assert P.SHAFT_BOTTOM < P.Z_LINK_BOTTOM                   # the tube leaves the shaft below the link
+    assert TUBE_UNDER[2] + P.TUBE_OD / 2 + 2.0 < P.Z_LINK_BOTTOM      # the tube passes under the link
     assert P.Z_LINK_BOTTOM - P.SCREW_HEAD_H > P.Z_CHASSIS + P.CHASSIS_T + P.EDECK_STANDOFF + P.EDECK_T + 20
 
 
 
 
-def test_cranks_and_link_keep_clear_of_the_tube_below_the_shaft():
-    """The tube and wires drop out of the shaft's bottom on the pan axis; nothing may sweep across them."""
-    keep = P.SHAFT_ID / 2 + 4.0 + 4.0       # tube radius, slack, half a bar
+def test_cranks_and_link_keep_clear_of_the_pan_axis():
+    """Neither bar of the parallelogram crosses the pan axis: the nod servo's lead and the loom
+    come down it past the link's plane. The tube itself goes under the link's plane (test_pose
+    measures that gap); the keep-out here is a loom of 3 wires, slack and half a bar."""
+    keep = 4.0 + 2.0 + 4.0                   # the loom, slack, half a bar
     for deg in range(-int(P.PAN_STOP_DEG), int(P.PAN_STOP_DEG) + 1):
         plate_pin, servo_pin = crank_pins(deg)
         assert _segment_distance_from_origin(P.PAN_SERVO_XY, servo_pin) > keep, ("servo crank", deg)
@@ -76,14 +79,14 @@ def test_pan_servo_hangs_clear_of_deck_and_shaft():
     for hx, hy in P.pan_hangers():                             # hangers inside the ring's cut, off the shaft
         assert x0 < hx - P.PAN_HANGER / 2 and hx + P.PAN_HANGER / 2 < x1
         assert y0 < hy - P.PAN_HANGER / 2 and hy + P.PAN_HANGER / 2 < y1
-        assert math.hypot(hx, hy) - P.PAN_HANGER / math.sqrt(2) > P.SHAFT_OD / 2 + 3.0
+        assert math.hypot(hx, hy) - P.PAN_HANGER / math.sqrt(2) > P.BEARING_OD / 2 + 3.0   # off the bearing
         assert math.hypot(hx, hy) + P.PAN_HANGER / math.sqrt(2) < P.DECK_LOBE["r"]     # under the deck's lobe
     assert abs(P.PAN_SERVO_XY[1]) + W / 2 + 2.0 < P.shell_r(P.TORSO_PROFILE, P.Z_PAN_SHAFT_FACE) - P.WALL
 
 
 def test_plate_column_slot_misses_the_bearing_the_screws_and_the_hangers():
     r0, r1, half = P.DECK_SLOT
-    assert r0 > P.BEARING_SQ / 2 * math.sqrt(2) + 1.0       # outside the fixed plate's corners
+    assert r0 > P.CAP_R + 1.0                               # outside the bearing's cap
     for ang in P.DECK_SCREW_ANGLES:
         a = (ang + 180) % 360 - 180
         assert abs(a) > half + 6 or not (r0 - 3 < P.DECK_SCREW_R < r1 + 3), ang
@@ -118,29 +121,31 @@ def test_window_and_intake_stay_above_the_belt_joint():
     assert P.Z_VENT_IN - P.VENT_IN_H / 2 > P.Z_BASE_TOP + P.RING_T
 
 
-def tilt(point, deg):
-    """Rotate (x, z) about the tilt axis; positive is nose up, the machine's convention."""
-    dx, dz = point[0], point[1] - P.Z_HEAD
-    a = math.radians(deg)
-    return dx * math.cos(a) - dz * math.sin(a), P.Z_HEAD + dx * math.sin(a) + dz * math.cos(a)
-
-
-def test_tilt_stops_bracket_the_firmware_range_with_margin():
-    # the nozzle arm's convention is nose-up positive; the stops sit at least 3 degrees outside cfg
+def _fixture():
     import json
     from pathlib import Path
-    cfg = json.loads(json.load(open(Path(__file__).resolve().parents[2] / "protocol/fixtures/commands.json"))["cfg"])
-    assert P.TILT_STOP[0] <= cfg["tiltMin"] - 3 and P.TILT_STOP[1] >= cfg["tiltMax"] + 3
+    return json.loads(json.load(open(Path(__file__).resolve().parents[2] / "protocol/fixtures/commands.json"))["cfg"])
 
 
+def test_the_nod_stops_bracket_the_nod_range_by_a_degree():
+    """The owner's range is -15..+5, nose up positive; the printed stops are a degree outside it,
+    so a command at the end of the range never finds plastic and a runaway one never finds the
+    servo's own end stop."""
+    assert P.NOD_STOP == (P.NOD_RANGE[0] - 1.0, P.NOD_RANGE[1] + 1.0)
+    assert P.STEM_LEAN == -(P.NOD_RANGE[0] + P.NOD_RANGE[1]) / 2        # the swing is centred
+
+
+@pytest.mark.xfail(strict=True, reason="firmware follow-up on another branch: tiltMin/tiltMax in "
+                                       "firmware/lib/dwarf/types.h and the protocol fixture are still "
+                                       "-30/+40 from the nozzle arm; the head nods -15..+5")
+def test_the_firmware_tilt_limits_sit_inside_the_nod_stops():
+    cfg = _fixture()
+    assert P.NOD_STOP[0] < cfg["tiltMin"] and cfg["tiltMax"] < P.NOD_STOP[1]
 
 
 def test_hard_stops_sit_outside_the_fixture_limits():
-    import json
-    from pathlib import Path
-    cfg = json.loads(json.load(open(Path(__file__).resolve().parents[2] / "protocol/fixtures/commands.json"))["cfg"])
+    cfg = _fixture()
     assert P.PAN_STOP_DEG > cfg["panMax"] and -P.PAN_STOP_DEG < cfg["panMin"]
-    assert P.TILT_STOP[0] < cfg["tiltMin"] and P.TILT_STOP[1] > cfg["tiltMax"]
 
 
 def statue_features():
@@ -211,22 +216,23 @@ def test_pan_linkage_sweeps_inside_the_statue():
         assert worst + P.LINK_EYE_R + 3.0 < right, (z, worst, right)
 
 
-def test_shroud_and_deck_fit_the_neck():
-    _, front, back, left, right = reach_at(P.Z_DECK)
-    assert P.DECK_R + 1.0 < min(front, left)             # the deck is a disc of DECK_R ...
-    assert P.DECK_LOBE["r"] + 1.0 < right                # ... with a lobe over the servo hangers towards -Y
-    assert P.DECK_BACK_R + 1.0 < back                    # ... and trimmed at the back
-    hangers = max(math.hypot(x, y) + P.PAN_HANGER / math.sqrt(2) for x, y in P.pan_hangers())
+def test_the_deck_and_the_spider_fit_the_neck():
+    """The deck's lobe covers the servo's hangers and stays inside the socket's inner sphere, and
+    the spider's bosses stand inside the head at the height of its screws."""
+    h = P.PAN_HANGER / 2
+    hangers = max(math.hypot(x + dx, y + dy) for x, y in P.pan_hangers() for dx in (-h, h) for dy in (-h, h))
     assert hangers < P.DECK_LOBE["r"]
-    for z in (412.0, 430.0, 454.0):
-        assert P.SHROUD_R_OUT + 3.0 < reach_at(z)[0], z
+    inner = P.NECK_SPHERE_R - P.TURN_GAP - P.WALL - P.DECK_SOCKET_MARGIN
+    assert hangers <= math.sqrt(inner ** 2 - (P.Z_DECK - P.DECK_T - P.Z_NOD) ** 2) + 0.05, hangers
+    assert P.SPIDER_BOSS_R + 3.0 < reach_at(P.HEAD_SCREWS_Z)[0]
 
 
 def test_belt_ring_fits_the_coats_section():
     _, front, back, left, right = reach_at(P.Z_BELT)
     assert P.BELT_RX + 1.0 < min(front, back)
     assert P.BELT_RY + 1.0 < min(left, right)
-    assert P.CHASSIS_RX < P.BELT_IN_RX + 12 and P.CHASSIS_RY < P.BELT_IN_RY + 12   # it rests on the ring
+    assert P.BELT_IN_RX < P.CHASSIS_RX < P.BELT_RX          # it rests on the ring, front and back,
+    assert P.CHASSIS_RY < P.BELT_RY                          # inside the ring's outside all round
 
 
 def test_wet_zone_envelopes_fit():
@@ -244,11 +250,3 @@ def test_wet_zone_envelopes_fit():
     gap = abs(legs["left"][1] - legs["right"][1]) - (P.PUMP[1] + P.VALVE[1]) / 2 - 2 * wall
     assert gap > 2.0, (gap, legs)
     assert P.PUMP_Z0 > P.SAND_Z_TOP and P.VALVE_Z0 > P.SAND_Z_TOP
-
-
-def test_nozzle_arm_stays_in_the_beard():
-    px, _, pz = P.NOZZLE_PIVOT
-    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
-        a = math.radians(deg)
-        tip = (px + P.NOZZLE_ARM_L * math.cos(a), pz + P.NOZZLE_ARM_L * math.sin(a))
-        assert tip[1] > P.Z_TURN + 10 and tip[1] < P.Z_HAT - 10, (deg, tip)

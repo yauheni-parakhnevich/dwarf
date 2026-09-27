@@ -12,7 +12,7 @@ import pytest
 @pytest.fixture(scope="session")
 def parts():
     """Every registered part, built once for the whole session, in its print frame."""
-    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
+    import mech; mech.load_all()
     from mech import ALL
     return {spec.name: spec.build() for spec in ALL}
 

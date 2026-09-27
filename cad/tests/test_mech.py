@@ -1,9 +1,9 @@
 import itertools
 import math
+import pytest
 from build123d import Axis, Location, Plane, Pos, Sphere, Vertex
 import params as P
-from mech.common import box, cyl_x, cyl_z, cyl_y, polar, servo_body, skin_solid
-from mech.turntable import BOSS_OUT, _radial_bore, _radial_span
+from mech.common import box, cyl_x, cyl_z, cyl_y, polar, posed, servo_body, skin_solid
 
 
 def _bb(p):
@@ -14,28 +14,6 @@ def _driver(head, direction, r=3.0, length=40.0):
     """A driver of radius `r`, `length` long, on a screw head at `head` pointing `direction`."""
     mid = tuple(h + d * length / 2 for h, d in zip(head, direction))
     return Plane(origin=mid, z_dir=direction) * Pos(0, 0, -length / 2) * cyl_z(r, 0, length)
-
-
-def shroud_screws():
-    """Every screw inside or into the neck shroud, as (head, the way its driver comes in).
-
-    Four M3 x 10 hold the shroud down onto the plate: they are driven from inside the cup, so
-    their drivers run up the inside of the barrel and out through the roof. The four that carry
-    the bell and the two that carry the tilt bracket are radial, driven inward from outside, so
-    their drivers stand off the boss's face.
-    """
-    out = []
-    head_z = P.SHROUD_BASE_Z + 3.0 + P.SCREW_HEAD_H         # the ring's face, plus the sunk head
-    for a in P.YOKE_SCREW_ANGLES:
-        x, y = polar(P.YOKE_SCREW_R, a)
-        out.append(((x, y, head_z), (0.0, 0.0, 1.0), f"shroud screw at {a:.0f} deg"))
-    from mech.turntable import BRACKET_SCREW_ANGLES
-    face = P.SHROUD_R_OUT + BOSS_OUT
-    for a, z, what in ([(a, P.SHROUD_SCREWS_Z, "bell") for a in P.SHROUD_SCREW_ANGLES]
-                       + [(a, P.NOZZLE_PIVOT[2], "bracket") for a in BRACKET_SCREW_ANGLES]):
-        ux, uy = math.cos(math.radians(a)), math.sin(math.radians(a))
-        out.append(((face * ux, face * uy, z), (ux, uy, 0.0), f"{what} screw at {a:.0f} deg"))
-    return out
 
 
 def test_every_part_is_one_valid_solid(parts):
@@ -54,21 +32,19 @@ def test_every_part_fits_the_bed(parts):
 
 
 def test_the_fan_hole_clears_the_bearing_and_the_deck_rim(parts):
-    """The hole is between the bearing's square and the deck's trimmed back, and misses both."""
+    """The 30 mm fan's hole clears the 6810's outer ring by 2 mm and more, and the deck is still
+    there behind it: the rim the collar's shadow leaves at the back."""
     fx, fy = P.FAN_XY
-    edge = abs(fx) - P.BEARING_SQ / 2 - P.FAN_HOLE_D / 2
-    # 1.0 is the design value, not a margin with slack behind it: FAN_XY was chosen to leave
-    # exactly this much deck between the fan's hole and the bearing's square, and there is
-    # nowhere for the hole to go. So the bound bites at once - move the fan inward, or widen
-    # FAN_HOLE_D, and this fails on the first millimetre rather than after a quiet drift.
-    assert edge >= 1.0, edge                                    # the bearing's corner is fully seated
-    reach = math.hypot(fx, fy) + P.FAN_HOLE_D / 2
-    assert reach <= P.DECK_BACK_R - 1.0, reach                  # ... and the rim is still there
+    edge = math.hypot(fx, fy) - P.FAN_HOLE_D / 2 - P.BEARING_OD / 2
+    assert edge >= 2.0, edge                                     # 3.5 as drawn
     deck = parts["deck"]
-    for a in (45, 135, 225, 315):                               # the bearing's own four screws
-        bx, by = polar(P.BEARING_PITCH / 2 * math.sqrt(2), a)
-        probe = cyl_z(P.BEARING_HOLE / 2 - 0.05, P.Z_DECK - P.DECK_T - 1, P.Z_DECK + 1, bx, by)
-        assert (probe & deck).volume < 1e-6, a                  # still drilled, not swallowed
+    behind = math.hypot(fx, fy) + P.FAN_HOLE_D / 2 + 1.0         # a millimetre past the hole's far edge
+    x, y = polar(behind, math.degrees(math.atan2(fy, fx)))
+    assert (cyl_z(0.4, P.Z_DECK - P.DECK_T + 1, P.Z_DECK - 1, x, y) & deck).volume > 1e-3
+    for a in P.CAP_SCREW_ANGLES:                                 # the cap's inserts are still drilled
+        bx, by = polar(P.CAP_SCREW_R, a)
+        probe = cyl_z(P.INSERT_D / 2 - 0.05, P.Z_DECK - P.INSERT_DEPTH_SHORT + 0.1, P.Z_DECK + 1, bx, by)
+        assert (probe & deck).volume < 1e-6, a
 
 
 def test_the_deck_cage_stands_inside_the_bells_bore(parts):
@@ -164,35 +140,80 @@ def test_deck_ring_is_cut_around_the_pan_servo(parts):
     assert (body & parts["deck_ring"]).volume < 1e-6
 
 
-def test_deck_bore_clears_the_shaft(parts):
-    deck = parts["deck"]
-    # a probe cylinder of the shaft's radius plus clearance passes through the deck untouched
-    probe = cyl_z(P.SHAFT_OD / 2 + P.CLEAR, P.Z_DECK - P.DECK_T - 1, P.Z_DECK + 1)
-    assert (deck & probe).volume < 1e-6
+def _bearing():
+    return (cyl_z(P.BEARING_OD / 2, P.Z_BEARING, P.Z_BEARING + P.BEARING_B)
+            - cyl_z(P.BEARING_ID / 2, P.Z_BEARING - 1, P.Z_BEARING + P.BEARING_B + 1))
 
 
-def test_shaft_bore_takes_tube_and_wires(parts):
-    """Measured on the part, not on the parameter: the bore is SHAFT_ID end to end."""
-    shaft = parts["shaft"]
-    bb = shaft.bounding_box()
-    clear = cyl_z(P.SHAFT_ID / 2 - 0.05, bb.min.Z - 1, bb.max.Z + 1)
-    assert (clear & shaft).volume < 1e-6                     # SHAFT_ID passes from end to end
-    assert (cyl_z(P.SHAFT_ID / 2 + 0.05, bb.min.Z - 1, bb.max.Z + 1) & shaft).volume > 1e-3
-    assert P.SHAFT_ID >= P.TUBE_OD + 3 * 1.5 + 2             # tube, three wires and slack, spec 6
+def test_the_bearing_is_seated_and_held_both_ways(parts):
+    """The 6810's outer ring in the deck, its inner ring on the plate's hub, each with 0.1-0.2 mm
+    of radial fit, and each held both ways: the outer ring between the deck's lip and the cap, the
+    inner ring between the plate's shoulder and the hub ring. Every clamping face touches only its
+    own ring - a lip that reached the seal or the other ring would stop it turning."""
+    deck, cap, plate, ring = parts["deck"], parts["bearing_cap"], parts["plate"], parts["hub_ring"]
+    b = _bearing()
+    z0, z1 = P.Z_BEARING, P.Z_BEARING + P.BEARING_B
+    assert 0.1 <= P.BEARING_FIT <= 0.2
+    for name, p in (("deck", deck), ("cap", cap), ("plate", plate), ("hub_ring", ring)):
+        assert (p & b).volume < 1e-6, name                               # nothing is in the bearing
+    # the seats are the bearing's own diameters plus the fit, and no more
+    assert (cyl_z(P.BEARING_OD / 2 + P.BEARING_FIT - 0.02, z0 + 0.5, P.Z_DECK - 0.5) & deck).volume < 1e-6
+    assert (cyl_z(P.BEARING_OD / 2 + P.BEARING_FIT + 0.05, z0 + 0.5, P.Z_DECK - 0.5) & deck).volume > 1e-3
+    hub = plate & cyl_z(P.BEARING_ID / 2, z0 + 0.5, z1 - 0.5)
+    r = max(math.hypot(v.X, v.Y) for v in hub.vertices())
+    assert math.isclose(r, P.BEARING_ID / 2 - P.BEARING_FIT, abs_tol=0.01), r
+    # each face that holds a ring touches it, and only in that ring's own band
+    out_band = (cyl_z(P.BEARING_OD / 2 - 0.1, 0, 1) - cyl_z(P.BEARING_OUT_LAND_R, -1, 2))
+    in_band = (cyl_z(P.BEARING_IN_LAND_R, 0, 1) - cyl_z(P.BEARING_ID / 2 + 0.1, -1, 2))
+    for what, p, z, band in (("deck's lip", deck, z0 - 0.5, out_band), ("cap", cap, z1 + 0.5, out_band),
+                             ("plate's shoulder", plate, z1 + 0.5, in_band), ("hub ring", ring, z0 - 0.5, in_band)):
+        face = band.moved(Pos(0, 0, z - 0.5))
+        assert (face & p).volume > 0.3 * face.volume, what               # it bears on its ring ...
+        seal = (cyl_z(P.BEARING_OUT_LAND_R - 0.05, z - 0.4, z + 0.4)
+                - cyl_z(P.BEARING_IN_LAND_R + 0.05, z - 1, z + 1))
+        assert (seal & p).volume < 1e-6, what                            # ... and not on the seal
+
+
+def test_the_stem_channel_takes_the_tube(parts):
+    """The tube runs down the stem's channel from its head to where it leaves the neck's back,
+    with half a millimetre all round, and the channel does not break out of the stem's sides."""
+    from mech.nod import tube_stem_points
+    from mech.common import polyline
+    stem = parts["stem"]
+    pts = tube_stem_points()
+    inside = polyline(pts[1:4], P.TUBE_OD / 2)
+    assert (inside & stem).volume < 1e-6                                  # the tube passes
+    assert P.STEM_CHANNEL_D >= P.TUBE_OD + 1.0
+    walls = box(-30, 30, -P.STEM_T / 2, P.STEM_T / 2, 395.0, P.STEM_HEAD[2] - 1.0)
+    ring = polyline(pts[1:3], P.STEM_CHANNEL_D / 2 + 1.2) - polyline(pts[1:3], P.STEM_CHANNEL_D / 2 + 0.01)
+    assert (ring & stem).volume > 0.97 * (ring & walls).volume           # 1.2 mm of wall all the way
 
 
 def test_plate_sits_on_the_bearing_and_hangs_its_column(parts):
     plate = parts["plate"]
     bb = plate.bounding_box()
     assert math.isclose(bb.max.Z, P.Z_PLATE_TOP, abs_tol=1e-6)          # nothing above the disc
-    assert math.isclose(bb.min.Z, P.Z_LINK_TOP, abs_tol=1e-6)           # the pin boss under the foot bar
-    below = plate & box(-80, 80, -80, 80, P.Z_CRANK_BOTTOM - 1, P.Z_DECK + P.BEARING_T - 0.01)
+    below = plate & box(20, 80, -80, 80, P.Z_CRANK_BOTTOM - 1, P.Z_HUB_BOTTOM - 0.01)
     b = below.bounding_box()
-    assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot down here
+    assert b.min.X >= P.PAN_FOOT_R_IN - 1e-6 and b.max.X <= P.PAN_COLUMN[1] + 1e-6   # only column and foot out here
     assert abs(b.min.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6 and abs(b.max.Y) <= P.PAN_COLUMN[2] / 2 + 1e-6
     pin, _ = P.crank_pins(0)                                              # the foot's pin insert is blind
     probe = cyl_z(P.INSERT_D / 2, P.Z_CRANK_BOTTOM - 1, P.Z_CRANK_TOP, pin[0], pin[1])
     assert (probe & plate).volume > 1e-3
+
+
+def test_the_yoke_drops_through_the_bearing(parts):
+    """Everything of the plate under the bearing's bore, but the column, is inside it: the plate
+    and its yoke go down through the inner ring, and the hub ring slides up over them."""
+    plate = parts["plate"]
+    under = plate & cyl_z(60, P.Z_CRANK_BOTTOM - 10, P.Z_BEARING)
+    under = under - box(P.PAN_FOOT_R_IN - 1, 80, -10, 10, P.Z_CRANK_BOTTOM - 10, P.Z_BEARING)
+    r = max(math.hypot(v.X, v.Y) for v in under.vertices())
+    assert r <= P.HUB_R + 1e-6, r                                         # 24.85: the hub itself
+    lower = plate & cyl_z(60, P.Z_CRANK_BOTTOM - 10, P.Z_HUB_BOTTOM - 0.01)
+    lower = lower - box(P.PAN_FOOT_R_IN - 1, 80, -10, 10, P.Z_CRANK_BOTTOM - 10, P.Z_BEARING)
+    r = max(math.hypot(v.X, v.Y) for v in lower.vertices())
+    assert r < P.HUB_R + 0.15 - 1.0, r                                    # the ring's bore passes it by a millimetre
 
 
 def test_link_eyes_are_a_centre_distance_apart(parts):
@@ -222,14 +243,18 @@ def test_link_and_crank_live_below_the_deck_ring(parts):
 
 
 def test_linkage_sweeps_without_touching_anything(parts):
-    """Plate (with its column) about the pan axis, servo crank about the servo axis, link translated."""
+    """The plate with its yoke and the nod servo on it about the pan axis, the servo crank about
+    the servo's axis, the link translated: nothing touches through the whole pan, the stops
+    included, but the link's eyes under their two pin bosses, which is what the bosses are for."""
+    from mech.nod import nod_servo
     servo_axis = Axis((P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], 0), (0, 0, 1))
     rest_plate, _ = P.crank_pins(0)
     servo = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
-    fixed = parts["deck"] + parts["deck_ring"] + parts["shaft"] + servo
+    fixed = parts["deck"] + parts["deck_ring"] + parts["bearing_cap"] + servo
+    turning = parts["plate"] + parts["hub_ring"] + nod_servo()
     interior = range(-int(P.PAN_STOP_DEG) + 1, int(P.PAN_STOP_DEG), 8)
     for deg in [-P.PAN_STOP_DEG, *interior, P.PAN_STOP_DEG]:      # the stops themselves as well
-        plate = (parts["plate"] + parts["neck_shroud"]).rotate(Axis.Z, deg)
+        plate = turning.rotate(Axis.Z, deg)
         crank = parts["servo_crank"].rotate(servo_axis, deg)
         pin, _ = P.crank_pins(deg)
         link = parts["pan_link"].moved(Location((pin[0] - rest_plate[0], pin[1] - rest_plate[1], 0)))
@@ -237,12 +262,15 @@ def test_linkage_sweeps_without_touching_anything(parts):
                            (link, plate, "link/plate"), (link, crank, "link/crank"), (link, fixed, "link/fixed")):
             v = (a & b).volume
             assert v < 1e-3, (deg, what, v)
+        # and the link's plane stays 2 mm under the yoke: the study's cheek met it by 0.5 at -65
+        body = plate - box(P.PAN_FOOT_R_IN - 6, 80, -10, 10, P.Z_LINK_BOTTOM - 5, P.Z_CRANK_TOP + 0.01).rotate(Axis.Z, deg)
+        assert link.distance_to(body) >= 2.0, (deg, link.distance_to(body))
 
 
 def test_pan_servo_hangs_from_the_deck_and_touches_nothing_else(parts):
     body = servo_body(P.DS3218, (P.PAN_SERVO_XY[0], P.PAN_SERVO_XY[1], P.Z_PAN_SHAFT_FACE), axis="-z")
-    bearing = box(-P.BEARING_SQ / 2, P.BEARING_SQ / 2, -P.BEARING_SQ / 2, P.BEARING_SQ / 2, P.Z_DECK, P.Z_DECK + P.BEARING_T)
-    for other in (bearing, parts["deck"], parts["deck_ring"], parts["plate"], parts["neck_shroud"], parts["shaft"]):
+    for other in (_bearing(), parts["deck"], parts["deck_ring"], parts["plate"], parts["hub_ring"],
+                  parts["stem"]):
         assert (body & other).volume < 1e-6
     # the hangers meet the tabs: a hanger's bottom face is at the tabs' upper face
     hangers = parts["deck"] & box(-120, 120, -120, 120, P.Z_PAN_SHAFT_FACE - 5, P.Z_DECK - P.DECK_T - 0.01)
@@ -262,122 +290,159 @@ def test_stop_pins_seat_in_the_deck(parts):
     assert (fat & parts["deck"]).volume < 1e-6
 
 
-def test_the_shroud_fits_the_statues_cavity():
-    """The shroud is a body of revolution inside the beard: the chin is the tightest place.
+def test_the_spider_fits_the_head_and_takes_its_screws(parts):
+    """Four radial inserts at z 440, bored round, their faces at r 57 where the shroud's were;
+    the stem's head fits up into the spider; its two screws and the tube's bore go through.
 
-    The radii are the statue's own, read out of the reach table the statue stage measures on the
-    mesh - the table's narrowest direction at each height - so this skips without a statue
-    rather than passing against a number typed in here.
+    The bosses stand inside the head's cavity, read from the statue's reach table at that height,
+    so this skips without a statue rather than passing against a number typed in here.
     """
-    from test_params import reach_at, statue_features
-    chin = statue_features()["features"]["chin"]          # skips if the statue has not run
-    for where, z in (("chin", chin), ("z400", 400.0)):
-        assert P.SHROUD_R_OUT + 3.0 <= reach_at(z)[0], (where, z, reach_at(z)[0])
+    from test_params import reach_at
+    from mech.nod import SPIDER_SCREW_X
+    sp, st = parts["spider"], parts["stem"]
+    assert P.SPIDER_BOSS_R + 3.0 <= reach_at(P.HEAD_SCREWS_Z)[0]
+    r0, r1 = P.SPIDER_BOSS_R - P.INSERT_DEPTH, P.SPIDER_BOSS_R
+    for a in P.HEAD_SCREW_ANGLES:
+        bore = cyl_x(P.INSERT_D / 2 - 0.05, r0 + 0.2, r1 + 1, 0.0, P.HEAD_SCREWS_Z).rotate(Axis.Z, a)
+        assert (bore & sp).volume < 1e-6, (a, "the insert's bore is not clear")
+        wall = (cyl_x(P.INSERT_D / 2 + 1.5, r0 + 0.2, r1 - 0.2, 0.0, P.HEAD_SCREWS_Z)
+                - cyl_x(P.INSERT_D / 2 + 0.05, r0, r1, 0.0, P.HEAD_SCREWS_Z)).rotate(Axis.Z, a)
+        assert (wall & sp).volume > 0.9 * wall.volume, (a, "the boss is not round the insert")
+        on_axis = cyl_x(0.3, 0.0, 100.0, 0.0, P.HEAD_SCREWS_Z + P.INSERT_D / 2 + 1.0).rotate(Axis.Z, a)
+        face = max(math.hypot(v.X, v.Y) for v in (sp & on_axis).vertices())
+        assert math.isclose(face, P.SPIDER_BOSS_R, abs_tol=0.05), face
+    assert (sp & st).volume < 1e-6                                         # the stem's head fits in it
+    for x in (-SPIDER_SCREW_X, SPIDER_SCREW_X):
+        shank = cyl_z(P.M3_CLEAR / 2 - 0.05, P.STEM_HEAD[2], P.SPIDER_Z[1] + 1, x, 0.0)
+        assert (shank & sp).volume < 1e-6, x
+        insert = cyl_z(P.INSERT_D / 2 - 0.05, P.STEM_HEAD[2] - P.INSERT_DEPTH + 0.1, P.STEM_HEAD[2], x, 0.0)
+        assert (insert & st).volume < 1e-6, x
+    assert (cyl_z(P.TUBE_OD / 2 + 0.3, P.SPIDER_Z[0] - 1, P.SPIDER_Z[1] + 1) & sp).volume < 1e-6
 
 
-def test_the_shroud_takes_its_screws(parts):
-    """Four down into the plate, four radial for the bell and two for the tilt bracket.
-
-    Every radial bore is a drilled cylinder, not the square a box-shaped cutter used to leave:
-    an insert of INSERT_D goes in it, and a 4 x 4 prism of the same depth does not.
-    """
-    shroud = parts["neck_shroud"]
-    bb = shroud.bounding_box()
-    assert math.isclose(bb.min.Z, P.SHROUD_BASE_Z, abs_tol=1e-6)
-    assert math.isclose(bb.max.Z, P.SHROUD_TOP_Z, abs_tol=1e-6)
-    for a in P.YOKE_SCREW_ANGLES:                              # down into the plate's inserts
-        x, y = polar(P.YOKE_SCREW_R, a)
-        shank = cyl_z(P.M3_CLEAR / 2 - 0.05, P.SHROUD_BASE_Z - 1, P.SHROUD_BASE_Z + 3, x, y)
-        assert (shank & shroud).volume < 1e-6, a
-    from mech.turntable import BRACKET_SCREW_ANGLES
-    r0 = P.SHROUD_R_OUT + BOSS_OUT - P.INSERT_DEPTH
-    r1 = P.SHROUD_R_OUT + BOSS_OUT
-    for a, z in ([(a, P.SHROUD_SCREWS_Z) for a in P.SHROUD_SCREW_ANGLES]
-                 + [(a, P.NOZZLE_PIVOT[2]) for a in BRACKET_SCREW_ANGLES]):
-        bore = _radial_bore(r0 + 0.2, r1 + 1, a, z, P.INSERT_D / 2 - 0.05)
-        assert (bore & shroud).volume < 1e-6, (a, z, "the insert's bore is not clear")
-        square = _radial_span(r0 + 0.2, r1 - 0.2, a, z, P.INSERT_D / 2)
-        assert (square & shroud).volume > 1e-3, (a, z, "the bore is square, not drilled")
-
-
-def test_the_deck_is_lobed_to_the_coat(parts):
+def test_the_deck_stays_in_the_socket(parts):
+    """The deck, hangers and all, is DECK_SOCKET_MARGIN inside the collar's socket, and inside the
+    narrowest the collar is anywhere under it less DECK_SHADOW_MARGIN, which is what lets the
+    collar be lowered over it. The narrowest is at the back, 71 mm out."""
+    from mech.turntable import collar_shadow
     deck = parts["deck"]
-    for deg, r in ((0.0, P.DECK_R), (P.DECK_LOBE["angle"], P.DECK_LOBE["r"]), (180.0, P.DECK_BACK_R)):
-        x, y = polar(r - 1.0, deg)
-        assert (cyl_z(0.5, P.Z_DECK - 1, P.Z_DECK + 1, x, y) & deck).volume > 1e-3, (deg, "inside")
-        x, y = polar(r + 1.0, deg)
-        assert (cyl_z(0.5, P.Z_DECK - 1, P.Z_DECK + 1, x, y) & deck).volume < 1e-6, (deg, "outside")
+    inner = P.NECK_SPHERE_R - P.TURN_GAP - P.WALL
+    far = max(math.dist((v.X, v.Y, v.Z), (0, 0, P.Z_NOD)) for v in deck.vertices())
+    assert far <= inner - P.DECK_SOCKET_MARGIN + 1e-3, far
+    sh = collar_shadow()
+    if sh is None:
+        pytest.skip("the statue stage has not published collar_inner")
+    angles, radii = sh
+    step = angles[1] - angles[0]
+    worst = 1e9
+    for v in deck.vertices():
+        a = (math.degrees(math.atan2(v.Y, v.X)) % 360.0) / step
+        i, f = int(a) % len(radii), a - int(a)
+        r = radii[i] + (radii[(i + 1) % len(radii)] - radii[i]) * f      # the shadow, between samples
+        worst = min(worst, r - math.hypot(v.X, v.Y))
+    assert worst >= P.DECK_SHADOW_MARGIN - 0.1, worst
 
 
-def test_the_nozzle_arm_swings_its_whole_range_untouched(parts):
-    from mech.turntable import _tilt_servo
-    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
-    fixed = parts["tilt_bracket"] + parts["neck_shroud"] + parts["plate"] + parts["deck"] \
-        + parts["shaft"] + _tilt_servo()
-    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
-        # build123d's +deg about +Y lowers the nose, so the machine's tilt is -deg here
-        assert (parts["nozzle_arm"].rotate(axis, -deg) & fixed).volume < 1e-6, deg
+def test_the_spider_keeps_off_the_dome(parts):
+    """Beyond SPIDER_CORE_R the spider is NECK_SPHERE_R from C, like the unit it carries; inside
+    it, it stays in the dome's bore at every nod. Both measured on the part's vertices."""
+    from mech.common import pose_point
+    sp = parts["spider"]
+    worst_far, worst_bore = 1e9, 0.0
+    for v in sp.vertices():
+        p = (v.X, v.Y, v.Z)
+        r = math.hypot(v.X, v.Y)
+        d = math.dist(p, (0, 0, P.Z_NOD))
+        if r > P.SPIDER_CORE_R + 1e-6:
+            worst_far = min(worst_far, d)
+        else:
+            for nod in (P.NOD_STOP[0], P.NOD_STOP[1]):
+                q = pose_point(p, 0.0, nod)
+                worst_bore = max(worst_bore, math.hypot(q[0], q[1]))
+    assert worst_far >= P.NECK_SPHERE_R, worst_far
+    assert worst_bore <= P.NECK_BORE_R - 3.0, worst_bore
 
 
-def test_the_nozzle_arm_meets_plastic_past_its_stops(parts):
-    """The spec's rule: a runaway command finds a printed stop, not the servo's own limit.
-
-    A lug on the arm's far face runs in a slot in the bracket's cheek, and the slot's ends are
-    an asin of the lug's radius past TILT_STOP, so the flank lands there exactly.
-    """
-    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
-    arm, bracket = parts["nozzle_arm"], parts["tilt_bracket"]
-    for deg in (P.TILT_STOP[0] + 1, 0.0, P.TILT_STOP[1] - 1):
-        assert (arm.rotate(axis, -deg) & bracket).volume < 1e-6, deg
-    for deg in (P.TILT_STOP[0] - 1, P.TILT_STOP[1] + 1):
-        assert (arm.rotate(axis, -deg) & bracket).volume > 1e-3, deg
-
-
-def test_the_jet_leaves_the_nozzle_untouched(parts):
-    """A JET_D column from the tip, along the arm, at every degree of the arm's travel."""
-    from mech.turntable import _tilt_servo, nozzle_tip
-    fixed = parts["tilt_bracket"] + parts["neck_shroud"] + parts["plate"] + parts["deck"] \
-        + parts["deck_ring"] + parts["shaft"] + _tilt_servo()
-    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
-    jet = cyl_x(P.JET_D / 2, P.NOZZLE_PIVOT[0] + P.NOZZLE_ARM_L, P.NOZZLE_PIVOT[0] + 140.0,
-                0, P.NOZZLE_PIVOT[2])
-    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
-        shot = jet.rotate(axis, -deg)                           # the arm turns with its own jet
-        assert (shot & (fixed + parts["nozzle_arm"].rotate(axis, -deg))).volume < 1e-6, deg
-        (tx, tz), _ = nozzle_tip(deg)
-        assert math.hypot(tx, 0.0) > P.SHROUD_R_OUT, deg        # the tip is always outside the shroud
+def test_the_stem_swings_clear_of_the_yoke(parts):
+    """At every degree of the nod range the stem is NOD_CLEAR clear of the plate and its yoke, and
+    at the hard stops it still touches nothing but the stop."""
+    from mech.nod import neck_x_range, stop_lug
+    plate, stem = parts["plate"], parts["stem"]
+    for deg in range(int(P.NOD_STOP[0]), int(P.NOD_STOP[1]) + 1):
+        assert (posed(stem, 0, deg) & plate).volume < 1e-6, deg
+        assert (posed(stem, 0, deg) & parts["hub_ring"]).volume < 1e-6, deg
+    # the slot the plate leaves the neck is its sweep over the stops, NOD_CLEAR wider each side
+    for z in (P.Z_HUB_BOTTOM + 1.0, P.Z_BEARING + 3.0, P.Z_PLATE_TOP - 0.5):
+        lo, hi = neck_x_range(z, P.NOD_RANGE[0], P.NOD_RANGE[1])
+        for x in (lo - P.NOD_CLEAR + 0.05, hi + P.NOD_CLEAR - 0.05):
+            assert (cyl_z(0.02, z - 0.2, z + 0.2, x, 0.0) & plate).volume < 1e-9, (z, x)
 
 
-def test_the_nozzle_arm_leaves_only_through_the_mouth(parts):
-    """The arm is the one part meant to break the cavity, and only its nozzle may.
+def test_the_clear_hole_through_the_bearing(parts):
+    """The stem sliced at z 394, 400 and 406 at every nod pose: the circle that holds all of it -
+    the hole the neck needs - with 1.5 mm to spare inside the bearing's 50 mm bore and the deck's
+    lip. As drawn it is 33.0, 35.0 and 37.0 across."""
+    from build123d import Box
+    stem = parts["stem"]
+    holes = {}
+    for z in (394.0, 400.0, 406.0):
+        r = 0.0
+        for deg in range(int(P.NOD_RANGE[0]), int(P.NOD_RANGE[1]) + 1):
+            cut = posed(stem, 0, deg) & (Pos(0, 0, z) * Box(200, 200, 0.2))
+            r = max(r, max(math.hypot(v.X, v.Y) for v in cut.vertices()))
+        holes[z] = 2 * r
+        assert 2 * r + 2 * 1.5 <= P.BEARING_ID, (z, 2 * r)
+        assert 2 * r + 2 * 1.5 <= 2 * P.BEARING_OUT_LAND_R, (z, 2 * r)
+    assert holes[406.0] <= 38.0, holes                                     # the study said about 37
 
-    test_fit exempts it for that reason; this is what the exemption is worth. Everything the
-    arm has beyond the face's skin must be the tip, and must lie inside the beard's parting.
-    """
-    axis = Axis((P.NOZZLE_PIVOT[0], 0, P.NOZZLE_PIVOT[2]), (0, 1, 0))
-    skin = 76.0                                                  # the statue's face, front of it
-    beyond = box(skin, 200.0, -100.0, 100.0, 300.0, 600.0)
-    reach = math.hypot(P.NOZZLE_ARM_L, 14.0 / 2) + 1e-6          # pivot to the tip's far corner
-    for deg in range(int(P.TILT_STOP[0]), int(P.TILT_STOP[1]) + 1):
-        out = parts["nozzle_arm"].rotate(axis, -deg) & beyond
-        assert out.volume > 1e-3, deg                            # the nozzle does reach the skin
-        bb = out.bounding_box()
-        assert max(abs(bb.min.Y), abs(bb.max.Y)) <= P.NOZZLE_SLOT_W / 2 + 1e-6, deg   # in the parting
-        far = max(math.hypot(v.X - P.NOZZLE_PIVOT[0], v.Z - P.NOZZLE_PIVOT[2]) for v in out.vertices())
-        assert far <= reach, (deg, far)                          # ... and it is the tip, not the arm
+
+def test_the_nod_stops_meet_the_lug_exactly(parts):
+    """The spec's rule: a runaway command finds a printed stop, not the servo's own limit. The
+    stop lug on the stem's hub runs in an arc slot in the -Y cheek whose ends are an asin of the
+    lug's radius past NOD_STOP: clear a degree inside either stop, in contact a degree past it,
+    and never anything in between."""
+    from mech.nod import stop_lug
+    lug, plate = stop_lug(), parts["plate"]
+    for deg in (P.NOD_STOP[0] + 1, 0.0, P.NOD_STOP[1] - 1):
+        assert (posed(lug, 0, deg) & plate).volume < 1e-6, deg
+    for deg in (P.NOD_STOP[0] - 1, P.NOD_STOP[1] + 1):
+        assert (posed(lug, 0, deg) & plate).volume > 1e-3, deg
+    for deg in P.NOD_STOP:                                                 # and just touching, at the stop
+        assert (posed(lug, 0, deg) & plate).volume < 1e-3, deg
+        past = deg + math.copysign(0.25, deg)
+        assert (posed(lug, 0, past) & plate).volume > 1e-6, past
+    for deg in range(int(P.NOD_STOP[0]) + 1, int(P.NOD_STOP[1])):
+        assert (posed(parts["stem"], 0, deg) & plate).volume < 1e-6, deg
 
 
-def test_the_tube_reaches_the_barb_at_both_stops(parts):
-    """The barb swings; a 6 x 4 tube leaves the shaft's mouth and reaches it at either end."""
-    from mech.turntable import _tail_reach
-    mouth = (0.0, P.Z_PLATE_TOP + 6.0)                          # the shaft's flared top
-    reach = []
-    for deg in P.TILT_STOP:
-        bx, bz = _tail_reach(deg)
-        run = math.hypot(bx - mouth[0], bz - mouth[1])
-        reach.append(run)
-        assert run > P.TUBE_BEND_R, (deg, run)                  # one bend of TUBE_BEND_R fits in it
-    assert abs(reach[0] - reach[1]) < 2 * P.TUBE_BEND_R          # ... and the swing is inside one bend
+def test_the_nod_servo_is_seated_and_drives_the_hub(parts):
+    """The MG996R's tabs lie on the yoke's two posts, their four screw holes over inserts; its case
+    touches nothing; its spline goes through the +Y cheek into the horn let into the stem's hub."""
+    from mech.nod import horn, nod_servo, nod_servo_holes, nod_servo_tab_y
+    plate, stem, servo = parts["plate"], parts["stem"], nod_servo()
+    assert (servo & plate).volume < 1e-3                                   # it lies on the posts
+    assert (servo & stem).volume < 1e-6
+    yt = nod_servo_tab_y()
+    for x, z in nod_servo_holes():
+        insert = cyl_y(P.INSERT_D / 2 - 0.05, yt - P.INSERT_DEPTH + 0.1, yt - 0.01, x, z)
+        assert (insert & plate).volume < 1e-6, (x, z)
+        post = cyl_y(P.INSERT_D / 2 + 1.0, yt - 3, yt - 0.01, x, z) - cyl_y(P.INSERT_D / 2 + 0.05, yt - 4, yt, x, z)
+        assert (post & plate).volume > 0.9 * post.volume, (x, z)
+    assert (horn() & stem).volume < 1e-6 and (horn() & plate).volume < 1e-6
+    for deg in P.NOD_STOP:
+        assert (posed(stem, 0, deg) & servo).volume < 1e-6, deg
+    body = servo.bounding_box()                                            # inside the cage's +Y legs
+    assert math.hypot(body.max.X, body.max.Y) <= P.CAGE_LEG_R - P.CAGE_LEG / 2 - 6.0
+
+
+def test_the_pin_is_held_in_the_hub_and_turns_in_the_bushing(parts):
+    from mech.nod import bushing, pin
+    stem, plate = parts["stem"], parts["plate"]
+    assert (pin() & stem).volume > 0.0                                     # pressed in
+    held = pin() & stem
+    assert held.bounding_box().max.Y - held.bounding_box().min.Y >= 7.5     # 7.6 mm of it in the hub
+    assert (bushing() & plate).volume > 0.0                                # the bushing, pressed
+    assert (pin() & (plate - cyl_y(P.BUSH_OD / 2, -20, 0, 0.0, P.Z_NOD))).volume < 1e-6   # nothing else
 
 
 def test_phone_slot_fits_the_phone_with_clearance(parts):
@@ -516,7 +581,7 @@ def test_the_lower_flanges_tongue_stands_outside_the_divider(parts):
 def test_assembly_step_exists_after_build(tmp_path):
     from build123d import export_step
     from mech.common import assembly
-    import mech.turntable, mech.torso, mech.head, mech.base  # noqa: E401,F401
+    import mech; mech.load_all()
     from mech import ALL
     built = {spec.name: spec.build() for spec in ALL}
     comp = assembly(built)
@@ -544,26 +609,34 @@ def test_assembly_step_exists_after_build(tmp_path):
 
 
 def test_no_two_parts_in_a_group_overlap(placed):
-    """Three groups - what is fixed, what turns with the plate, what nods with the head - each
-    checked against itself. The linkage is left out: it sweeps, and its own test covers it.
+    """Three groups - what is fixed, what pans with the plate, what pans and nods with the stem -
+    each checked against itself, bought parts included. The linkage is left out: it sweeps, and
+    its own test covers it. Poses are the pose sweep's business (test_pose.py).
 
     Interface parts of one shell section are let off each other: they are unioned into the same
-    revolve, so an overlap between two of them would close up rather than clash. None of them
-    overlaps today - the exemption is there for the shell, not to excuse a mistake.
+    section, so an overlap between two of them would close up rather than clash.
 
-    Two interferences are the design's: the divider stands DIVIDER_PROUD above the base's rim so
-    the belt screws always squeeze the bead, and the filler's cap screws onto its neck. The first
-    is asserted for what it is and for no more; the second has its own test next door.
+    The design's own contacts are asserted for what they are: the divider stands DIVIDER_PROUD
+    above the base's rim so the belt screws always squeeze the bead; the filler's cap screws onto
+    its neck; the pin is pressed into the stem's hub and its bushing into the -Y cheek; the stop
+    lug's sleeve is clamped to the hub's face; the nod servo's tabs lie on their posts.
     """
-    from mech import INTERFACES
+    from mech import INTERFACES, LINKAGE, NODS, PANS
+    from mech.nod import nod_bought
     section = {n: s for s, names in INTERFACES.items() for n in names}
-    pan = {"plate", "shaft", "neck_shroud", "tilt_bracket", "servo_crank", "pan_link"}
-    head = {"nozzle_arm"}
-    linkage = {"servo_crank", "pan_link", "stop_pin", "nozzle_arm"}
     fx, fy, fh = P.FAN_XY[0], P.FAN_XY[1], P.FAN / 2         # the bought fan, under the deck
     placed = dict(placed, fan=box(fx - fh, fx + fh, fy - fh, fy + fh,
-                                  P.Z_DECK - P.DECK_T - P.FAN_T, P.Z_DECK - P.DECK_T))
-    groups = [[n for n in placed if n not in pan | head | linkage], sorted(pan), sorted(head)]
+                                  P.Z_DECK - P.DECK_T - P.FAN_T, P.Z_DECK - P.DECK_T),
+                  bearing=_bearing())
+    bought = nod_bought()
+    for name, (shape, _) in bought.items():
+        placed[name] = shape
+    pans = set(PANS) | {n for n, (_, how) in bought.items() if how == "pans"}
+    nods = (set(NODS) | {n for n, (_, how) in bought.items() if how == "nods"}) - set(section)
+    contacts = [{"pin", "stem"}, {"bushing", "plate"}, {"stop_lug", "stem"}, {"nod_servo", "plate"},
+                {"pin", "bushing"}]
+    groups = [[n for n in placed if n not in pans | nods | set(LINKAGE) | {"stop_pin"}],
+              sorted(pans), sorted(nods)]
     for group in groups:
         for a, b in itertools.combinations(group, 2):
             if a in section and b in section and section[a] == section[b]:
@@ -576,8 +649,12 @@ def test_no_two_parts_in_a_group_overlap(placed):
                 assert math.isclose(bb.min.Z, P.Z_BASE_TOP, abs_tol=1e-6)
                 assert math.isclose(bb.max.Z, P.Z_BASE_TOP + P.DIVIDER_PROUD, abs_tol=1e-6)
                 continue
+            if {a, b} in contacts:
+                continue
             assert crush.volume < 1e-3, (a, b, crush.volume)
-
+    for a, b in ({"pin", "stem"}, {"bushing", "plate"}):                     # the two presses, and no more
+        v = (placed[a] & placed[b]).volume
+        assert 0.0 < v < 20.0, (a, b, v)
 
 
 def test_belt_screw_length(parts):
@@ -595,15 +672,46 @@ def test_belt_screw_length(parts):
     assert tip - bore_floor >= 1.0, (tip, bore_floor)                     # ... and daylight below it
 
 
-def test_chassis_and_deck_screws_have_driver_paths(parts):
-    """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else.
+def bench_screws():
+    """Every screw the deck sub-assembly takes on the bench, in the order they go in, as
+    (what, head, the way its driver comes in, driver radius, the parts in place at that moment).
 
-    The shroud's screws are held to the same rule, with 40 mm of driver, because the bell they
-    carry is 573 g and they are the only thing under it: the four that hold the shroud to the
-    plate are driven downward from inside the cup, so the roof is bored over each of them, and
-    the six radial ones are driven inward from outside.
+    The hub ring's two radial screws go in with only the plate, the bearing and the cap there -
+    under the deck no driver reaches them. The cap's three go down through the plate's three
+    holes at pan 0. Then the stem drops in, the pin and the lug from the -Y side before the pan
+    servo is on (at pan 0 the pan servo stands in their line), the pin's set screw from behind,
+    the nod servo's four from +Y before the deck sits on the cage (whose +Y legs are in their line).
     """
+    from mech.nod import LUG_HEAD, LUG_SLEEVE_Y, SET_SCREW_Y, nod_servo_holes, nod_servo_tab_y
+    from mech.turntable import HUB_RING_SCREW_Z
+    out = []
+    first = ("plate", "hub_ring", "bearing_cap", "bearing")
+    for a in P.HUB_RING_SCREW_ANGLES:
+        ux, uy = math.cos(math.radians(a)), math.sin(math.radians(a))
+        out.append((f"hub ring screw at {a:.0f}", (P.HUB_RING_R * ux, P.HUB_RING_R * uy, HUB_RING_SCREW_Z),
+                    (ux, uy, 0.0), 3.0, first))
+    decked = first + ("deck",)
+    for a in P.CAP_SCREW_ANGLES:
+        x, y = polar(P.CAP_SCREW_R, a)
+        out.append((f"cap screw at {a:.0f}", (x, y, P.Z_BEARING + P.BEARING_B + P.CAP_T), (0, 0, 1), 3.0, decked))
+    stemmed = decked + ("stem", "pin", "bushing")
+    z_lug = P.Z_NOD - P.STOP_LUG_R
+    out.append(("stop lug screw", (0.0, LUG_SLEEVE_Y[0] - LUG_HEAD[1], z_lug), (0, -1, 0), 2.5, stemmed))
+    out.append(("pin's set screw", (-P.STEM_HUB_R, SET_SCREW_Y, P.Z_NOD), (-1, 0, 0), 1.5, stemmed))
+    yt = nod_servo_tab_y() + P.MG996R["tab_t"]
+    for x, z in nod_servo_holes():
+        out.append((f"nod servo tab screw at ({x:+.0f}, {z:.0f})", (x, yt, z), (0, 1, 0), 3.0,
+                    stemmed + ("nod_servo",)))
+    return out
+
+
+def test_chassis_and_deck_screws_have_driver_paths(parts):
+    """A stubby driver on every dry-zone screw head, 30 mm of it, reaches nothing else; and 40 mm
+    of driver on every screw of the deck sub-assembly, against what is on the bench when it goes
+    in (bench_screws()). The spider's two screws are driven from above before the unit goes on;
+    the head's four and the collar's four are the shell tests' (they go through the shell)."""
     from mech.common import phone_body
+    from mech.nod import SPIDER_CB_Z, SPIDER_SCREW_X, nod_bought
     from mech.torso import _edeck
     obstacles = dict(parts)
     obstacles["phone"] = phone_body()
@@ -616,11 +724,15 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
         driver = cyl_z(3.0, z, z + 30.0, x, y)
         for name, other in obstacles.items():
             assert (driver & other).volume < 1e-3, (x, y, name)
-    for head, direction, what in shroud_screws():
-        driver = _driver(head, direction)
-        for name, other in obstacles.items():
-            v = (driver & other).volume
+    bench = dict(parts, bearing=_bearing(), **{n: s for n, (s, _) in nod_bought().items()})
+    for what, head, direction, r, present in bench_screws():
+        driver = _driver(head, direction, r=r)
+        for name in present:
+            v = (driver & bench[name]).volume
             assert v < 1e-3, (what, name, v)
-
-
-
+    for x in (-SPIDER_SCREW_X, SPIDER_SCREW_X):                  # from above, before the unit
+        driver = cyl_z(3.0, SPIDER_CB_Z + 0.01, SPIDER_CB_Z + 40.0, x, 0.0)
+        for name, other in obstacles.items():
+            if name == "nozzle_holder":
+                continue                                         # it comes with the head, after
+            assert (driver & other).volume < 1e-3, ("spider screw", x, name)

@@ -12,9 +12,11 @@ fuses to it. A part that straddles a section's boundary is clipped again by that
 region, so the deck ring's webs go to the panels and its hub to the ring, from one description.
 
 What the openings are for: the window is the phone camera's, in the fixed ring so the view never
-turns; the intake is behind it, the air leaves through the bell's turning gap and the parting, so there is no exhaust to cut; the parting
-and the mouth are the nozzle's, in the bell, so the jet's slot turns with the head and always
-faces where the head faces; the four radial holes in the head are the shroud's screws.
+turns; the intake is behind it, and the air leaves through the dome's bore and the 2 mm seam
+between the collar and the turning unit, so there is no exhaust to cut. The mouth is the nozzle's
+and is cut in front of its holder, which is unioned into the head, so the jet leaves where the head
+looks. The four radial holes in the head are the spider's screws, and the four in the collar's
+bottom band the collar joint's.
 """
 import math
 import sys
@@ -32,14 +34,22 @@ from statue import FAR, KERF, write  # noqa: E402
 RAW = CAD / "out" / "statue" / "raw"
 STL = CAD / "out" / "stl"
 ENGINE = "manifold"
-SECTIONS = tuple(P.SECTIONS_STATUE)
+SECTIONS = tuple(P.SECTIONS_STATUE)                 # what the statue cuts
+PRINTED = P.PRINTED_SECTIONS                        # what this writes
 # Which section each interface blank is unioned into. A blank that spans two of them is named
 # in both and clipped by each one's region, which is the same cut the shell itself was given.
 INTO = {
     "belt_flange_lower": ("base_left", "base_right"),
     "floor_plate": ("base_left", "base_right"),
     "belt_flange_upper": ("torso", "panel_left", "panel_right"),
+    "collar_spigot": ("collar",),
+    "nozzle_holder": ("head",),
+    "beard_tongue": ("beard",),
 }
+# A blank may reach past its section's own box where the part is meant to: the collar's spigot
+# tabs hang SPIGOT_H under the collar into the ring, a clearance inside it. (down, up), in mm.
+REACH = {("collar_spigot", "collar"): (P.SPIGOT_H + 1.0, 0.0),
+         ("beard_tongue", "beard"): (0.0, 11.0)}
 # Neither the deck ring nor the fan frame is here any more. The ring became a cage standing on
 # the chassis; the fan hangs under the deck and blows up through it, so the shell has no exhaust
 # to cut and nothing of the fan to carry. `unclaimed()` is what makes sure the next part added to
@@ -113,25 +123,24 @@ def countersunk(deg, z, r_skin, through=30.0):
     return aim(c, deg, r_skin, z)
 
 
-def parting(step=2.5):
-    """The beard's parting: the solid the jet sweeps out as the nozzle tilts.
+HOLES = {}                 # every radial hole drilled: where the skin was measured and the insert's floor
+MOUTH_PRESS = 6.5          # how much of the nozzle the holder's bore grips before the mouth opens round it
 
-    The brief's slot was Z_MOUTH +- 22, and it is not enough. The nozzle's tip sits three
-    millimetres inside the skin at the mouth, but the face above the mouth is the nose, and by
-    the top of the tilt the jet has seventeen millimetres of statue to cross before it is out -
-    it would leave at z 455, nine above the slot's top. So the cutter is the swept envelope
-    itself: a JET_D-thick, NOZZLE_SLOT_W-wide slab through the pivot, turned through every tilt
-    the firmware allows, which is by construction exactly the parting the jet needs and no more.
-    """
-    lo, hi = P.TILT_STOP
-    cutters = []
-    for deg in np.arange(lo, hi + 1e-9, step):
-        slab = box(0.0, FAR, -P.NOZZLE_SLOT_W / 2, P.NOZZLE_SLOT_W / 2, -P.JET_D / 2, P.JET_D / 2)
-        slab.apply_transform(trimesh.transformations.rotation_matrix(
-            math.radians(-float(deg)), (0.0, 1.0, 0.0)))     # about +Y, positive is nose-down
-        slab.apply_translation(P.NOZZLE_PIVOT)
-        cutters.append(slab)
-    return union(*cutters)
+
+def radial_holes(mesh, angles, z, floor, only=False):
+    """Countersunk holes drilled inward along meridians at height z, from the skin as measured on
+    this section to `floor`, the radius of the insert's floor they are for. With only=True the
+    one cutter is returned instead of the section cut by it."""
+    holes = []
+    for deg in angles:
+        r = skin_at(mesh, deg, z)
+        if r is None:
+            raise RuntimeError(f"no skin at {deg} deg, z {z}: nowhere to drill")
+        holes.append(countersunk(deg, z, r, through=r - floor))
+        HOLES[f"{deg:g}@{z:g}"] = {"skin": round(r, 2), "floor": round(floor, 2)}
+    if only:
+        return holes[0]
+    return cut(mesh, *holes) if holes else mesh
 
 
 def arch(deg, w, h, r0=0.0, r1=FAR):
@@ -166,20 +175,30 @@ def region(name):
 
 
 def region_box(name):
+    """The box a section was cut from, read from the section table rather than assumed: the ring's
+    top is the collar's bottom, and neither is the turning unit's."""
     py, pt, pb = P.PANEL_Y, P.PANEL_TOP, P.PANEL_BOTTOM
-    top = P.Z_TURN - P.TURN_GAP
+    z = P.SECTIONS_STATUE
     return {
         "base_left": (-FAR, FAR, KERF / 2, FAR, -1.0, P.Z_BELT),
         "base_right": (-FAR, FAR, -FAR, -KERF / 2, -1.0, P.Z_BELT),
         "hand_left": (-FAR, FAR, py, FAR, pb, P.Z_BELT),
         "hand_right": (-FAR, FAR, -FAR, -py, pb, P.Z_BELT),
-        "torso": (-FAR, FAR, -py, py, P.Z_BELT, top),
+        "torso": (-FAR, FAR, -py, py, P.Z_BELT, z["torso"][1]),
+        "collar": (-FAR, FAR, -FAR, FAR, *z["collar"]),
         "panel_left": (-FAR, FAR, py, FAR, P.Z_BELT, pt),
         "panel_right": (-FAR, FAR, -FAR, -py, P.Z_BELT, pt),
-        "beard": (-FAR, FAR, -FAR, FAR, P.Z_TURN, P.SECTIONS_STATUE["beard"][1]),
-        "head": (-FAR, FAR, -FAR, FAR, P.SECTIONS_STATUE["head"][0], P.Z_HAT),
-        "hat": (-FAR, FAR, -FAR, FAR, P.Z_HAT, P.Z_TOP + 1.0),
+        "beard": (-FAR, FAR, -FAR, FAR, *z["beard"]),
+        "head": (-FAR, FAR, -FAR, FAR, *z["head"]),
+        "hat": (-FAR, FAR, -FAR, FAR, z["hat"][0], P.Z_TOP + 1.0),
     }[name]
+
+
+def blank_region(name, section):
+    """The region a blank is clipped to for a section: the section's own, raised where REACH says."""
+    x0, x1, y0, y1, z0, z1 = region_box(section)
+    down, up = REACH.get((name, section), (0.0, 0.0))
+    return box(x0, x1, y0, y1, z0 - down, z1 + up)
 
 
 def load_part(name):
@@ -215,7 +234,8 @@ def blanks(section, raw, grown):
         if not path.exists():
             print(f"      {section}: {name}.stl is not built; skipped")
             continue
-        clipped = isect(load_part(name), grown, region(section))
+        clipped = isect(load_part(name), grown,
+                        blank_region(name, section) if (name, section) in REACH else region(section))
         if clipped.is_empty or abs(clipped.volume) < 1.0:
             print(f"      {section}: {name} has nothing inside this section's wall; skipped")
             continue
@@ -245,16 +265,24 @@ def openings(name, mesh):
                      P.Z_LENS + P.WINDOW_Z_BIAS + P.WINDOW_H / 2)
         intake = box(-FAR, 0.0, -P.VENT_IN_W / 2, P.VENT_IN_W / 2,
                      P.Z_VENT_IN - P.VENT_IN_H / 2, P.Z_VENT_IN + P.VENT_IN_H / 2)
-        return cut(mesh, window, intake)
-    if name in ("beard", "head"):
-        # the parting the nozzle arm swings through, and the mouth it points out of
-        mesh = cut(mesh, parting(), cyl_x(P.MOUTH_D / 2, 0.0, FAR, 0.0, P.Z_MOUTH))
+        from mech.collar import tab_out_r
+        mesh = cut(mesh, window, intake)
         holes = []
-        for deg in P.SHROUD_SCREW_ANGLES:
-            r = skin_at(mesh, deg, P.SHROUD_SCREWS_Z)
-            if r is not None:
-                holes.append(countersunk(deg, P.SHROUD_SCREWS_Z, r, through=r - P.SHROUD_R_OUT + 6.0))
-        return cut(mesh, *holes) if holes else mesh
+        for deg in P.COLLAR_SCREW_ANGLES:                  # the collar's four, into its tabs
+            holes.append(radial_holes(mesh, [deg], P.COLLAR_SCREWS_Z, tab_out_r(deg) - P.INSERT_DEPTH,
+                                      only=True))
+        return cut(mesh, *[h for h in holes if h is not None]) if holes else mesh
+    if name == "head":
+        # the nozzle's bore on through the face's wall, which the holder was clipped to, and the
+        # mouth round it from MOUTH_PRESS in front of the nozzle's back: the grip stays a press fit
+        from mech.head import NOZZLE_BORE
+        back = P.NOZZLE_TIP_X - P.NOZZLE_L
+        mesh = cut(mesh, cyl_x(NOZZLE_BORE / 2, back, FAR, 0.0, P.Z_MOUTH),       # the bore on through the wall
+                   cyl_x(P.MOUTH_D / 2, back + MOUTH_PRESS, FAR, 0.0, P.Z_MOUTH))
+        from mech.head import TONGUE_ANGLES, TONGUE_SCREWS_Z, tongue_out_r
+        mesh = radial_holes(mesh, P.HEAD_SCREW_ANGLES, P.HEAD_SCREWS_Z, P.SPIDER_BOSS_R - P.INSERT_DEPTH)
+        return cut(mesh, *[radial_holes(mesh, [a], TONGUE_SCREWS_Z, tongue_out_r(a) - P.INSERT_DEPTH, only=True)
+                           for a in TONGUE_ANGLES])
     if name.startswith("base_"):
         side = 1.0 if name.endswith("left") else -1.0
         cutters = [arch(deg, P.DRAIN_ARCH_W, P.DRAIN_ARCH_H)
@@ -273,8 +301,8 @@ def debris(mesh, name, limit=5000.0):
     """Drop the loose crumbs a cut frees inside a section.
 
     The skin's inward offset folds on itself under the nose and behind the ears, and those folds
-    hang off the wall by a hair; cut the nozzle's parting past one and it comes away as a lump of
-    plastic floating in the head. Anything disconnected and under five cubic centimetres is that,
+    hang off the wall by a hair; cut a hole past one and it comes away as a lump of plastic
+    floating in the head. Anything disconnected and under five cubic centimetres is that,
     not a part - a real one is fifty at the smallest - and it is named as it goes.
     """
     parts = mesh.split(only_watertight=False)
@@ -293,7 +321,7 @@ def debris(mesh, name, limit=5000.0):
 def unclaimed():
     """Interface parts the mechanism declares that this module would not union into anything."""
     try:
-        import mech.base, mech.head, mech.torso, mech.turntable  # noqa: F401
+        import mech; mech.load_all()
         from mech import INTERFACES
     except Exception as exc:
         print(f"      could not read the mechanism's registry ({exc.__class__.__name__}); "
@@ -315,6 +343,7 @@ def main():
     if missed:
         raise RuntimeError(f"{', '.join(missed)} declare a shell section in mech/ but this "
                            f"module does not know where to put them; add them to INTO")
+    HOLES.clear()
     grown = trimesh.load(CAD / "out" / "statue" / "cavity_grown.stl")
     print(f"assemble cavity_grown {grown.volume / 1e6:.2f} L; sections from {RAW}")
     for name in SECTIONS:
@@ -325,13 +354,29 @@ def main():
         if parts:
             mesh = union(mesh, *parts)
         mesh = debris(openings(name, mesh), name)
-        back = write(mesh, STL / f"{name}.stl", quiet=True,
-                     label=f"  raw {raw_volume / 1e3:.1f} + {len(parts)} parts, {time.time() - t0:.1f} s")
-        if max(back.extents) > P.BED:
-            raise RuntimeError(f"{name} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
-        if back.body_count != 1:
-            raise RuntimeError(f"{name} came out as {back.body_count} bodies, not one printable "
-                               f"piece; it needs something to join them")
+        halves = P.FITTING_SPLIT.get(name, ((name, 0.0),))
+        (STL / f"{name}.stl").unlink(missing_ok=True) if name in P.FITTING_SPLIT else None
+        for out, side in halves:
+            piece = mesh if not side else split(mesh, side)
+            back = write(piece, STL / f"{out}.stl", quiet=True,
+                         label=f"  raw {raw_volume / 1e3:.1f} + {len(parts)} parts, {time.time() - t0:.1f} s")
+            if max(back.extents) > P.BED:
+                raise RuntimeError(f"{out} is {max(back.extents):.1f} mm across; the bed is {P.BED}")
+            if back.body_count != 1:
+                raise RuntimeError(f"{out} came out as {back.body_count} bodies, not one printable "
+                                   f"piece; it needs something to join them")
+    write_holes()
+
+
+def write_holes():
+    import json
+    (STL / "holes.json").write_text(json.dumps(HOLES, indent=1))
+
+
+def split(mesh, side):
+    """One half of a section cut at y = 0, BEARD_KERF of air between the two: see FITTING_SPLIT."""
+    k = P.BEARD_KERF / 2
+    return isect(mesh, box(-FAR, FAR, k, FAR, -1.0, FAR) if side > 0 else box(-FAR, FAR, -FAR, -k, -1.0, FAR))
 
 
 if __name__ == "__main__":

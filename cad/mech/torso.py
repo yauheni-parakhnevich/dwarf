@@ -27,15 +27,14 @@ R_FRONT = P.FRONT_SKIN_X_AT_WINDOW    # 89.4, the statue's front at the window
 # section and its bore. At BELT_SCREW_ANGLES that is (51.3, 63.0) and its three mirrors.
 BELT_MID_RX = (P.BELT_RX + P.BELT_IN_RX) / 2          # 67
 BELT_MID_RY = (P.BELT_RY + P.BELT_IN_RY) / 2          # 98
-# The chassis has its own four on the same mid-line, between the belt's: the belt joint has to
-# open without the chassis coming off first. Nearest pair is 48.3 mm apart.
-# ... and clear of the phone, of the sled's guide ribs and of the filler's neck. At 10 degrees
-# the screw landed at (66, 17), under the tray, with its driver going up into the phone; at 25
-# the driver caught the rib's outer edge; at 30 it was (58.0, 49.0), eleven millimetres from the
-# neck and inside the notch the ring needs for it. The front one is at 70 now - (22.9, 92.1),
-# forty-four from the neck and twenty from the belt screw at 55 - and the other three keep their
-# corners.
-CHASSIS_SCREW_ANGLES = [70.0, 150.0, 210.0, 330.0]
+# The chassis has its own three, and they are all at the back. It has to go in through the ring's
+# top, which the parting's seam chamfer leaves only 82 out at the sides, 86 at the front and 74 at
+# the back, so it is 72 x 80 now, not 70 x 100 - and at that size it overlaps the belt flange only
+# front and back, over |azimuth| < 40 and > 140 degrees. The front of that is the sled's pocket.
+# So the screws are at 145, 180 and 215, in the band between the flange's bore and the chassis's
+# edge and outside the cage's foot ring, whose drivers they are; the front rests on the flange and
+# nothing lifts it: the deck's load comes down the cage's legs.
+CHASSIS_SCREWS = ((69.5, 145.0), (68.5, 180.0), (69.5, 215.0))
 # The filler neck rises off the divider's front. At FILLER_NECK_XY's first value, y 0, its cap
 # stood inside the sled's tray, which reaches y 36.85 from z 249.3 up; beside the tray the cap
 # needs |y| >= 36.85 + 16 (its grip) and it sits at y 54. Its x is set by the hose rather than
@@ -59,10 +58,6 @@ LEG_PORT_R = 12.0
 BRACKET_BOLT = 25.0          # half-pitch of the four inserts each leg bracket hangs from
 CRADLE_BOLT = (40.0, 70.0)   # the bottle cradle's four inserts in the floor plate
 
-CHASSIS_BORE_R = 12.0        # two lightening bores in the chassis's free tips, past the cage's
-CHASSIS_BORE_Y = 84.0        # feet: at (0, +-62) and r 18 the +Y bore swallowed both +Y feet and
-                             # their screws went through air. Out here they clear a foot's pad by
-                             # 6 mm and the chassis's own rim by 4
 GLAND_BORE_R = 7.0           # wiring holes over the divider's glands: a 14 mm hole per bundle
 BEAD_GROOVE = (1.3, 3.3)     # the bead groove's edges, in from the divider's rim
 BOSS_R = 5.5                 # the chassis's bosses round a blind M3 insert
@@ -104,8 +99,8 @@ def belt_screws():
 
 
 def chassis_screws():
-    """The chassis's own four, on the same ellipse between the belt's."""
-    return _mid_ring(CHASSIS_SCREW_ANGLES)
+    """The chassis's own three, on the flange behind the boards."""
+    return [polar(r, a) for r, a in CHASSIS_SCREWS]
 
 
 def cage_feet():
@@ -297,14 +292,10 @@ def chassis():
     c = c - box(px0, px1, py0, py1, z0 - 1, z1 + 1)                  # the tray hangs through here
     for x, y in P.GLAND_POS:                                         # wiring up from the glands
         c = c - cyl_z(GLAND_BORE_R, z0 - 1, z1 + 1, x, y)
-    for y in (-CHASSIS_BORE_Y, CHASSIS_BORE_Y):                      # lightening, in the free lunes
-        c = c - cyl_z(CHASSIS_BORE_R, z0 - 1, z1 + 1, 0.0, y)
     for x, y in chassis_screws():                                    # down into the torso ring
         c = c - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in cage_feet():                                         # up into the cage's feet
         c = c - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
-    for x, y in belt_screws():                                       # reach the belt screws below
-        c = c - cyl_z(3.5, z0 - 1, z1 + 1, x, y)
     for x, y in _sled_locks():                                       # the sled's lock bosses
         c = c + cyl_z(BOSS_R, z0, z1 + P.SLED_FOOT_H, x, y)
     c = insert_holes(c, [(x, y, z1 + P.SLED_FOOT_H) for x, y in _sled_locks()])

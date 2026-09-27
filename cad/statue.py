@@ -1222,8 +1222,8 @@ def parting(skin, cavity, shell):
          cylinder(bore, zc_in - P.NECK_DAM_H - 1.0, zs_out + 1.0)], "difference")
     fixed = trimesh.boolean.boolean_manifold([fixed_low, fixed_up, dam], "union")
     fixed = trimesh.boolean.boolean_manifold([fixed, cylinder(bore, lid, FAR)], "difference")
-    print(f"statue dome     socket closed to its crown: bore r {bore:.0f} (shroud {P.SHROUD_R_OUT:.0f} "
-          f"+ 3) at z {zc_out:.1f}, drip skirt {P.NECK_DAM_H:.0f} mm under it to z "
+    print(f"statue dome     socket closed to its crown: bore r {bore:.0f} "
+          f"at z {zc_out:.1f}, drip skirt {P.NECK_DAM_H:.0f} mm under it to z "
           f"{zc_in - P.NECK_DAM_H:.1f}; seam slope {math.degrees(math.atan(slope.min())):.0f}.."
           f"{math.degrees(math.atan(slope.max())):.0f} deg from r {r0:.1f} at z {z0:.0f}, deepest notch "
           f"{notch:.1f} mm, {chamfered / 1e3:.1f} cm3 off the coat's top edge")
@@ -1415,6 +1415,33 @@ def joint(fixed):
           f"r {tab[1].min():.1f}..{tab[1].max():.1f} (collar_joint in features.json)")
 
 
+SOCKET_Z = {"torso": (295.0, 306.9, 0.5), "collar": (307.0, 431.0, 2.0), "beard": (398.0, 412.0, 2.0),
+            "head": (412.0, 426.0, 2.0)}
+SOCKET_AZ = 144                  # every 2.5 degrees
+
+
+def socket(out):
+    """What the mechanism fits inside, published so it need not guess: the inside of the ring's top,
+    of the collar, and of the beard and the head where they meet, as the first crossing from the
+    axis in SOCKET_AZ directions, every 2 mm (every half millimetre up the ring's chamfered top).
+
+    The collar is lowered over the deck and everything on it, so nothing under it may stand
+    further out than the narrowest the collar is anywhere below it; the collar's tabs go down into
+    the ring, and the beard's tongues up into the head, a clearance inside each. All are read from
+    here. Added output only: nothing is cut and nothing moves.
+    """
+    doc = json.loads((OUT / "features.json").read_text())
+    for name, (z0, z1, dz) in SOCKET_Z.items():
+        zs = np.append(np.arange(z0, z1, dz), z1)
+        tab = rays(out[name], zs, SOCKET_AZ, first=True)
+        doc[f"{name}_inner"] = {"step_deg": 360.0 / SOCKET_AZ,
+                                "rows": {f"{z:g}": [round(float(x), 2) for x in row]
+                                         for z, row in zip(zs, tab)}}
+    (OUT / "features.json").write_text(json.dumps(doc, indent=1))
+    print(f"statue socket   torso_, collar_, beard_ and head_inner, {SOCKET_AZ} directions every 2 mm, "
+          f"in features.json")
+
+
 def preview():
     from build import blender
     blender("statue_preview.py", fresh_in=(OUT, "preview_*.png"))
@@ -1433,6 +1460,7 @@ def main():
     fixed, moving = parting(skin, cavity, shell)
     out = sections(fixed, moving)
     joint(fixed)
+    socket(out)
     worst = sweep(moving, [out[n] for n in ("torso", "collar", "panel_left", "panel_right",
                                             "hand_left", "hand_right",
                                             "base_left", "base_right")])

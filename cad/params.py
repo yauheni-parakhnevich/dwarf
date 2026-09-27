@@ -146,20 +146,47 @@ EDECK_POSTS = [(-30.0, -34.0), (-30.0, 34.0)]               # bare posts under t
                                                             # inboard of the cage's foot ring at r 57
 MOSFET_HOLES = (28.0, 21.0)       # measure the modules on arrival; the ESP32 has no standard holes and sits in a printed cradle
 EDECK_STANDOFF = 8.0
-FAN = 40.0
-FAN_T = 10.0
-FAN_PITCH = 32.0
+FAN = 30.0                     # a 30 mm fan. A 40 mm one cannot stand under the deck's back and still let
+FAN_T = 10.0                   # the collar down over it: see FAN_XY
+FAN_PITCH = 24.0
 VENT_IN_W, VENT_IN_H = 40.0, 20.0          # the intake, cut in the belt ring's back at Z_VENT_IN
 
 # --- turntable ----------------------------------------------------------------------------
-BEARING_SQ = 60.0
-BEARING_T = 6.0
-BEARING_PITCH = 48.0
-BEARING_HOLE = 3.4
-SHAFT_OD, SHAFT_ID = 21.0, 13.0   # bore: tube + three wires + 2 mm, spec section 6
+# The pan bearing is a sealed thin-section deep-groove ball bearing, a 6810-2RS: 50 bore, 65 OD,
+# 7 wide. Its bore is what the nod drive reaches C through - the yoke's cheeks hang down it and
+# the stem swings in it - so it replaced the 60 mm lazy susan, whose plate had no hole to speak of.
+# Outer ring in the deck (fixed), inner ring on the plate's hub (pans). Each is held both ways: the
+# outer ring sits on a lip in the deck and a printed cap screws down over it; the inner ring sits
+# under a shoulder on the hub and a printed ring clamps it from below with two radial screws.
+#
+# A single row is enough here. It carries the turning parts' weight, about 0.75 kg (7.4 N) axially,
+# and a tilting moment from the wind on the head of at most about 1 N.m at 20 m/s (the nod servo
+# stalls there first); across the 57.5 mm pitch circle of its balls that is some 35 N on the most
+# loaded side, against a static rating of several kN. What it does not have is a second row to
+# resist tilt, so its internal clearance (C0: 5-20 um radial) shows as rocking: a few arc-minutes,
+# which is 0.5-1 mm at the hat's tip, 300 mm above it. The printed seats add nothing to that only
+# because both rings are clamped face to face; the radial fit alone (BEARING_FIT) would let the hub
+# rock 2.5 degrees in a 7 mm ring.
+BEARING_ID, BEARING_OD, BEARING_B = 50.0, 65.0, 7.0
+BEARING_IN_LAND_R = 26.5       # the inner ring's face runs out to about here (d1 ~ 53.5): a shoulder
+                               # that bears on it stays inside this, clear of the seal
+BEARING_OUT_LAND_R = 31.0      # ... and the outer ring's face runs in to about here (D1 ~ 61.5)
+BEARING_FIT = 0.15             # radial clearance at both printed seats, within the 0.1-0.2 asked for
+BEARING_LIP = 1.0              # the deck's lip under the outer ring
+CAP_T = 3.0                    # the printed cap over the outer ring (bearing_cap)
+CAP_R = 40.0
+CAP_SCREW_R = 36.5
+CAP_SCREW_ANGLES = [45.0, 135.0, 270.0]   # clear of the fan's hole at 180 and of the column's arc
+HUB_RING_R = 30.0              # the ring under the inner ring (hub_ring): it must pass the deck's lip
+HUB_RING_H = 7.0               # ... and hangs this far under the bearing, below the deck's underside
+HUB_RING_SCREW_ANGLES = [90.0, 270.0]     # radial, where the hub is solid: the cheeks' side
 DECK_R = 80.0                  # the statue's front cavity at the deck is 85; a lobe towards -Y covers the servo hangers
-DECK_LOBE = dict(angle=270.0, half=45.0, r=86.0)   # the hangers' corners reach 83.3; the cavity there is 95
+DECK_LOBE = dict(angle=270.0, half=45.0, r=86.0)   # the hangers' corners reach 83.2; the socket trims the lobe to 83.2
 DECK_BACK_R = 72.0             # over 140..220 degrees the coat's back is only 74..80 out
+DECK_SOCKET_MARGIN = 1.5       # the deck, and everything fixed under the collar's dome, stays this far
+                               # inside the socket's inner sphere, NECK_SPHERE_R - TURN_GAP - WALL
+DECK_SHADOW_MARGIN = 1.5       # ... and this far inside the collar's narrowest opening under it, so
+                               # the collar can be lowered over it
 CAGE_LEG = 10.0                # the legs' square section. At 12 a leg's inboard corner stood
                                # 0.2 mm inside the electronics deck's edge and the deck could not
                                # be got past it; 10 at CAGE_LEG_R 61 clears that edge by 3.8 mm
@@ -180,25 +207,31 @@ DECK_SCREW_ANGLES = [82.0, 98.0, 238.0, 250.0]    # the cage's legs, and the dec
                                # 250, where the first of them stood inside the board deck's edge
 PLATE_R = 50.0
 PLATE_T = 5.0
-Z_PLATE_TOP = Z_DECK + BEARING_T + PLATE_T           # 411
+Z_BEARING = Z_DECK - DECK_T + BEARING_LIP            # 395, the bearing's lower face
+Z_PLATE_BOTTOM = Z_BEARING + BEARING_B + CAP_T + 0.5 # 405.5: half a millimetre over the cap
+Z_PLATE_TOP = Z_PLATE_BOTTOM + PLATE_T               # 410.5
+HUB_R = BEARING_ID / 2 - BEARING_FIT                 # 24.85, the plate's hub in the inner ring
+Z_HUB_BOTTOM = Z_BEARING - HUB_RING_H                # 388
 # --- pan drive: the servo hangs under the deck, shaft pointing down, and the parallelogram
 #     lives below the deck where the torso is wide. The plate's front stop tab carries a column
 #     down through an arc slot in the deck to the link. Nothing of the drive is above the deck.
 PAN_SERVO_XY = (5.0, -60.1)    # servo axis; the body runs +X from the shaft end (x -5 .. 35, y -70.1 .. -50.1): 1 mm outside the column's sweep
 PAN_OFFSET = (PAN_SERVO_XY[0] ** 2 + PAN_SERVO_XY[1] ** 2) ** 0.5   # the link's eye-to-eye length, 60.31
-CRANK_L = 30.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis
+CRANK_L = 26.0                 # shorter than the servo offset, so neither bar can ever cross the pan axis; and
+                               # not 30 any more: at pan -65 the link's far eye reached r 93.7 at z 330,
+                               # where the collar's socket is 93.3 out
 CRANK_REST_DEG = 0.0           # both cranks point +X (front) at rest
-Z_PAN_SHAFT_FACE = 340.0       # the servo's output face, looking down; body top 380.5, under the deck; low enough that the link sweeps where the coat is 98 wide
+Z_PAN_SHAFT_FACE = 337.0       # the servo's output face, looking down; body top 377.5, under the deck. 3 mm lower than
+                               # it was: the link's plane has to pass 2.5 under the -Y cheek, which reaches C - 16 = 334
 CRANK_T = 5.0
 LINK_T = 3.0
 PIN_BORE = 3.2                 # link eyes on M3 shanks; ream after printing
 PIN_BOSS_H = 0.5
 PIN_BOSS_D = 8.0
-Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 340; the crank's top is the shaft face, the horn sits in its pocket
-Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 335
-Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 334.5; a boss on crank and foot takes the screw's clamp, not the link
-Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 331.5
-SHAFT_BOTTOM = Z_LINK_BOTTOM - 5.0           # the tube leaves the shaft below the link's plane
+Z_CRANK_TOP = Z_PAN_SHAFT_FACE               # 337; the crank's top is the shaft face, the horn sits in its pocket
+Z_CRANK_BOTTOM = Z_CRANK_TOP - CRANK_T       # 332
+Z_LINK_TOP = Z_CRANK_BOTTOM - PIN_BOSS_H     # 331.5; a boss on crank and foot takes the screw's clamp, not the link
+Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 328.5
 LINK_EYE_R = PIN_BORE / 2 + 3.0
 PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
 PAN_FOOT_R_IN = CRANK_L - 4.0                # the column's foot reaches inward to the pin at CRANK_L
@@ -221,15 +254,21 @@ def crank_pins(deg):
     a = math.radians(CRANK_REST_DEG + deg)
     v = (CRANK_L * math.cos(a), CRANK_L * math.sin(a))
     return v, (PAN_SERVO_XY[0] + v[0], PAN_SERVO_XY[1] + v[1])
-STOP_PIN_TOP = Z_PLATE_TOP - 1.5          # separate pins glued into the deck: 3.5 mm of the tab's 5, 1.5 under the yoke
+STOP_PIN_TOP = Z_PLATE_TOP - 1.5          # separate pins glued into the deck: 3.5 mm of the tab's 5, 1.5 under the plate's top
 STOP_PIN_DEPTH = 6.0
 STOP_TAB_W = 6.0
-TILT_STOP = (-35.0, 45.0)
 
 # --- servos: (length, width, height), tab span, tab thickness, tab height from the bottom,
 #     shaft offset from the near end along the length, hole pitch (along length, across)
 DS3218 = dict(body=(40.0, 20.0, 40.5), tab_span=54.5, tab_t=2.5, tab_z=28.0, shaft_off=10.0,
               holes=(49.5, 10.0))
+# the nod servo, an MG996R-class metal-gear standard servo on the firmware's tilt channel: about
+# 1.0 N.m at 6 V. Here `body` is (length along its tabs, width, height from the shaft face to the
+# bottom), and the height leaves out the spline boss, which is SPLINE_BOSS below.
+MG996R = dict(body=(40.5, 20.0, 38.0), tab_span=54.0, tab_t=2.5, tab_z=27.0, shaft_off=10.0,
+              holes=(49.5, 10.0))
+SPLINE_BOSS = (12.0, 4.7)      # the MG996R's top boss and spline as one cylinder: diameter, and how
+                               # far the round horn's far face stands off the case
 HORN_D = 21.0
 HORN_T = 2.5
 HORN_SCREW_R = 7.0
@@ -245,19 +284,57 @@ def pan_hangers():
 PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y for _, y in pan_hangers()) - PAN_HANGER / 2 - 2.0),
                 (max(x for x, _ in pan_hangers()) + PAN_HANGER / 2 + 2.0, max(y for _, y in pan_hangers()) + PAN_HANGER / 2 + 2.0))
 
-# --- the yoke ring under the shroud, and the nozzle's bore ----------------------------------
-YOKE_RING_R_IN = 44.0          # the yoke stands on a ring on the plate's rim
-YOKE_RING_T = 3.0
-YOKE_SCREW_R = 46.7
-YOKE_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
+# --- the nod drive -----------------------------------------------------------------------------
+# The head nods about a Y axis through C = (0, 0, Z_NOD) on a real pin, reached through the pan
+# bearing's bore. What pans only: the plate, its hub in the bearing and two cheeks hanging from the
+# hub down to C, the nod servo on the +Y side. What pans and nods: the stem - a blade between the
+# cheeks with its hub on the pin - the spider on the stem's top, and the turning unit on the spider.
+#
+# Loads about C. Gravity: the unit (about 500 g, centre of mass (-9, 0, 454)) and the stem and
+# spider (about 60 g near (-3, 0, 420)) put 0.10 N.m on the servo nose-down 15 degrees and 0.05 at
+# rest. Wind on the head: 0.24, 0.55 and 0.97 N.m at 10, 15 and 20 m/s - the last is the servo's
+# stall at 6 V, so a gust past about 15 m/s back-drives the head onto its stops, which is what they
+# are for. The pin carries the unit's weight and the wind's side force, at most about 11 N, over a
+# 4 x 6 bushing: 0.5 MPa. The stem's neck is 15 x 12 with a 7 mm channel: at the deck, 56 mm under
+# the wind's centre of pressure, 9.7 N bends it to 1.3 MPa.
+NOD_STOP = (-16.0, 6.0)        # the hard stops, a degree outside NOD_RANGE
+NOD_SERVO_FACE_Y = 10.5        # the nod servo's case face; its body runs out to y 48.5, 7 mm inside
+                               # the cage's +Y legs (r 56) at every pan
+PIN_D = 4.0                    # a steel dowel along Y through C, pressed and set-screwed into the
+PIN_L = 14.0                   # stem's hub, turning in a bronze bushing in the -Y cheek
+BUSH_OD, BUSH_L = 6.0, 6.0     # a plain 4 x 6 x 6 bushing, pressed into the cheek
+CHEEK_Y = (6.4, 12.4)          # the -Y cheek's faces, |y|: it carries the bushing and the stop slot
+SERVO_CHEEK_Y = (6.4, 9.9)     # the +Y cheek, which only joins the servo's two posts round its spline
+STEM_T = 12.0                  # the stem is a blade |y| <= STEM_T / 2 between the cheeks
+STEM_W = 15.0                  # the neck's width in the plane of the nod
+STEM_HUB_R = 13.0              # the hub at C: the round horn is let into its +Y face
+STEM_LEAN = 5.0                # the neck leans back this much at rest, so that over NOD_RANGE it swings
+                               # -10..+10 degrees from vertical and its sweep is centred in the bore
+STEM_HEAD = (14.0, 420.0, 432.0)   # the stem's head the spider sits on: half-width, bottom, top
+STEM_CHANNEL_D = 7.0           # the tube runs inside the stem
+NOD_CLEAR = 1.5                # the stem clears the hub and the plate by this at every nod in NOD_RANGE
+STOP_LUG_R = 9.0               # the stop lug: a sleeve on a screw in the stem hub's -Y face, at this
+STOP_LUG_D = 6.0               # radius below C, runs in an arc slot in the -Y cheek
+SPIDER_Z = (426.0, 450.0)      # the spider: its hub's underside and top
+SPIDER_HUB_R = 20.0
+HEAD_SCREWS_Z = 440.0          # four radial M3 from outside through the head into the spider
+HEAD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
+SPIDER_BOSS_R = 57.0           # the bosses' faces: the interface the neck shroud had
+SPIDER_CORE_R = 30.0           # inside this radius the spider may come nearer C than the sphere, since
+                               # it stays inside the dome's bore at every nod; outside it, it may not
 NOZZLE_D = 8.0
-MOUTH_D = NOZZLE_D + 0.4       # the mouth is the nozzle's outboard bearing
-# --- neck shroud: a cylinder on the plate that turns with the head and carries it; see the statue block
-SHROUD_BASE_Z = Z_PLATE_TOP + YOKE_RING_T           # 414: sits on the yoke's ring, held by the same four screws
-JET_D = NOZZLE_D + 4.0                               # the jet's keep-out: nozzle bore plus spread over 30 mm
-JET_NOTCH_HALF_DEG = 9.0                             # the shroud's front is notched for the jet over the whole tilt range
+NOZZLE_L = 10.0                # a short brass jet nozzle. A 25 mm one does not fit: the unit, the
+                               # holder with it, must stay NECK_SPHERE_R from C, and at the mouth that
+                               # sphere is at x 67 - so the nozzle's back can be no nearer the axis than
+                               # x 73.5 and its tip is at the skin, 82.4
+NOZZLE_TIP_X = 83.5            # 1.1 mm proud of the skin at the mouth
+MOUTH_D = NOZZLE_D + 0.4
+JET_HALF_DEG = 3.0             # the jet's cone, for the beard's and moustache's keep-out
 TUBE_OD = 6.0
-TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum; the holder's barb faces -X so one such bend reaches the axis
+TUBE_BEND_R = 15.0             # 6 x 4 PU tube's static minimum
+STAB_TOP = 462.0               # the tube stands this high out of the spider, on the axis: the stab the
+                               # head's socket slides down onto as the unit goes on
+SOCKET_ENGAGE = 10.0           # how much of the stab the socket takes
 
 # --- base, wet zone -----------------------------------------------------------------------
 # The bought 1 L bottle lies across the whole belly on the floor plate; the pump and the valve
@@ -412,38 +489,55 @@ SECTIONS_STATUE = {                         # printable pieces, each within the 
     "panel_left": (Z_BELT, PANEL_TOP), "panel_right": (Z_BELT, PANEL_TOP),      # the sleeves' sides, fixed, glued to the ring
     "beard": (Z_BEARD_BOT, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),   # the turning unit, glued
 }
+# The turning unit cannot go on in one piece. Its back lies on the sphere about C wherever it faces
+# the coat, and those directions from C go round more than a hemisphere - down to 22 degrees under
+# C at the back corners and 9 in front - so no straight path takes it onto the collar or off it
+# (the least, over every direction, of the directions' reach along it is -0.35; it would have to be
+# more than 0). The head and the hat on their own go straight down (+0.61); the beard, cut at y = 0,
+# goes on in two halves, each from its own side, up and out at FIT_DIR (+0.28 each). So the beard
+# is printed in two halves; the head and the hat are glued into one.
+FITTING_SPLIT = {"beard": (("beard_left", 1.0), ("beard_right", -1.0))}
+BEARD_KERF = 0.4                            # the gap down the beard's middle between the halves
+FIT_DIR = (63.0, 66.0)                      # a beard half's way on: this far from vertical, this far
+                                            # round from the front towards its own side (mirrored)
+PRINTED_SECTIONS = tuple(n for s in SECTIONS_STATUE
+                         for n in ([h for h, _ in FITTING_SPLIT[s]] if s in FITTING_SPLIT else [s]))
+TURNING_SECTIONS = ("beard_left", "beard_right", "head", "hat")
 # With the bell off, everything inside is reached from the top: there is no belly hatch. The
 # window is cut in the ring; the exhaust fan sits on the left panel's inner face, the intake
 # in the ring's back.
 # The fan hangs under the deck and blows upward through a hole in it; the intake is in the belt
 # ring's back and the air leaves through the bell's turning gap and the beard's parting, a chimney.
 # The sleeves are too thin to hold a fan and everything else above the belt turns.
-FAN_XY = (-49.0, -20.0)                     # the fan's axis, under the deck: its hole stops short of the bearing's square, inside the deck's trimmed back (r 71 of 72)
+FAN_XY = (-49.0, 0.0)                       # the fan's axis, under the deck's back. Two things bound it: its
+                                            # hole clears the bearing's outer ring (r 32.5) by 2 mm or more,
+                                            # so the axis is at least 47.5 out; and the collar is lowered
+                                            # over the deck after it, so its frame has to stay inside the
+                                            # collar's narrowest opening under it, which at the back is 69.
+                                            # A 40 mm frame needs both 52.5 and at most 44.5 there; a 30 mm
+                                            # one at 49 straight back has its corners at r 65.7
 FAN_HOLE_D = FAN - 4.0
 Z_VENT_IN = 272.0
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
 BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
 BELT_SCREW_ANGLES = [55.0, 140.0, 220.0, 305.0]   # the front pair sits away from the filler neck at (48, 54)
-CHASSIS_RX, CHASSIS_RY = 70.0, 100.0
+CHASSIS_RX, CHASSIS_RY = 71.5, 77.0        # not 70 x 100: it goes in through the ring's top, which the
+                                            # parting's seam chamfer leaves only 79.9 out at the sides
+                                            # and 73.3 at the back
 # the dry zone, re-stacked
 FRONT_SKIN_X_AT_WINDOW = 89.4               # the statue's front at the window (LENS_FRONT_X is derived from it above)
 EDECK_L, EDECK_W = 100.0, 92.0             # its corner sits at 0.68 of the chassis ellipse
 EDECK_POS = (0.0, 5.0)                      # 5 mm off the axis: the cage's two -Y legs pass its
                                             # back edge and its two +Y legs its front one, which
                                             # is what lets the deck drop in between them
-# the turning unit: the shroud carries the beard, head and hat; the pan drive is unchanged
-SHROUD_R_OUT = 52.0                         # no arms to clear any more; the chin's cavity is 57
-SHROUD_TOP_Z = 454.0                        # closed top with a hole for the tube and wires
-SHROUD_SCREWS_Z = 440.0                     # four radial M3 from outside, hidden in the beard's locks
-SHROUD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
-SHROUD_ACCESS_D = 7.0                       # the roof is bored this wide over each of the four screws
-                                            # that hold the shroud down: they are driven from inside
-                                            # the cup and the driver leaves through the roof
-# the nozzle tilts on a micro servo inside the beard, through the beard's parting under the mouth
-MG92B = dict(body=(22.8, 12.4, 28.5), tab_span=32.5, tab_t=2.0, tab_z=19.0, shaft_off=6.0, holes=(27.8, 0.0))
-MICRO_HORN_D = 14.0
-Z_MOUTH = 424.0                             # the statue's mouth (0.603 H)
-NOZZLE_PIVOT = (62.0, 0.0, 424.0)           # tilt axis of the nozzle arm, along Y, just inside the beard
-NOZZLE_ARM_L = 20.0                         # pivot to the nozzle's tip at the mouth's skin, x 82
-NOZZLE_SLOT_W = 14.0                        # the parting in the beard the nozzle arm (12 wide) swings through
+Z_MOUTH = 424.0                             # the statue's mouth (0.603 H); the nozzle is fixed in it
+# the collar joint: the collar is fitted after the mechanism and comes off for service. Four tabs
+# hang from the collar SPIGOT_H down into the ring's top, CLEAR_SHELL inside it, and four radial
+# countersunk M3 go in from outside through the ring's top edge into inserts in them, where the
+# turning unit's rim overhangs them. See mech/collar.py
+SPIGOT_H = 10.0                             # how far the tabs go down into the ring
+SPIGOT_T = 3.0
+SPIGOT_HALF_DEG = 8.0
+COLLAR_SCREWS_Z = 302.0
+COLLAR_SCREW_ANGLES = [45.0, 135.0, 225.0, 315.0]
