@@ -376,14 +376,19 @@ RIM_OPEN_R = 5.0                            # the unit's edge on the sphere: any
                                             # with a neck under twice this goes (the stray lock)
 RIM_SMOOTH = 3.0                            # the edge is a low-passed curve, a Gaussian of this
 RIM_RAMP = 1.0                              # ... cut across over this much, so no grid shows
-RIM_ISLAND = 18.0                           # thin or empty patches inside the beard smaller than
-                                            # this are closed by lifting the skin, not cut
+RIM_ISLAND = 15.0                           # thin or empty patches inside the beard smaller than
+                                            # this across (as the diameter of a disc of the same
+                                            # area) are closed by lifting the skin, not cut
 RIM_TONGUE_W = 10.0                         # a lock narrower than this hanging off the rim behind
                                             # the ears, with nothing under it, is taken off
 RIM_EDGE_BAND = 4.0                         # skin thinner than WALL_MIN is cut only this close to
                                             # the unit's edge; further in, it is lifted instead
+RIM_MIN_T = WALL - 0.4                      # skin thinner than this over the sphere is feather:
+                                            # the wall test's own "thin" line, so what is left
+                                            # passes it
+RIM_LIFT_T = WALL                           # a pinhole's skin is lifted to R + this
 RIM_FLANGE_W = 3.0                          # what is left gets a flange this wide lying on
-RIM_FLANGE_T = 2.0                          # the sphere, this thick, turned in over the cavity
+RIM_FLANGE_T = WALL                         # the sphere, this thick, turned in over the cavity
 NECK_BORE_R = 55.0                          # the one hole in the socket's closed dome, on the axis: SHROUD_R_OUT 52 + 3
 NECK_DAM_H = 3.0                            # a drip skirt this deep hangs under the bore's edge.
                                             # A rim this tall standing up round the bore would be
@@ -396,13 +401,14 @@ SEAM_NOTCH_MAX = 8.0                        # the coat's top edge slopes down fr
 SEAM_CHAMFER_MAX_DEG = 60.0                 # and is never steeper than this where it is narrow
 PANEL_Y = 105.0                             # the sleeves' plane; above Z_BEARD_BOT the coat is
                                             # inside the ball (r <= 98) and never reaches it
-PANEL_TOP = Z_BEARD_BOT                     # so the side panels stop where the beard's bottom is
+PANEL_TOP = Z_BEARD_BOT - TURN_GAP          # so the side panels stop under the beard's bottom
 PANEL_BOTTOM = 196.0                        # the mittens' lower edge; below Z_BELT the panel belongs to the base halves
 SECTIONS_STATUE = {                         # printable pieces, each within the 256 mm bed
     "base_left": (0.0, Z_BELT), "base_right": (0.0, Z_BELT),        # split at y = 0, sand ballast inside
     "hand_left": (PANEL_BOTTOM, Z_BELT), "hand_right": (PANEL_BOTTOM, Z_BELT),   # mitten caps glued to the base halves
-    "torso": (Z_BELT, Z_NOD + math.sqrt((NECK_SPHERE_R - TURN_GAP) ** 2 - NECK_BORE_R ** 2)
-              + 1.0),                                                # the coat up to its closed dome's crown
+    "torso": (Z_BELT, Z_TURN - TURN_GAP),                             # the belt ring, open on top: the mechanism drops in
+    "collar": (Z_TURN - TURN_GAP, Z_NOD + math.sqrt((NECK_SPHERE_R - TURN_GAP) ** 2 - NECK_BORE_R ** 2)
+               + 1.0),                                               # socket, bib and dome, fixed onto the ring after it
     "panel_left": (Z_BELT, PANEL_TOP), "panel_right": (Z_BELT, PANEL_TOP),      # the sleeves' sides, fixed, glued to the ring
     "beard": (Z_BEARD_BOT, 412.0), "head": (412.0, Z_HAT), "hat": (Z_HAT, Z_TOP),   # the turning unit, glued
 }

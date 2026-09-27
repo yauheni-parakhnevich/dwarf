@@ -123,3 +123,116 @@ def test_the_grown_cavity_did_not_shrink_everywhere(grown):
     assert abs(float(np.median(d)) - (P.WALL - GROW)) <= 0.15, (
         f"the grown cavity's median skin is {np.median(d):.3f} mm, not "
         f"{P.WALL - GROW}\n{histogram(d, P.WALL - GROW)}")
+
+
+# --- what the parting built: the turning unit, the socket, the rim's flange ---------------------
+#
+# The two voids above say nothing about the pieces cut from the shell afterwards, and the parting
+# cuts and adds: the unit's back is the sphere where the beard stood proud of it, the socket and
+# the bib are a new wall on the sphere one wall inside, and the rim carries a flange. Each is
+# measured the way its wall runs:
+#
+#   * the unit's ordinary wall - head, hat, the beard's front - from every sample on the cavity
+#     to the skin, as for the cavity above;
+#   * the unit's back on the sphere R and its flange, along the radius from C outward, through
+#     the material to wherever it ends (the skin, a lift, the flange's top);
+#   * the socket and bib, along the radius from its inner sphere out through the wall.
+#
+# A ray from a sample right beside the end of the face it stands on - a cut, the flange's side,
+# the rim - leaves through that end and reads as thin without the wall being so; samples within
+# EDGE of where their face ends (for the ordinary wall, of any edge sharper than 60 degrees) are
+# left out. That is not a hiding place for a feather: a wedge sharper than about 47 degrees is
+# still under WALL_MIN at EDGE from its end, and is caught there.
+
+import math
+import numpy as np
+
+RAW = OUT / "raw"
+EDGE = 1.5
+UNIT = [RAW / f"{n}.stl" for n in ("beard", "head", "hat")]
+C = np.array([0.0, 0.0, P.Z_NOD])
+R_IN = P.NECK_SPHERE_R - P.TURN_GAP - P.WALL
+
+
+def _edges(mesh):
+    """Points every 0.5 mm along the mesh's sharp edges."""
+    sharp = mesh.face_adjacency_angles > math.radians(60.0)
+    e = mesh.vertices[mesh.face_adjacency_edges[sharp]]
+    pts = [e[:, 0] + (e[:, 1] - e[:, 0]) * f for f in np.linspace(0.0, 1.0, 5)]
+    return np.vstack(pts)
+
+
+def _inside_face(mesh, pts, d, radius):
+    """Samples on the sphere of `radius` about C that are more than EDGE from where the mesh's
+    face on that sphere ends."""
+    from scipy.spatial import cKDTree
+    fc = mesh.triangles_center
+    dc = np.linalg.norm(fc - C, axis=1)
+    radial = np.einsum("ij,ij->i", mesh.face_normals, (fc - C) / dc[:, None])
+    off = (np.abs(dc - radius) > 0.1) | (np.abs(radial) < 0.98)
+    near = mesh.triangles[off].reshape(-1, 3)
+    near = np.vstack([near, fc[off]])
+    return (np.abs(d - radius) < 0.05) & (cKDTree(near).query(pts)[0] > EDGE)
+
+
+def _rays(mesh, pts, dirs):
+    o = pts + dirs * 1e-3
+    loc, idx, _ = mesh.ray.intersects_location(o, dirs, multiple_hits=False)
+    t = np.full(len(pts), np.nan)
+    t[idx] = np.linalg.norm(loc - o[idx], axis=1) + 1e-3
+    return t[np.isfinite(t)]
+
+
+@pytest.fixture(scope="module")
+def parts():
+    import trimesh
+    from scipy.spatial import cKDTree
+    if not all(p.exists() for p in UNIT + [RAW / "collar.stl"]):
+        pytest.skip("the statue stage has not written the parting's sections yet")
+    unit = trimesh.util.concatenate([trimesh.load_mesh(str(p)) for p in UNIT])
+    skin = trimesh.load_mesh(str(OUTER))
+    cavity = trimesh.load_mesh(str(CAVITY))
+    pts, fi = trimesh.sample.sample_surface_even(unit, SAMPLES * 4, seed=7)
+    clear = cKDTree(_edges(unit)).query(pts)[0] > EDGE
+    _, dc, _ = trimesh.proximity.closest_point(cavity, pts)
+    wall = clear & (dc < 0.05)
+    _, dskin, _ = trimesh.proximity.closest_point(skin, pts[wall])
+    d = np.linalg.norm(pts - C, axis=1)
+    on = _inside_face(unit, pts, d, P.NECK_SPHERE_R)
+    radial = (pts[on] - C) / d[on][:, None]
+    t = _rays(unit, pts[on], radial)
+    _, ds, _ = trimesh.proximity.closest_point(skin, pts[on])
+    ds = ds[: len(t)]
+    flange = ds > t + 0.3                        # the flange ends before the skin does
+    collar = trimesh.load_mesh(str(RAW / "collar.stl"))
+    pc, _ = trimesh.sample.sample_surface_even(collar, SAMPLES, seed=7)
+    dcc = np.linalg.norm(pc - C, axis=1)
+    sock = _inside_face(collar, pc, dcc, R_IN)
+    tc = _rays(collar, pc[sock], (pc[sock] - C) / dcc[sock][:, None])
+    return {"unit_wall": dskin, "unit_back": t[~flange], "flange": t[flange], "socket": tc}
+
+
+def _report(name, d):
+    return (f"{name}: {len(d)} samples  min {d.min():.3f}  p1 {np.percentile(d, 1):.3f}  "
+            f"median {np.median(d):.3f}  under {P.WALL - 0.4:.1f}: {100 * (d < P.WALL - 0.4).mean():.2f} %")
+
+
+@pytest.mark.parametrize("region", ["unit_wall", "unit_back", "flange", "socket"])
+def test_the_partings_walls_are_never_thinner_than_the_floor(parts, region):
+    d = parts[region]
+    assert len(d) > 50, f"{region}: only {len(d)} samples"
+    assert d.min() >= P.WALL_MIN - 0.1, _report(region, d)
+
+
+@pytest.mark.parametrize("region", ["unit_wall", "unit_back", "flange", "socket"])
+def test_almost_none_of_the_partings_walls_is_thin(parts, region):
+    d = parts[region]
+    assert (d < P.WALL - 0.4).mean() < 0.01, _report(region, d)
+
+
+def test_the_partings_walls_are_what_they_were_drawn(parts):
+    """The ordinary wall, the socket and the flange are drawn one wall thick; the unit's back is
+    the beard standing proud of the sphere, which is thicker than a wall wherever it is kept."""
+    for region, want in (("unit_wall", P.WALL), ("socket", P.WALL), ("flange", P.RIM_FLANGE_T)):
+        assert abs(float(np.median(parts[region])) - want) <= 0.15, _report(region, parts[region])
+    assert np.median(parts["unit_back"]) >= P.WALL, _report("unit_back", parts["unit_back"])

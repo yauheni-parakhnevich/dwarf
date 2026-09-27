@@ -32,12 +32,12 @@ CLAY = (0.62, 0.60, 0.57)
 COLOURS = {
     "base_left": (0.45, 0.47, 0.52), "base_right": (0.34, 0.36, 0.40),
     "hand_left": (0.83, 0.66, 0.36), "hand_right": (0.72, 0.56, 0.30),
-    "torso": (0.66, 0.30, 0.26), "panel_left": (0.40, 0.58, 0.40), "panel_right": (0.30, 0.48, 0.33),
+    "torso": (0.66, 0.30, 0.26), "collar": (0.58, 0.40, 0.30), "panel_left": (0.40, 0.58, 0.40), "panel_right": (0.30, 0.48, 0.33),
     "beard": (0.78, 0.78, 0.80), "head": (0.80, 0.62, 0.52), "hat": (0.30, 0.45, 0.62),
 }
 MOVING = {"beard": (0.80, 0.42, 0.32), "head": (0.82, 0.50, 0.40), "hat": (0.62, 0.30, 0.26)}
 LIFT = {"base_left": 0, "base_right": 0, "hand_left": 20, "hand_right": 20,
-        "torso": 45, "panel_left": 45, "panel_right": 45,
+        "torso": 45, "collar": 65, "panel_left": 45, "panel_right": 45,
         "beard": 85, "head": 115, "hat": 145}
 SPREAD = {"hand_left": 40.0, "hand_right": -40.0, "panel_left": 55.0, "panel_right": -55.0}
 
