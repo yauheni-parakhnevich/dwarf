@@ -418,7 +418,13 @@ def filler_cutters():
 def split(mesh, side):
     """One half of a section cut at y = 0, BEARD_KERF of air between the two: see FITTING_SPLIT."""
     k = P.BEARD_KERF / 2
-    return isect(mesh, box(-FAR, FAR, k, FAR, -1.0, FAR) if side > 0 else box(-FAR, FAR, -FAR, -k, -1.0, FAR))
+    xs, ys = P.BEARD_STEP
+    kerf = union(box(-FAR, xs + k, -k, k, -1.0, FAR), box(xs - k, FAR, ys - k, ys + k, -1.0, FAR),
+                 box(xs - k, xs + k, -k, ys + k, -1.0, FAR))
+    halves = [p for p in cut(mesh, kerf).split(only_watertight=False) if abs(p.volume) > 1000.0]
+    if len(halves) != 2:
+        raise RuntimeError(f"the beard's split made {len(halves)} pieces, not two")
+    return max(halves, key=lambda p: side * p.center_mass[1])
 
 
 if __name__ == "__main__":

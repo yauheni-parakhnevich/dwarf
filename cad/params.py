@@ -537,7 +537,11 @@ SECTIONS_STATUE = {                         # printable pieces, each within the 
 # goes on in two halves, each from its own side, up and out at FIT_DIR (+0.28 each). So the beard
 # is printed in two halves; the head and the hat are glued into one.
 FITTING_SPLIT = {"beard": (("beard_left", 1.0), ("beard_right", -1.0))}
-BEARD_KERF = 0.4                            # the gap down the beard's middle between the halves
+BEARD_KERF = 0.4
+BEARD_STEP = (80.0, 2.5)                    # ... and in front of x 80 the cut steps to y +2.5: there the
+                                            # locks either side of the middle meet in a web under 3 mm
+                                            # thick, and a cut down its middle left the right half a
+                                            # sliver 0.03 thick - a fin of no thickness on the cut face                            # the gap down the beard's middle between the halves
 FIT_DIR = (63.0, 66.0)                      # a beard half's way on: this far from vertical, this far
                                             # round from the front towards its own side (mirrored)
 PRINTED_SECTIONS = tuple(n for s in SECTIONS_STATUE

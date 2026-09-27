@@ -116,6 +116,23 @@ NEIGHBOURS = (
 )
 
 
+def test_the_beards_halves_have_no_fins(rig):
+    """The beard is cut in two down its middle, stepping to y +2.5 in front of x 80 where the locks
+    meet in a web too thin to halve. A cut that halved it left a face of no thickness on the right
+    half's cut, 187 mm2 of it, pointing into the part; manifold's min_gap reads such a fin as 0."""
+    k = P.BEARD_KERF / 2
+    xs, ys = P.BEARD_STEP
+    for name, side in (("beard_left", 1.0), ("beard_right", -1.0)):
+        m = rig["parts"][name][0]
+        c, n = m.triangles_center, m.face_normals
+        bad = 0.0
+        for plane, where in ((side * k, c[:, 0] < xs), (ys + side * k, c[:, 0] > xs)):
+            on = (np.abs(c[:, 1] - plane) < 1e-3) & where
+            wrong = on & (n[:, 1] * side > 0.5)            # a cap that faces into its own half
+            bad += float(m.area_faces[wrong].sum())
+        assert bad < 1.0, f"{name}: {bad:.1f} mm2 of fin on its cut"
+
+
 def test_the_seam_is_two_millimetres_everywhere(rig):
     """The turning unit against the collar needs no pose: a rotation about C keeps every distance
     from C, so the least distance between them at any pose is at least the nearest the unit comes
@@ -125,8 +142,14 @@ def test_the_seam_is_two_millimetres_everywhere(rig):
     whose bottom never comes under Z_TURN - that is the statue stage's sweep."""
     c = np.array([0.0, 0.0, P.Z_NOD])
     parts = rig["parts"]
-    unit = min(np.linalg.norm(parts[n][0].vertices - c, axis=1).min() for n in P.TURNING_SECTIONS)
-    v = parts["collar"][0].vertices
+
+    def points(m):
+        """Its vertices and 20 000 points spread over its surface: a sliver between vertices, or
+        a face that is nowhere near one, is not missed."""
+        pts, _ = trimesh.sample.sample_surface_even(m, 20000, seed=11)
+        return np.vstack([m.vertices, pts])
+    unit = min(np.linalg.norm(points(parts[n][0]) - c, axis=1).min() for n in P.TURNING_SECTIONS)
+    v = points(parts["collar"][0])
     above = v[v[:, 2] >= P.Z_TURN - P.TURN_GAP]          # the tabs under the joint are inside the ring,
     collar = np.linalg.norm(above - c, axis=1).max()      # under the unit's flat bottom, not facing it
     assert unit - collar >= P.TURN_GAP - 0.05, (unit, collar)
