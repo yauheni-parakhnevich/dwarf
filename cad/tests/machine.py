@@ -140,7 +140,7 @@ def at(mesh, how, pan=0.0, nod=0.0):
 @lru_cache(maxsize=None)
 def tube(pan=0.0, nod=0.0):
     from mech.nod import tube_route
-    return to_mesh(tube_route(pan, nod), f"tube_{pan:+.0f}_{nod:+.0f}")
+    return tube_route(pan, nod)
 
 
 def union(meshes):

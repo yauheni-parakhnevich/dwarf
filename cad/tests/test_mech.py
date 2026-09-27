@@ -723,6 +723,9 @@ def bench_screws():
     z_lug = P.Z_NOD - P.STOP_LUG_R
     out.append(("stop lug screw", (0.0, LUG_SLEEVE_Y[0] - LUG_HEAD[1], z_lug), (0, -1, 0), 2.5, stemmed))
     out.append(("pin's set screw", (-P.STEM_HUB_R, SET_SCREW_Y, P.Z_NOD), (-1, 0, 0), 1.5, stemmed))
+    from mech.nod import CLIP_LUG, CLIP_SCREW
+    out.append(("tube clip screw", (CLIP_SCREW[0], CLIP_LUG[2] - 3.0, CLIP_SCREW[1]), (0, -1, 0), 3.0,
+                stemmed + ("tube_clip",)))
     yt = nod_servo_tab_y() + P.MG996R["tab_t"]
     for x, z in nod_servo_holes():
         out.append((f"nod servo tab screw at ({x:+.0f}, {z:.0f})", (x, yt, z), (0, 1, 0), 3.0,
@@ -780,3 +783,22 @@ def test_a_part_sized_by_the_statue_refuses_to_guess(name, monkeypatch, tmp_path
     spec = next(s for s in ALL if s.name == name)
     with pytest.raises(C.StatueMissing):
         spec.build()
+
+
+def test_the_tube_loop_takes_the_nod_without_kinking(parts):
+    """The tube is one length: from the stem's channel to the clip on the yoke its loop is
+    TUBE_LOOP long at every nod, and nowhere along the whole modelled tube - the stab, the channel's
+    filleted corners, the loop, the clip - does it bend tighter than TUBE_BEND_R, at the stops or in
+    between. And the clip holds it: the tube runs through the clip's ring, which is on the yoke."""
+    from mech.nod import TUBE_CLIP, TUBE_LOOP, _length, tube_bend_radii, tube_loop, tube_points
+    for nod in (P.NOD_STOP[0], P.NOD_RANGE[0], 0.0, P.NOD_RANGE[1], P.NOD_STOP[1]):
+        assert abs(_length(tube_loop(nod)) - TUBE_LOOP) < 0.1, nod
+        r = tube_bend_radii(nod)
+        assert r >= P.TUBE_BEND_R, (nod, r)
+    clip = parts["tube_clip"]
+    x, y, top, bottom = TUBE_CLIP
+    assert (cyl_z(P.TUBE_OD / 2, bottom, top, x, y) & clip).volume < 1e-6          # the tube passes
+    ring = cyl_z(P.TUBE_OD / 2 + 1.5, bottom + 0.5, top - 0.5, x, y) - cyl_z(P.TUBE_OD / 2 + 0.3, bottom, top, x, y)
+    assert (ring & clip).volume > 0.6 * ring.volume                                 # ... held round
+    pts = tube_points(0.0, 0.0)
+    assert pts[-1][2] == bottom                                                     # the model ends there

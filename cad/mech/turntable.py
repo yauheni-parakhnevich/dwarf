@@ -296,6 +296,8 @@ def plate():
     pw = P.SERVO_POST_W / 2
     for za, zb in ((SERVO_POST_Z[0], SERVO_POST_Z[1]), (SERVO_POST_Z[2], SERVO_POST_Z[3] + 0.01)):
         pos = pos + box(-pw, pw, sy0, ytab, za, zb)
+    x0, x1, ly0, ly1, lz0, lz1 = N.CLIP_LUG                       # the tube clip's lug
+    neg = neg + box(x0, x1, ly0, ly1, lz0, lz1)
     p = p + neg + pos
     # the column from the stop tab's underside through the deck's slot, and the foot bar to the pin
     r_in, r_out, w = P.PAN_COLUMN
@@ -325,6 +327,8 @@ def plate():
     p = p - cyl_y(P.HUB_COLLAR[1] + P.COLLAR_FIT, sy0 - 1, sy1 + 1, 0.0, P.Z_NOD)
     for x, z in N.nod_servo_holes():
         p = p - cyl_y(P.INSERT_D / 2, ytab - P.INSERT_DEPTH, ytab + 0.01, x, z)
+    sx, sz = N.CLIP_SCREW
+    p = p - cyl_y(P.INSERT_D / 2, N.CLIP_LUG[2] - 0.01, N.CLIP_LUG[2] + P.INSERT_DEPTH, sx, sz)
     return p
 
 

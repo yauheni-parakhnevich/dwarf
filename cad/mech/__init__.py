@@ -21,7 +21,7 @@ MODULES = ("mech.turntable", "mech.nod", "mech.collar", "mech.head", "mech.fille
 # servo's posts, and the ring that clamps the bearing's inner ring to it. NODS: pans and nods -
 # the stem, the spider on it, and (unioned into the head) the nozzle holder; with them the shell's
 # beard, head and hat. The pan linkage moves too, but on its own axes: crank_pins() places it.
-PANS = ("plate", "hub_ring", "servo_shim")
+PANS = ("plate", "hub_ring", "servo_shim", "tube_clip")
 NODS = ("stem", "spider", "nozzle_holder")
 SHELL_NODS = ("beard_left", "beard_right", "head", "hat")
 LINKAGE = ("servo_crank", "pan_link")

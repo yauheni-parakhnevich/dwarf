@@ -20,6 +20,7 @@ stays in the dome's bore at every nod instead, so outside that radius the arms' 
 the sphere.
 """
 import math
+from functools import lru_cache
 from build123d import Axis, Location, Plane, Polygon, Pos, extrude
 import params as P
 from mech import part
@@ -81,7 +82,7 @@ def neck_slot(z0, z1, clear=P.NOD_CLEAR, y=HALF_T + 0.4):
 # way down to the valve. The first part moves with the stem, the last with the plate only, and
 # the loop between them bends through the nod.
 CHANNEL_KINK_Z = 392.0                         # the channel runs down the neck to here ...
-CHANNEL_EXIT_DEG = 25.0                        # ... and then out through its back at this from vertical
+CHANNEL_EXIT_DEG = 8.0                         # ... and then out through its back at this from vertical
 
 
 def _neck_x(z):
@@ -89,31 +90,178 @@ def _neck_x(z):
 
 
 def tube_stem_points():
-    """The tube where it moves with the stem: the stab, the channel, and on down behind the hub."""
+    """The tube where it moves with the stem, as corners: the stab, the stem's head, the channel's
+    kink, and where it leaves the neck's back."""
     k = (_neck_x(CHANNEL_KINK_Z), 0.0, CHANNEL_KINK_Z)
     t = math.tan(math.radians(CHANNEL_EXIT_DEG))
-    exit_ = (k[0] - (CHANNEL_KINK_Z - 366.0) * t, 0.0, 366.0)
-    behind = (k[0] - (CHANNEL_KINK_Z - P.Z_NOD) * t, 0.0, P.Z_NOD)
-    return [(0.0, 0.0, P.STAB_TOP), (0.0, 0.0, P.STEM_HEAD[2]), k, exit_, behind]
+    exit_ = (k[0] - (CHANNEL_KINK_Z - TUBE_EXIT_Z) * t, 0.0, TUBE_EXIT_Z)
+    return [(0.0, 0.0, P.STAB_TOP), (0.0, 0.0, P.STEM_HEAD[2]), k, exit_]
 
 
-TUBE_UNDER = (-21.0, 0.0, 316.0)              # under the yoke, turning with the plate
-TUBE_AXIS = (0.0, 0.0, 303.0)                 # on the pan axis, over the boards: the twist starts here
+TUBE_EXIT_Z = 362.0                          # where the channel leaves the neck: near C, so the nod moves
+                                             # the tube's end there as little as it can - 5.4 mm of chord
+TUBE_CLIP = (-21.0, 0.0, 313.0, 305.0)       # the tube clip, screwed to the -Y cheek: x, y, top, bottom.
+                                             # It pans with the plate and holds the tube vertical; below it
+                                             # the tube runs free down the board deck's back edge to the
+                                             # valve's gland and takes the pan's twist over that length.
+
+TUBE_LOOP = 58.0                             # the free length from the stem's channel to the clip. The
+                                             # loop takes the nod: at -18 it is nearly taut, at +8 it bows
+                                             # 8 mm more, and its tightest bend at any nod is 23 or more
+CLIP_LUG = (-19.0, -12.0, -12.5, -6.5, 328.0, 345.0)    # the lug on the -Y cheek the clip screws to
+CLIP_SCREW = (-15.5, 333.0)                             # (x, z) of its M3, along Y into the lug
+
+
+def _fillet(points, r, n=10):
+    """A polyline with every inner corner replaced by an arc of radius r, as dense points."""
+    import numpy as np
+    pts = [np.array(p, float) for p in points]
+    out = [pts[0]]
+    for a, b, c in zip(pts, pts[1:], pts[2:]):
+        u, v = (a - b) / np.linalg.norm(a - b), (c - b) / np.linalg.norm(c - b)
+        ang = math.acos(max(-1.0, min(1.0, float(u @ v))))
+        if abs(math.pi - ang) < 1e-6:
+            out.append(b)
+            continue
+        d = r / math.tan(ang / 2)
+        d = min(d, 0.49 * np.linalg.norm(a - b), 0.49 * np.linalg.norm(c - b))
+        p0, p1 = b + u * d, b + v * d
+        for i in range(n + 1):               # a quadratic Bezier through the corner: a fair arc
+            t = i / n
+            out.append((1 - t) ** 2 * p0 + 2 * (1 - t) * t * b + t ** 2 * p1)
+    out.append(pts[-1])
+    return [tuple(map(float, p)) for p in out]
+
+
+def _hermite(p0, d0, p1, d1, t, n=40):
+    import numpy as np
+    p0, d0, p1, d1 = (np.array(x, float) for x in (p0, d0, p1, d1))
+    out = []
+    for i in range(n + 1):
+        s = i / n
+        h00, h10, h01, h11 = 2 * s ** 3 - 3 * s ** 2 + 1, s ** 3 - 2 * s ** 2 + s, -2 * s ** 3 + 3 * s ** 2, s ** 3 - s ** 2
+        out.append(h00 * p0 + h10 * t * d0 + h01 * p1 + h11 * t * d1)
+    return out
+
+
+def _length(pts):
+    return sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+
+
+@lru_cache(maxsize=None)
+def tube_loop(nod):
+    """The free loop from the stem's channel to the clip, in the plate's frame, at a nod.
+
+    A quartic Bezier: it leaves the channel along it, enters the clip straight down, and between
+    them bows away from the hub. Its three free numbers - how far each end runs straight, and how
+    far the bow stands off the chord - are chosen at each nod for the gentlest bend that makes it
+    exactly TUBE_LOOP long, because the tube's length does not change: that is what a loop is.
+    """
+    import numpy as np
+    from mech.common import pose_point
+    k, e = tube_stem_points()[2:4]
+    e_p = np.array(pose_point(e, 0.0, nod))
+    k_p = np.array(pose_point(k, 0.0, nod))
+    d0 = (e_p - k_p) / np.linalg.norm(e_p - k_p)
+    top = np.array((TUBE_CLIP[0], TUBE_CLIP[1], TUBE_CLIP[2]))
+    along = (top - e_p) / np.linalg.norm(top - e_p)
+    away = np.cross(along, (0.0, 1.0, 0.0))
+    if away @ ((e_p + top) / 2 - np.array((0.0, 0.0, P.Z_NOD))) < 0:
+        away = -away
+
+    def curve(x):
+        # a quartic Bezier: its end tangents are the channel's and the clip's whatever the bow
+        a, b, c = x
+        t = np.linspace(0.0, 1.0, 121)[:, None]
+        p1, p3 = e_p + a * d0, top + np.array((0.0, 0.0, b))
+        p2 = (e_p + top) / 2 + c * away
+        return ((1 - t) ** 4 * e_p + 4 * (1 - t) ** 3 * t * p1 + 6 * (1 - t) ** 2 * t ** 2 * p2
+                + 4 * (1 - t) * t ** 3 * p3 + t ** 4 * top)
+
+    def fit(a, b):
+        """The bow that makes the curve TUBE_LOOP long with these end runs, or None."""
+        if _length(curve((a, b, 0.0))) > TUBE_LOOP:
+            return None
+        lo, hi = 0.0, 80.0
+        for _ in range(40):
+            c = (lo + hi) / 2
+            lo, hi = (c, hi) if _length(curve((a, b, c))) < TUBE_LOOP else (lo, c)
+        return lo
+    best = None
+    for a in np.arange(0.0, 41.0, 2.5):
+        for b in np.arange(0.0, 41.0, 2.5):
+            c = fit(a, b)
+            if c is None:
+                continue
+            r = _min_radius(curve((a, b, c)))
+            if best is None or r > best[0]:
+                best = (r, (a, b, c))
+    return [tuple(map(float, p)) for p in curve(best[1])]
+
+
+def _min_radius(pts):
+    import numpy as np
+    pts = np.asarray(pts, float)
+    a, b, c = pts[:-2], pts[1:-1], pts[2:]
+    ab, bc = np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1)
+    ca = np.linalg.norm(a - c, axis=1)
+    area = np.linalg.norm(np.cross(b - a, c - a), axis=1) / 2
+    ok = (area > 1e-9) & (np.minimum(ab, bc) > 0.2)
+    return float((ab * bc * ca / (4 * np.maximum(area, 1e-12)))[ok].min()) if ok.any() else math.inf
 
 
 def tube_points(pan=0.0, nod=0.0):
-    """The tube's centreline at a pose: the stem's part posed with the stem, the point under the
-    yoke with the plate, the loop's middle half way between, and the axis point where it is."""
+    """The tube's centreline at a pose, dense: the stem's part filleted at TUBE_BEND_R and posed
+    with the stem, the free loop, the clip and a stub under it, all panned with the plate."""
     from mech.common import pose_point
-    stem = [pose_point(p, pan, nod) for p in tube_stem_points()]
-    under = pose_point(TUBE_UNDER, pan, nod, nods=False)
-    mid = tuple((a + b) / 2 for a, b in zip(stem[-1], under))
-    return stem + [mid, under, TUBE_AXIS]
+    fixed = _fillet(tube_stem_points(), P.TUBE_BEND_R + 2.0)     # a Bezier fillet is tighter mid-arc
+    stem = [pose_point(p, 0.0, nod) for p in fixed]
+    loop = tube_loop(nod)
+    n = int(TUBE_CLIP[2] - TUBE_CLIP[3])
+    tail = [(TUBE_CLIP[0], TUBE_CLIP[1], TUBE_CLIP[2] - i) for i in range(1, n + 1)]
+    pts = stem[:-1] + loop + tail
+    return [pose_point(p, pan, 0.0, nods=False) for p in pts]
+
+
+def tube_bend_radii(nod):
+    """The least radius of curvature along the tube at a nod, from its dense centreline."""
+    return _min_radius(tube_points(0.0, nod))
 
 
 def tube_route(pan=0.0, nod=0.0, r=None):
-    """The tube at a pose, as a chain of cylinders."""
-    return polyline(tube_points(pan, nod), P.TUBE_OD / 2 if r is None else r)
+    """The tube at a pose, as a mesh (trimesh): its dense centreline swept as a chain of cylinders
+    with a ball at every joint, united in manifold3d. A build123d solid of two hundred cylinders
+    takes minutes; this takes a fraction of a second."""
+    return tube_mesh(tube_points(pan, nod), P.TUBE_OD / 2 if r is None else r)
+
+
+def tube_mesh(points, r, step=1.5, sections=20):
+    import manifold3d as mf
+    import numpy as np
+    import trimesh
+    pts = [np.array(points[0], float)]
+    for p in points[1:]:                             # thin the dense points to about `step` apart
+        p = np.array(p, float)
+        if np.linalg.norm(p - pts[-1]) >= step or p is points[-1]:
+            pts.append(p)
+    if np.linalg.norm(np.array(points[-1]) - pts[-1]) > 1e-6:
+        pts.append(np.array(points[-1], float))
+    parts = []
+    for a, b in zip(pts, pts[1:]):
+        d = b - a
+        h = float(np.linalg.norm(d))
+        if h < 1e-6:
+            continue
+        z = d / h
+        x = np.cross(z, (1.0, 0.0, 0.0) if abs(z[0]) < 0.9 else (0.0, 1.0, 0.0))
+        x /= np.linalg.norm(x)
+        y = np.cross(z, x)
+        m = np.column_stack([x, y, z, a])
+        parts.append(mf.Manifold.cylinder(h, r, r, sections).transform(m.tolist()))
+    for p in pts[1:-1]:
+        parts.append(mf.Manifold.sphere(r, sections).translate(tuple(map(float, p))))
+    out = mf.Manifold.batch_boolean(parts, mf.OpType.Add).to_mesh()
+    return trimesh.Trimesh(vertices=np.asarray(out.vert_properties)[:, :3], faces=np.asarray(out.tri_verts))
 
 
 # --- the stem --------------------------------------------------------------------------------
@@ -222,6 +370,28 @@ def spider():
     s = s - cyl_z(P.STEM_CHANNEL_D / 2, z0 - 1.0, z1 + 1.0)         # the tube
     s = s - cyl_y(P.INSERT_D / 2, P.SPIDER_HUB_R - P.INSERT_DEPTH, P.SPIDER_HUB_R + 1.0, 0.0, CLAMP_Z)
     return s - cyl_y(P.M3_CLEAR / 2, 0.0, P.SPIDER_HUB_R, 0.0, CLAMP_Z)
+
+
+@part("tube_clip")
+def tube_clip():
+    """Holds the tube vertical under the yoke, where the loop from the stem ends; pans with the plate.
+
+    A ring the tube snaps into from behind, an arm up to a plate on the -Y cheek's lug, one M3 into an
+    insert in the lug. It is its own part because the ring stands 25.5 out from the pan axis and the
+    plate and yoke have to drop through the bearing's 50 mm bore; it goes on after them, on the bench,
+    driven along +Y from the -Y side. Prints on its plate's outer face.
+    """
+    x, y, top, bottom = TUBE_CLIP
+    x0, x1, y0, y1, z0, z1 = CLIP_LUG
+    ring = cyl_z(P.TUBE_OD / 2 + 2.3, bottom, top, x, y)
+    arm = box(x - 3.0, x0 - 0.5, y0 - 3.0, y - 3.0, bottom, z0 + 4.0)       # beside the lug, not in it
+    plate = box(x0 - 1.0, x1, y0 - 3.0, y0, z0, z0 + 10.0)
+    c = ring + arm + plate
+    c = c - cyl_z(P.TUBE_OD / 2 + 0.3, bottom - 1, top + 1, x, y)
+    c = c - box(x - 20.0, x, y - 2.6, y + 2.6, bottom - 1, top + 1)          # the tube snaps in here
+    sx, sz = CLIP_SCREW
+    c = c - cyl_y(P.M3_CLEAR / 2, y0 - 5.0, y0 + 1.0, sx, sz)
+    return c
 
 
 # --- bought parts, as envelopes ------------------------------------------------------------------

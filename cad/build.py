@@ -139,9 +139,11 @@ def bought():
     shapes["bearing"] = (cyl_z(P.BEARING_OD / 2, P.Z_BEARING, P.Z_BEARING + P.BEARING_B)
                          - cyl_z(P.BEARING_ID / 2, P.Z_BEARING - 1, P.Z_BEARING + P.BEARING_B + 1), "fixed")
     shapes["phone"] = (phone_body(), "fixed")
-    for pan, nod in POSES:
-        shapes[f"tube_{pan:+.0f}_{nod:+.0f}"] = (N.tube_route(pan, nod), f"pose {pan} {nod}")
     manifest = {}
+    for pan, nod in POSES:                                    # meshes already: written as they are
+        name = f"tube_{pan:+.0f}_{nod:+.0f}"
+        N.tube_route(pan, nod).export(where / f"{name}.stl")
+        manifest[name] = f"pose {pan} {nod}"
     for name, (shape, how) in shapes.items():
         export_stl(shape, str(where / f"{name}.stl"), tolerance=0.05, angular_tolerance=0.1)
         manifest[name] = how

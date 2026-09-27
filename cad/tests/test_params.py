@@ -53,9 +53,9 @@ def _segment_distance_from_origin(p, q):
 
 
 def test_pan_linkage_lives_below_the_deck_and_above_the_electronics():
-    from mech.nod import TUBE_UNDER
+    from mech.nod import TUBE_CLIP
     assert P.Z_CRANK_TOP < P.Z_DECK - P.DECK_T - P.RING_T
-    assert TUBE_UNDER[2] + P.TUBE_OD / 2 + 2.0 < P.Z_LINK_BOTTOM      # the tube passes under the link
+    assert TUBE_CLIP[2] + P.TUBE_OD / 2 + 2.0 < P.Z_LINK_BOTTOM       # the tube passes under the link
     assert P.Z_LINK_BOTTOM - P.SCREW_HEAD_H > P.Z_CHASSIS + P.CHASSIS_T + P.EDECK_STANDOFF + P.EDECK_T + 20
 
 
