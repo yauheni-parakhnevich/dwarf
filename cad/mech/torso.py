@@ -158,11 +158,15 @@ def _sled_locks():
 def sled_lug(x, y):
     """One of the sled's two lock lugs, in plan: (x0, x1, y0, y1).
 
-    It reaches back from the tray to cover its screw's head, which puts its heel at x 46.6 -
-    three millimetres inside the electronics deck's front edge. The deck is slotted for it so
-    the sled can still be lifted straight out with the boards in place.
+    It reaches back from the tray to cover its screw's head and a millimetre more, which puts its
+    heel at x 48.9 - a millimetre inside the electronics deck's front edge. The deck is slotted
+    for it. It was 2.3 mm longer, to the boss's edge; the sled's way in with the lens clipped on is
+    a dog-leg 6 mm behind its place past the boards' front edge, and that is the room it needed.
     """
-    return (x - BOSS_R - 1.0, P.PHONE_FRONT_X - P.SLED_WALL + 1.0, y - 5.0, y + 5.0)
+    return (x - LUG_HEAD_R - 1.0, P.PHONE_FRONT_X - P.SLED_WALL + 1.0, y - 5.0, y + 5.0)
+
+
+LUG_HEAD_R = 3.2                 # the lock screw's head, which the lug covers
 
 
 def sled_pocket(grow=0.0):
@@ -206,6 +210,10 @@ def belt_flange_upper():
     ring = _ell_ring(P.BELT_RX + BLANK, P.BELT_RY + BLANK, P.BELT_IN_RX, P.BELT_IN_RY, z0, z1)
     px0, px1, py0, py1 = sled_pocket()                           # the sled's tray hangs past it
     ring = ring - box(px0, px1, py0, py1, z0 - 1, z1 + 1)
+    # ... and the lens clipped onto the phone's back hangs down into it: 12 mm proud of the back
+    # glass and 28 wide, its barrel reaches under the ring's top at the front
+    hw = P.LENS_CLIP_W / 2 + P.CLEAR_SHELL
+    ring = ring - box(px1 - 0.01, P.LENS_FRONT_X + 1.0, P.CAM_Y - hw, P.CAM_Y + hw, z0 - 1, z1 + 1)
     ring = ring - cyl_z(P.FILLER_PASSAGE_D / 2, z0 - 1, z1 + 1, *passage_xy())     # the filler's hose
     for x, y in belt_screws():
         ring = ring - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)

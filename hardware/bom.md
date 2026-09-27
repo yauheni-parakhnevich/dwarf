@@ -44,7 +44,7 @@ Swiss figures come from fetched product pages. Anything unverified is marked, no
 | Electrolytic 1000 µF 25 V ×1 | `1000uF 25V low ESR capacitor` | 1–3 | Pump inrush sags the 12 V rail far enough to reset the ESP32 in the middle of timing a 300 ms burst |
 | Fuse 5 A + inline holder | `5A automotive blade fuse holder` | 2–4 | A shorted pump has a 5 A supply behind it and 22 AWG in front of it |
 | Tubing + fittings | `PU tubing 6mm 8bar`, `G1/4 BSP barbed fitting` | 10–20 | Tubing must state bar/MPa. Confirm **BSP (G), parallel** — AliExpress brass is often NPT and will weep |
-| Clip-on 0.6x lens | `0.6x wide angle clip-on phone lens` | 3–8 | Check the clip doesn't vignette the 6s main camera |
+| Clip-on 0.6x lens | `0.6x wide angle clip-on phone lens` | 3–8 | Check the clip doesn't vignette the 6s main camera. **At most 28 mm across and 12 mm proud of the back glass**: it goes into the gnome on the phone, down a path past the ring's top with no more room than that |
 | Pan bearing | `6810-2RS bearing` (stainless `S6810-2RS` if you can get it) | 4–12 | A sealed thin-section deep-groove ball bearing, **50 bore × 65 OD × 7**. It replaced the lazy susan: the nod drive reaches the neck's pivot down through its 50 mm bore. Outer ring in the deck, inner ring on the plate's hub, both with 0.15 mm of printed fit and clamped face to face; measure it before printing the deck, the cap, the plate and the hub ring |
 | **Cart total** | | **~85–185** | |
 

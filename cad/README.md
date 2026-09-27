@@ -143,7 +143,7 @@ rebuild, and only then print anything that has to fit it.
 | `NOZZLE_D`, `NOZZLE_L` (`MOUTH_D` follows) | **the brass nozzle: Ø8 × 10 at most.** A 25 mm fountain nozzle does not fit - see the known limits. The holder's bore is 0.1 under `NOZZLE_D`, a press fit |
 | `XL4015_HOLES`, `XL4015_HOLE_D`, `MOSFET_HOLES`, `ESP32` | the boards |
 | `FAN`, `FAN_T`, `FAN_PITCH` | **a 30 mm fan** (3010), 24 mm screw pitch. It hangs under the deck's back and blows up through it |
-| `LENS_CLIP_T`, `LENS_CLIP_W` | the clip-on lens - and see the known limits: as the parting leaves the ring's top, it does not go in with the phone |
+| `LENS_CLIP_T`, `LENS_CLIP_W` | **the clip-on lens: at most 28 across and 12 proud of the back glass.** It goes in on the phone, and the sled's path past the ring's top has no more room than that |
 | `GLAND_D` | the M12 cable glands' thread |
 | `FLOAT_HOLE_D`, `DIP_TUBE_D`, `FILLER_D`, `TUBE_OD`, `TUBE_BEND_R` | the float switch, the dip tube, the filler, and the 6 mm PU tube |
 | `FILLER_CAP_THREAD_MAJOR`, `FILLER_CAP_PITCH` | the filler cap is printed against its own neck; print the pair first as a coupon |
@@ -330,8 +330,16 @@ Push the hose up onto the filler port's barb, inside the ring's back, before the
 through the ring's top** onto the flange, three screws at the back. The chassis is 71.5 × 77 so that
 it passes: the ring's top, chamfered by the parting, is 79.9 out at the sides and 73.3 at the back.
 
-**The boards**, down onto their standoffs, and **the phone** in its sled, down through the chassis's
-pocket; two lock screws.
+**The boards**, down onto their standoffs, and **the phone** in its sled **with the lens clipped on**,
+down through the chassis's pocket; two lock screws. The clip - a 28 mm barrel 12 proud of the back
+glass and a clamp round the phone's edge - reaches 89.8 mm out, and the ring's top edge is 84-87
+there, so the sled does not come straight down: it comes down **6 mm behind its place**, and for the
+last 20 mm is pushed forward and let down onto its lugs. 6 is all the room there is: the sled's
+lugs pass the boards' front edge on the way, and they were shortened by 2.3 mm (to cover the lock
+screw's head and a millimetre, not the whole boss) to make it. The upper belt flange is notched for
+the clip's barrel, which hangs down past the ring's top. Service lifts it out the same way.
+
+![The gnome at rest from the front: the camera window in the belt ring](docs/pose_rest_front.png)
 
 **On the bench: the deck sub-assembly**, in this order - every screw's driver path is checked
 against what is on the bench at that moment (`bench_screws()` in `test_mech.py`):
@@ -420,7 +428,8 @@ least gap to each neighbour at the stops; and the 2 mm seam, proved by distance 
 14.5 mm out of the skin, its weep draining, a funnel and a hand reaching it with the head parked and
 how far the head may turn with a funnel in it; why the beard is in halves; the
 chassis through the ring's top; the collar joint's screws under the unit at rest and reachable; the
-radial screws' lengths; and - a strict xfail - the lens clip, below.
+radial screws' lengths; and the phone going in with its lens clipped on, along its dog-leg, which
+straight down it could not.
 
 ## Known limits
 
@@ -435,10 +444,8 @@ radial screws' lengths; and - a strict xfail - the lens clip, below.
   servo's output bearing being the other support. See the nod drive above for the numbers.
 - **The beard is two prints**, for the reason above, and there are 8 screws in the head where
   there were 4.
-- **The lens clip does not go in with the phone.** Its corner is 89.8 mm out and the ring's top,
-  as the parting left it, is 85; and the 44 mm window is too short to put a 30 mm clip on through
-  it. `test_the_lens_clip_goes_in_with_the_phone` is a strict xfail. Either a smaller clip or a
-  window cut taller.
+- **The phone goes in on a dog-leg** with its lens clipped on (above). A clip wider than 28 mm or
+  standing out more than 12 does not go in at all: measure it (`LENS_CLIP_W`, `LENS_CLIP_T`).
 - **Rim beading and the beard's centre lock.** The unit's rim is a smoothed curve on the sphere with
   a turned-in flange; where the skin was thinner than the wall it was lifted, and in print the edge
   will bead. The beard's centre lock hangs from the moustache by skin just under the wall and is

@@ -53,7 +53,19 @@ def world():
     out.update(M.sections())
     out["tube"] = M.tube(0.0, 0.0)
     out["filler_cap"] = M.mech_meshes()["filler_cap"]
+    from mech.common import box
+    out["lens_clip"] = M.to_mesh(lens_clip(), "clip")
     return out
+
+
+def lens_clip():
+    """The clip-on lens as it sits on the phone: a barrel LENS_CLIP_W across and LENS_CLIP_T deep on
+    the camera, and a clamp 10 mm wide from it round the phone's +Y edge."""
+    from mech.common import box, cyl_x
+    barrel = cyl_x(P.LENS_CLIP_W / 2, P.PHONE_BACK_X, P.LENS_FRONT_X, P.CAM_Y, P.Z_LENS)
+    edge = P.PHONE_Y_OFFSET + P.PHONE_W / 2 + 3.0
+    clamp = box(P.PHONE_BACK_X, P.LENS_FRONT_X, P.CAM_Y, edge, P.Z_LENS - 5.0, P.Z_LENS + 5.0)
+    return barrel + clamp
 
 
 def boards(world):
@@ -63,7 +75,7 @@ def boards(world):
 STEPS = {
     "chassis and cage": (("chassis", "deck_ring"), 130.0),
     "electronics deck": (("electronics_deck", "boards"), 120.0),
-    "phone sled": (("phone_sled", "phone"), 150.0),
+    "phone sled": (("phone_sled", "phone", "lens_clip"), 150.0),
     "deck sub-assembly": (("deck", "bearing", "bearing_cap", "plate", "hub_ring", "stem", "pin",
                            "bushing", "stop_lug", "horn", "nod_servo", "pan_servo", "fan"), 150.0),
     "collar": (("collar",), 260.0),
@@ -73,6 +85,22 @@ STEPS = {
     "head and hat": (("head", "hat", "nozzle"), 300.0),
 }
 WAY = {"left half of the beard": fit_dir(1.0), "right half of the beard": fit_dir(-1.0)}
+# The phone goes in with its lens clipped on, and the clip reaches 89.8 out where the ring's top edge
+# is 84-87: so the sled comes down 6 mm behind its place - all the room there is while its lugs
+# pass the boards' front edge - and the last 20 mm in its place, straight down onto its lugs.
+SLED_PATH = [(-6.0, 150.0), (-6.0, 20.0), (0.0, 20.0), (0.0, 0.0)]
+PATHS = {"phone sled": [(x, 0.0, z) for x, z in SLED_PATH]}
+
+
+def path_points(step, rise):
+    """The offsets a step's parts pass through, 2 mm apart, ending at home."""
+    way = WAY.get(step, np.array([0.0, 0.0, 1.0]))
+    corners = [np.array(c, float) for c in PATHS.get(step, [way * rise, (0.0, 0.0, 0.0)])]
+    out = []
+    for a, b in zip(corners, corners[1:]):
+        n = max(1, int(np.ceil(np.linalg.norm(b - a) / STEP)))
+        out += [a + (b - a) * i / n for i in range(n)]
+    return out + [corners[-1]]
 BEFORE = ("base_left", "base_right", "hand_left", "hand_right", "torso", "panel_left", "panel_right",
           "divider", "filler_neck", "filler_cap")
 AFTER_DECK = ("servo_crank", "pan_link", "stop_pin", "stop_pin_mirrored", "tube")
@@ -100,14 +128,13 @@ def test_each_step_goes_on_along_its_path(world, step):
     moving = M.manifold(M.union([world[n] for n in names if n in world]))
     there = M.manifold(M.union(list(already(index, world).values())))
     worst = (0.0, None)
-    way = WAY.get(step, np.array([0.0, 0.0, 1.0]))
-    for dz in np.arange(rise, -1e-9, -STEP):
-        v = M.mvolume(moving.translate(tuple(float(c) for c in way * float(dz))), there)
-        if dz < 1e-9 and v <= 5.0:
+    for off in path_points(step, rise):
+        v = M.mvolume(moving.translate(tuple(float(c) for c in off)), there)
+        if np.linalg.norm(off) < 1e-9 and v <= 5.0:
             continue       # at home it sits on its seat: the sections' own allowance for a shared face
         if v > worst[0]:
-            worst = (v, float(dz))
-    assert worst[0] <= 0.05, f"{step}: {worst[0]:.2f} mm3 in the way at +{worst[1]:.0f} mm"
+            worst = (v, tuple(round(float(c), 1) for c in off))
+    assert worst[0] <= 0.05, f"{step}: {worst[0]:.2f} mm3 in the way at {worst[1]}"
 
 
 def test_the_glued_unit_has_no_way_on_and_its_pieces_have(world):
@@ -147,23 +174,17 @@ def test_the_ring_passes_the_chassis_it_would_not_have(world):
             assert hit == 0, f"the ring's top reaches in to {y} at the side"
 
 
-@pytest.mark.xfail(strict=True, reason="the clip-on lens cannot reach the phone: its corner is 89.8 "
-                                       "out and the ring's top, as the parting chamfered it, 85; "
-                                       "and the 44 mm window is too short for a 30 mm clip centred on "
-                                       "the lens. Open: see the README's known limits")
-def test_the_lens_clip_goes_in_with_the_phone(world):
-    """The phone drops in with its clip-on lens on, down the sled's channel. The phone itself
-    passes (the sled step above); this is the clip, lowered with it."""
-    from mech.common import box
-    clip = M.to_mesh(box(P.PHONE_BACK_X, P.LENS_FRONT_X, P.CAM_Y - P.LENS_CLIP_W / 2,
-                         P.CAM_Y + P.LENS_CLIP_W / 2, P.Z_LENS - 15.0, P.Z_LENS + 15.0), "clip")
-    torso = world["torso"]
-    worst = 0.0
-    for dz in np.arange(150.0, -1e-9, -STEP):
-        m = clip.copy()
-        m.apply_translation((0.0, 0.0, float(dz)))
-        worst = max(worst, M.overlap(m, torso))
-    assert worst <= 0.05, worst
+def test_the_lens_clip_needs_the_dogleg(world):
+    """Why the phone's path is a dog-leg: straight down, the clip on the phone meets the ring's top;
+    along SLED_DOGLEG it meets nothing (the sweep above)."""
+    clip = M.manifold(world["lens_clip"])
+    torso = M.manifold(world["torso"])
+    worst = max(M.mvolume(clip.translate((0.0, 0.0, float(dz))), torso) for dz in np.arange(150.0, 0.0, -STEP))
+    assert worst > 1.0, worst
+    corner = math.hypot(P.LENS_FRONT_X, P.CAM_Y + P.LENS_CLIP_W / 2)
+    assert corner > 88.0, corner
+    moved = math.hypot(P.LENS_FRONT_X + SLED_PATH[0][0], P.CAM_Y + P.LENS_CLIP_W / 2)
+    assert moved < 87.0, moved
 
 
 def test_the_collar_joint(world):
