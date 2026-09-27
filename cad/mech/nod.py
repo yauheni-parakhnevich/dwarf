@@ -128,11 +128,11 @@ SPIDER_SCREW_X = 9.0                          # the spider's two screws into the
 SET_SCREW_Y = -2.5                            # the pin's M2 set screw, from behind
 
 
-def _neck():
+def _neck(inset=0.0):
     """The neck as a strip in the plane of the nod, from C up to NECK_TOP, leaning back."""
     h = NECK_TOP - P.Z_NOD
     top = -h * math.tan(LEAN)
-    w = P.STEM_W / 2 / math.cos(LEAN)
+    w = (P.STEM_W / 2 - inset) / math.cos(LEAN)
     return [(-w, P.Z_NOD), (w, P.Z_NOD), (top + w, NECK_TOP), (top - w, NECK_TOP)]
 
 
@@ -169,7 +169,15 @@ def stem():
     # cheek's arc slot
     s = s - cyl_y(P.INSERT_D / 2, -HALF_T - 0.01, -HALF_T + P.INSERT_DEPTH, 0.0, x0 - P.STOP_LUG_R)
     # two inserts in the head's top for the spider's screws
-    return insert_holes(s, [(x, 0.0, z1) for x in (-SPIDER_SCREW_X, SPIDER_SCREW_X)])
+    s = insert_holes(s, [(x, 0.0, z1) for x in (-SPIDER_SCREW_X, SPIDER_SCREW_X)])
+    # the -Y face prints on the bed and spreads there (the elephant's foot): its first STEM_CHAMFER
+    # of height is stepped in by as much all round, so the spread stays inside the blade's width
+    c = P.STEM_CHAMFER
+    y0, y1 = -HALF_T - 1.0, -HALF_T + c
+    keep = (cyl_y(P.STEM_HUB_R - c, y0, y1, 0.0, x0)
+            + xz_prism(_neck(inset=c), y0, y1)
+            + box(-hw + c, hw - c, y0, y1, z0 + c, z1 - c))
+    return s - (box(-60, 60, y0, y1, x0 - 30, z1 + 5) - keep)
 
 
 # --- the spider -------------------------------------------------------------------------------

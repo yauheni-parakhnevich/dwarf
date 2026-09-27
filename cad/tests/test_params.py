@@ -131,7 +131,8 @@ def test_the_nod_stops_bracket_the_nod_range_by_a_degree():
     """The owner's range is -15..+5, nose up positive; the printed stops are a degree outside it,
     so a command at the end of the range never finds plastic and a runaway one never finds the
     servo's own end stop."""
-    assert P.NOD_STOP == (P.NOD_RANGE[0] - 1.0, P.NOD_RANGE[1] + 1.0)
+    assert P.NOD_STOP == (P.NOD_RANGE[0] - 3.0, P.NOD_RANGE[1] + 3.0)
+    assert P.NOD_REACH == P.NOD_STOP                                     # the parting covers them
     assert P.STEM_LEAN == -(P.NOD_RANGE[0] + P.NOD_RANGE[1]) / 2        # the swing is centred
 
 

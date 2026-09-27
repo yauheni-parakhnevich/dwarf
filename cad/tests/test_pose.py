@@ -25,7 +25,8 @@ pytestmark = pytest.mark.skipif(not (M.built() and M.shell_built()),
                                 reason="run `build.py` (mech, statue, assemble) first")
 
 PANS = (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG)
-NODS = (P.NOD_RANGE[0], -8.0, 0.0, P.NOD_RANGE[1])
+NODS = (P.NOD_STOP[0], P.NOD_RANGE[0], -8.0, 0.0, P.NOD_RANGE[1], P.NOD_STOP[1])   # the stops too:
+                                                                            # the head can reach them
 GRID = tuple(itertools.product(PANS, NODS))
 TOUCH = 0.05          # mm3: two faces that are meant to touch leave a sliver this big in a boolean
 
@@ -111,7 +112,7 @@ NEIGHBOURS = (
     ("tube", "collar", 1.5, ""),
     ("tube", "plate", 1.0, "the loop behind the yoke"),
     ("tube", "pan_link", 2.0, ""),
-    ("stop_lug", "plate", 0.15, "0.2 each side in its arc slot; it meets the slot's ends only at the stops"),
+    ("stop_lug", "plate", P.STOP_SLOT_FIT - 0.05, "STOP_SLOT_FIT each side in its arc slot, inside the nod range"),
 )
 
 
@@ -144,6 +145,8 @@ def test_the_least_gaps_at_the_worst_poses(rig):
     for pan, nod in GRID:
         tube = M.manifold(M.tube(pan, nod))
         for a, b, _, _ in NEIGHBOURS:
+            if a == "stop_lug" and nod in P.NOD_STOP:
+                continue                    # at the stops the lug is on its stop: test_mech's
             ma = tube if a == "tube" else M.moved(man[a], parts[a][1], pan, nod)
             mb = M.moved(man[b], parts[b][1], pan, nod)
             d = M.mgap(ma, mb, reach=10.0)

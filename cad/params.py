@@ -171,7 +171,8 @@ BEARING_ID, BEARING_OD, BEARING_B = 50.0, 65.0, 7.0
 BEARING_IN_LAND_R = 26.5       # the inner ring's face runs out to about here (d1 ~ 53.5): a shoulder
                                # that bears on it stays inside this, clear of the seal
 BEARING_OUT_LAND_R = 31.0      # ... and the outer ring's face runs in to about here (D1 ~ 61.5)
-BEARING_FIT = 0.15             # radial clearance at both printed seats, within the 0.1-0.2 asked for
+BEARING_FIT = 0.2              # radial clearance at both printed seats; print the coupon first
+                               # (bearing_coupon) and change this until the bearing slides in by hand
 BEARING_LIP = 1.0              # the deck's lip under the outer ring
 CAP_T = 3.0                    # the printed cap over the outer ring (bearing_cap)
 CAP_R = 40.0
@@ -235,7 +236,9 @@ Z_LINK_BOTTOM = Z_LINK_TOP - LINK_T          # 328.5
 LINK_EYE_R = PIN_BORE / 2 + 3.0
 PAN_COLUMN = (44.0, 52.0, 8.0)               # radial extent and width of the plate's hanging column
 PAN_FOOT_R_IN = CRANK_L - 4.0                # the column's foot reaches inward to the pin at CRANK_L
-DECK_SLOT = (PAN_COLUMN[0] - CLEAR, (PAN_COLUMN[1] ** 2 + (PAN_COLUMN[2] / 2) ** 2) ** 0.5 + CLEAR, 76.0)   # r0, r1 (the box's corners), half-angle
+SLOT_FIT = 0.7                               # the column in the deck's arc slot, radially: FDM's +-0.2
+                                             # twice over and room for the deck to sit a little off
+DECK_SLOT = (PAN_COLUMN[0] - SLOT_FIT, (PAN_COLUMN[1] ** 2 + (PAN_COLUMN[2] / 2) ** 2) ** 0.5 + SLOT_FIT, 76.0)   # r0, r1 (the box's corners), half-angle
 PAN_HANGER = 10.0                            # square columns under the deck the servo tabs screw to
 PAN_SERVO_FIT = 0.5                          # the body slides up between the hangers; CLEAR is too tight over 40 mm
 PAN_STOP_DEG = 65.0
@@ -297,14 +300,16 @@ PAN_RING_CUT = ((min(x for x, _ in pan_hangers()) - PAN_HANGER / 2 - 2.0, min(y 
 # are for. The pin carries the unit's weight and the wind's side force, at most about 11 N, over a
 # 4 x 6 bushing: 0.5 MPa. The stem's neck is 15 x 12 with a 7 mm channel: at the deck, 56 mm under
 # the wind's centre of pressure, 9.7 N bends it to 1.3 MPa.
-NOD_STOP = (-16.0, 6.0)        # the hard stops, a degree outside NOD_RANGE
+NOD_STOP = (-18.0, 8.0)        # the hard stops, three degrees outside NOD_RANGE: at one degree the
+                               # lug met its stop 0.15 mm past the limit, under a print's tolerance
 NOD_SERVO_FACE_Y = 13.5        # the nod servo's case face; its body runs out to y 51.5, 3.7 inside
                                # the cage's +Y legs (r 56) at every pan
 PIN_D = 4.0                    # a steel dowel along Y through C, pressed and set-screwed into the
 PIN_L = 14.0                   # stem's hub, turning in a bronze bushing in the -Y cheek
 BUSH_OD, BUSH_L = 6.0, 6.0     # a plain 4 x 6 x 6 bushing, pressed into the cheek
-CHEEK_Y = (6.4, 12.4)          # the -Y cheek's faces, |y|: it carries the bushing and the stop slot
-SERVO_CHEEK_Y = (6.4, 13.0)    # the +Y cheek: it joins the servo's two posts, and it is the stem's
+CHEEK_Y = (6.5, 12.5)          # the -Y cheek's faces, |y|: it carries the bushing and the stop slot;
+                               # 0.5 each side of the 12 mm blade, an FDM part's tolerance and a bit
+SERVO_CHEEK_Y = (6.5, 13.0)    # the +Y cheek: it joins the servo's two posts, and it is the stem's
                                # second bearing - a bore round the collar on the hub's +Y face, so
                                # the servo's output shaft carries the nod's torque and nothing else.
                                # Side wind on the unit (0.03 m2, Cd 1.2, 112 above C) rolls the stem:
@@ -317,7 +322,7 @@ SERVO_SHIM_T = 2.0             # the nod servo's tabs stand this far off the end
                                # printed shims each side: the posts stop short so the plate and yoke
                                # still drop through the bearing's 50 mm bore (they reach r 23.7)
 SERVO_POST_W = 15.0            # the posts' width across, round the tabs' two holes 10 apart
-COLLAR_FIT = 0.2               # radial clearance in the cheek's bore: the unit rolls 0.75 degrees on
+COLLAR_FIT = 0.25              # radial clearance in the cheek's bore: the unit rolls 0.75 degrees on
                                # it and the bushing, 4 mm at the hat's tip
 STEM_T = 12.0                  # the stem is a blade |y| <= STEM_T / 2 between the cheeks
 STEM_W = 15.0                  # the neck's width in the plane of the nod
@@ -329,12 +334,14 @@ STEM_CHANNEL_D = 7.0           # the tube runs inside the stem
 NOD_CLEAR = 1.5                # the stem clears the hub and the plate by this at every nod in NOD_RANGE
 STOP_LUG_R = 9.0               # the stop lug: a sleeve on a screw in the stem hub's -Y face, at this
 STOP_LUG_D = 6.0               # radius below C, runs in an arc slot in the -Y cheek
+STOP_SLOT_FIT = 0.3            # ... 0.3 each side of it, radially
+STEM_CHAMFER = 0.6             # the stem's -Y edges, which print on the bed: the elephant's foot
 SPIDER_Z = (426.0, 450.0)      # the spider: its hub's underside and top
 SPIDER_HUB_R = 20.0
 HEAD_SCREWS_Z = 440.0          # four radial M3 from outside through the head into the spider
 HEAD_SCREW_ANGLES = [60.0, 120.0, 240.0, 300.0]
 SPIDER_BOSS_R = 57.0           # the bosses' faces: the interface the neck shroud had
-SPIDER_CORE_R = 30.0           # inside this radius the spider may come nearer C than the sphere, since
+SPIDER_CORE_R = 28.0           # inside this radius the spider may come nearer C than the sphere, since
                                # it stays inside the dome's bore at every nod; outside it, it may not
 NOZZLE_D = 8.0
 NOZZLE_L = 10.0                # a short brass jet nozzle. A 25 mm one does not fit: the unit, the
@@ -454,6 +461,8 @@ NECK_SPHERE_R = 100.0                       # the moving unit's inner boundary a
 TURN_GAP = 2.0                              # air in the seam: the coat is kept inside R - this
 BEARD_GAP = 2.0                             # air under the beard: the bib is filled to R - this
 NOD_RANGE = (-15.0, 5.0)                    # the owner's aim, + is nose up (the firmware's sign).
+NOD_REACH = NOD_STOP                        # what the head can physically reach: the hard stops. The
+                                            # parting's trim and sweep cover this, not only NOD_RANGE
                                             # The sphere frees pan and nod for everything near the
                                             # joint; what it cannot free is the unit's flat bottom
                                             # at Z_BEARD_BOT, because the coat's belly under it is

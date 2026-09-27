@@ -431,7 +431,7 @@ def test_no_hole_in_the_turning_unit():
     phis = np.arange(0.0, 360.0, 1.0)
     hit = np.zeros((len(phis), len(polar)), bool)
     excused = np.zeros_like(hit)
-    trims = [math.radians(-n) for n in np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 1.0)]
+    trims = [math.radians(-n) for n in np.arange(P.NOD_REACH[0], P.NOD_REACH[1] + 1e-9, 1.0)]
     for i, phi in enumerate(phis):
         segs = _plane_segments(unit, phi, P.Z_NOD)
         sk = _plane_segments([skin], phi, P.Z_NOD)

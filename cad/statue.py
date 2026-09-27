@@ -33,7 +33,7 @@ coat is filled out to the sphere inside `BEARD_AZ`, which is the bib the beard r
 Below `Z_BEARD_BOT` nothing turns and the coat keeps its skin; that part of the coat is outside
 the ball, so it is the one thing the sphere does not protect, and it is the nod - not the pan -
 that would run into it. The coat stays whole; the unit's bottom rim is trimmed instead, to what
-stays above `Z_BEARD_BOT` at every nod in `NOD_RANGE`, and `sweep()` proves it.
+stays above `Z_BEARD_BOT` at every nod in `NOD_REACH` (the hard stops), and `sweep()` proves it.
 """
 import json
 import math
@@ -1184,7 +1184,7 @@ def holes_from_c(unit, skin, grace=12.0):
     r = P.NECK_SPHERE_R
     hit = np.zeros((len(phis), len(thetas)), bool)
     excused = np.zeros_like(hit)
-    trims = [math.radians(-n) for n in np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 1.0)]
+    trims = [math.radians(-n) for n in np.arange(P.NOD_REACH[0], P.NOD_REACH[1] + 1e-9, 1.0)]
     for i, ph in enumerate(phis):
         tu, _ = polar(unit, thetas, ph, r)
         ts, _ = polar(skin, thetas, ph, r)
@@ -1355,14 +1355,14 @@ def parting(skin, cavity, shell):
           f"{(moving.volume - before) / 1e3:.1f} cm3 of flange and lift on")
     # The flat bottom is the one face of the unit that is not on the sphere, and the coat under
     # it is outside the ball, so a nod would drive it in. The coat is not cut; the unit keeps
-    # only what stays above Z_BEARD_BOT at every nod in NOD_RANGE. Pan is about Z and leaves z
+    # only what stays above Z_BEARD_BOT at every nod in NOD_REACH. Pan is about Z and leaves z
     # alone, so this one envelope covers every pan as well.
     whole = moving.volume
-    nods = np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, P.NOD_STEP)
+    nods = np.arange(P.NOD_REACH[0], P.NOD_REACH[1] + 1e-9, P.NOD_STEP)
     keep = [turned(box((-FAR, -FAR, zb), (FAR, FAR, FAR)), 0.0, -float(n)) for n in nods]
     moving = trimesh.boolean.boolean_manifold([moving] + keep, "intersection")
     print(f"statue nod trim  the unit's bottom rim cut to the envelope of nods "
-          f"{P.NOD_RANGE[0]:+.0f}..{P.NOD_RANGE[1]:+.0f}: {(whole - moving.volume) / 1e3:.1f} cm3 off the beard")
+          f"{P.NOD_REACH[0]:+.0f}..{P.NOD_REACH[1]:+.0f}: {(whole - moving.volume) / 1e3:.1f} cm3 off the beard")
     shaved = shell.volume - fixed.volume - moving.volume
     print(f"statue parting  sphere r {P.NECK_SPHERE_R:.0f} about (0, 0, {P.Z_NOD:.0f}); coat "
           f"<= r {ro:.0f}, turning unit >= r {P.NECK_SPHERE_R:.0f}\n"
@@ -1398,12 +1398,12 @@ def sweep(moving, fixed):
     """Turn and tip the unit through its stops against the fixed shell and report what it touches.
 
     Pan every five degrees at nod 0, then the pan stops and the middle against every five
-    degrees of NOD_RANGE, so a path through the coat between the ends is caught too. Anything
+    degrees of NOD_REACH, so a path through the coat between the ends is caught too. Anything
     above nothing is an overlap and the stage stops.
     """
     still = trimesh.boolean.boolean_manifold(list(fixed), "union")
     grid = {(float(p), 0.0): 0.0 for p in np.arange(-P.PAN_STOP_DEG, P.PAN_STOP_DEG + 1e-9, 5.0)}
-    nods = sorted(set(np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 5.0)) | set(P.NOD_RANGE))
+    nods = sorted(set(np.arange(P.NOD_REACH[0], P.NOD_REACH[1] + 1e-9, 5.0)) | set(P.NOD_REACH))
     for n in nods:
         for p in (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG):
             grid[(float(p), float(n))] = 0.0
@@ -1411,11 +1411,11 @@ def sweep(moving, fixed):
         grid[k] = overlap(moving, still, *k)
     worst = max(grid.items(), key=lambda t: t[1])
     print(f"statue sweep    {len(grid)} poses, pan +-{P.PAN_STOP_DEG:.0f} x nod "
-          f"{P.NOD_RANGE[0]:+.0f}..{P.NOD_RANGE[1]:+.0f}: worst overlap {worst[1]:.1f} mm3 at "
+          f"{P.NOD_REACH[0]:+.0f}..{P.NOD_REACH[1]:+.0f}: worst overlap {worst[1]:.1f} mm3 at "
           f"pan {worst[0][0]:+.0f} nod {worst[0][1]:+.0f}")
     # how the unit's lowest edges move at the ends of the nod
     v = np.asarray(moving.vertices)
-    for sign, nod, what in ((1, P.NOD_RANGE[0], "beard's bottom edge"), (-1, P.NOD_RANGE[1], "back edge")):
+    for sign, nod, what in ((1, P.NOD_REACH[0], "beard's bottom edge"), (-1, P.NOD_REACH[1], "back edge")):
         low = v[v[:, 2] < P.Z_BEARD_BOT + 30.0]
         p0 = low[np.argmax(sign * low[:, 0])]
         p1 = turned(trimesh.Trimesh(vertices=[p0], faces=np.zeros((0, 3), int), process=False),
@@ -1570,7 +1570,7 @@ def main():
                                             "base_left", "base_right")])
     if worst > 0.0:
         raise SystemExit(f"the turning unit fouls the fixed coat by {worst:.1f} mm3 inside "
-                         f"pan +-{P.PAN_STOP_DEG:.0f} and nod {P.NOD_RANGE}")
+                         f"pan +-{P.PAN_STOP_DEG:.0f} and nod {P.NOD_REACH}")
     preview()
 
 

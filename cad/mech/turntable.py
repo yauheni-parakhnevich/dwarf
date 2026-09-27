@@ -317,8 +317,8 @@ def plate():
     # the nod drive's seats: the bushing, the stop slot, the servo's spline, the tab inserts
     p = p - cyl_y(P.BUSH_OD / 2 - 0.05, -y1 - 1, -y0 + 0.01, 0.0, P.Z_NOD)
     a0, a1 = N.stop_slot_angles()
-    slot = (cyl_y(P.STOP_LUG_R + P.STOP_LUG_D / 2 + 0.2, -y1 - 1, -y0 + 1, 0.0, P.Z_NOD)
-            - cyl_y(P.STOP_LUG_R - P.STOP_LUG_D / 2 - 0.2, -y1 - 2, -y0 + 2, 0.0, P.Z_NOD))
+    slot = (cyl_y(P.STOP_LUG_R + P.STOP_LUG_D / 2 + P.STOP_SLOT_FIT, -y1 - 1, -y0 + 1, 0.0, P.Z_NOD)
+            - cyl_y(P.STOP_LUG_R - P.STOP_LUG_D / 2 - P.STOP_SLOT_FIT, -y1 - 2, -y0 + 2, 0.0, P.Z_NOD))
     p = p - (slot & N.xz_wedge(a0, a1, CHEEK_R + 5, -y1 - 1, -y0 + 1))
     # the +Y cheek is a ring round C here, bored for the collar on the stem's hub: the second bearing
     p = p + cyl_y(P.HUB_COLLAR[1] + P.COLLAR_FIT + 4.5, sy0, sy1, 0.0, P.Z_NOD)
