@@ -214,9 +214,8 @@ def posed_mechanism():
         pan, nod = POSES[name]
         sc, co = scene()
         obs = machine(pan, nod, shell=False)
-        top = [ob for ob in obs if ob.matrix_world.translation.z > -1]    # all
         frame(sc, co, f"pose_mech_{name}", {"front": VIEWS["front"], "side": VIEWS["side"], **QUARTER},
-              centre=(0.0, 0.0, 385.0), span=200.0)
+              centre=(0.0, 0.0, 375.0), span=270.0)
 
 
 def posed_cutaway():
@@ -225,7 +224,7 @@ def posed_cutaway():
         pan, nod = POSES[name]
         sc, co = scene()
         machine(pan, nod, cut=True)
-        frame(sc, co, f"pose_cutaway_{name}", {"side": (90.0, 0.0)}, centre=(10.0, 0.0, 395.0), span=190.0)
+        frame(sc, co, f"pose_cutaway_{name}", {"side": (90.0, 0.0)}, centre=(15.0, 0.0, 395.0), span=240.0)
 
 
 def frame(sc, co, name, views, centre, span):
