@@ -110,8 +110,9 @@ def placements():
     for spec in ALL:
         t = spec.placement.wrapped.Transformation()
         rows = [[t.Value(r, c) for c in range(1, 5)] for r in range(1, 4)] + [[0, 0, 0, 1]]
-        moves = ("nods" if spec.name in NODS else "pans" if spec.name in PANS
-                 else spec.name if spec.name in LINKAGE else "fixed")
+        sec = interface.get(spec.name)
+        moves = ("nods" if spec.name in NODS or sec in ("beard", "head", "hat") else
+                 "pans" if spec.name in PANS else spec.name if spec.name in LINKAGE else "fixed")
         out[spec.name] = {"matrix": rows, "section": interface.get(spec.name), "moves": moves}
     (OUT / "placements.json").write_text(json.dumps(out, indent=1))
 

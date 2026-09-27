@@ -206,7 +206,8 @@ def test_the_lens_clip_needs_the_dogleg(world):
 def test_the_collar_joint(world):
     """The collar's four tabs go SPIGOT_H down into the ring; each screw is under the turning unit
     at rest - straight up from its head is the unit - and a driver reaches it straight in under the
-    unit's rim at rest: 40 mm of it out from the ring's skin touches nothing."""
+    unit's rim at rest: 40 mm of a 6 mm shank out from the ring's skin, and a 25 x 100 handle behind
+    it, touch nothing."""
     from mech.collar import screw_head
     from test_mech import _driver
     import assemble as A
@@ -223,6 +224,8 @@ def test_the_collar_joint(world):
         assert len(up), f"the screw at {a:.0f} deg is not under the unit at rest"
         driver = M.to_mesh(_driver(tuple(head), tuple(u), r=3.0, length=40.0), f"collar_driver_{a:.0f}")
         assert M.overlap(driver, others) <= 0.05, f"no driver reaches the collar screw at {a:.0f} deg"
+        grip = M.to_mesh(_driver(tuple(head + 40.0 * u), tuple(u), r=12.5, length=100.0), f"collar_grip_{a:.0f}")
+        assert M.overlap(grip, others) <= 0.05, f"the driver's handle meets the statue at {a:.0f} deg"
         tip = screw_head(a)[0]                                    # the insert is behind the hole,
         assert 0.0 < r - math.hypot(tip[0], tip[1]) <= 20.0 - 3.0, (a, r)   # within an M3 x 20's reach
 

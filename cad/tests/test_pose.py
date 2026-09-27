@@ -112,8 +112,27 @@ NEIGHBOURS = (
     ("tube", "collar", 1.5, ""),
     ("tube", "plate", 1.0, "the loop behind the yoke"),
     ("tube", "pan_link", 2.0, ""),
+    ("beard_left", "collar", P.TURN_GAP - 0.1, "the seam"),
+    ("beard_right", "collar", P.TURN_GAP - 0.1, "the seam"),
+    ("head", "collar", P.TURN_GAP - 0.1, "the seam at the nape"),
+    ("beard_left", "torso", 1.5, "the unit's flat bottom over the ring's top"),
+    ("beard_right", "torso", 1.5, "the unit's flat bottom over the ring's top"),
+    ("beard_left", "panel_left", 1.5, "the sleeve"),
+    ("beard_right", "panel_right", 1.5, "the sleeve"),
     ("stop_lug", "plate", P.STOP_SLOT_FIT - 0.05, "STOP_SLOT_FIT each side in its arc slot, inside the nod range"),
 )
+
+
+def test_what_is_in_the_turning_shell_is_placed_as_turning():
+    """out/placements.json says how each part moves, and the scene and previews draw it so: an
+    interface part in the beard, the head or the hat nods with them."""
+    import json
+    places = json.loads((M.CAD / "out" / "placements.json").read_text())
+    for name, info in places.items():
+        if info["section"] in ("beard", "head", "hat"):
+            assert info["moves"] == "nods", (name, info["moves"])
+        elif info["section"]:
+            assert info["moves"] == "fixed", (name, info["moves"])
 
 
 def test_the_beards_halves_have_no_fins(rig):

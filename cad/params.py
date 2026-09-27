@@ -32,9 +32,10 @@ Z_TORSO_TOP = 420.0        # the coat's neck opening
 Z_DECK = 400.0             # top face of the turntable deck
 DECK_T = 6.0
 RING_T = 8.0               # interface rings unioned into the shell
-Z_HEAD = 478.0             # tilt axis and head centre
-HEAD_R = 40.0              # the statue's head is 44 mm deep in front of the ear line; nothing nods now, this only sizes the shroud's top
-Z_HAT = 500.0              # the statue's brim at the sides (0.713 H); the head and hat turn together, nothing nods
+Z_HEAD = 478.0             # the head's centre, at the ear line (the nod is about C = (0, 0, Z_NOD), not here)
+HEAD_R = 40.0              # the statue's head is 44 mm deep in front of the ear line; only the stack check reads it
+Z_HAT = 500.0              # where the head is cut from the hat, at the brim's side (0.713 H); the statue
+                           # gives the head the scraps the plane leaves above it, so it runs to z 503
 Z_TOP = 700.0              # the statue's height: its ear line then lands on the tilt axis
 
 # --- shell profiles, (radius, z) from the bottom up --------------------------------------
@@ -567,7 +568,8 @@ VENT_IN_Y = -12.0                           # the intake's centre across the bac
 # the belt joint follows the coat's section: an ellipse, not a circle
 BELT_RX, BELT_RY = 74.0, 105.0             # outer, at Z_BELT; the assembler clips every interface part to the cavity anyway
 BELT_IN_RX, BELT_IN_RY = 60.0, 91.0
-BELT_SCREW_ANGLES = [55.0, 140.0, 220.0, 305.0]   # the front pair sits away from the filler neck at (48, 54)
+BELT_SCREW_ANGLES = [55.0, 140.0, 220.0, 305.0]   # the belt's four; the filler's hose comes down at 147,
+                                                  # 29 mm from the one at 140
 CHASSIS_RX, CHASSIS_RY = 71.5, 77.0        # not 70 x 100: it goes in through the ring's top, which the
                                             # parting's seam chamfer leaves only 79.9 out at the sides
                                             # and 73.3 at the back
