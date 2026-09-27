@@ -17,9 +17,9 @@ both, the mechanism from three sides, two cutaways and every section - is writte
 `out/preview/`, and `out/statue/preview_*.png` and `out/preview/parting_*.png` show the statue and
 its parting.*
 
-The gnome stands **700 mm**. There are **twelve shell pieces** and **29 mechanism parts**, eight of
-which are unioned into the shell rather than printed on their own, and the stop pin prints twice:
-**34 prints** in all, none wider than the 256 mm bed. About 1.9 kg of shell and 0.9 kg of
+The gnome stands **700 mm**. There are **twelve shell pieces** and **31 mechanism parts**, eight of
+which are unioned into the shell rather than printed on their own, and the stop pin and the servo
+shim print twice: **37 prints** in all, none wider than the 256 mm bed. About 1.9 kg of shell and 0.9 kg of
 mechanism at 1.27 g/cm³.
 
 The shell is an image-to-3D reconstruction of the user's own garden gnome, hollowed to a 2.4 mm
@@ -43,7 +43,7 @@ uv venv --python 3.11 .venv-cad
 uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 
 .venv-cad/bin/python cad/build.py              # every stage, about two minutes
-.venv-cad/bin/pytest cad/tests -q              # 235 tests in eight files, under 2 minutes: the build's final check
+.venv-cad/bin/pytest cad/tests -q              # 268 tests in eight files: the build's final check
 .venv-cad/bin/pytest cad/tests -q -m "not slow"  # the quick suite, about 1 minute: leaves out test_wall and test_fit
 ```
 
@@ -142,7 +142,7 @@ rebuild, and only then print anything that has to fit it.
 | `DS3218` | the pan servo as delivered: body, tab span, tab thickness, tab height, shaft offset, hole pitch |
 | `MG996R`, `SPLINE_BOSS` | **the nod servo**: its case 40.5 × 20 × 38 from the shaft face to the bottom, tab span 54, tab height 27 from the bottom, tab hole pitch 49.5 × 10, shaft 10 from the near end; and its top boss and spline as one cylinder, 12 across and 4.7 from the case to the round horn's far face. Its case face is 7 mm inside the cage's legs and the spline goes through a 14 mm hole in the +Y cheek |
 | `HORN_D`, `HORN_T`, `HORN_SCREW_R` | the round horns in both servos' bags. The pan crank is pocketed for its horn from above; **the nod servo's round horn is let into the stem's hub** and screwed to it with four M2.5 self-tappers at r 7 |
-| `BEARING_ID`, `BEARING_OD`, `BEARING_B`, `BEARING_IN_LAND_R`, `BEARING_OUT_LAND_R` | **the 6810-2RS**: 50 × 65 × 7, and how far its inner ring's face runs out (53.5 across) and its outer ring's face runs in (61.5): the lips and the cap bear there and nowhere near the seals. Both printed seats are 0.15 over |
+| `BEARING_ID`, `BEARING_OD`, `BEARING_B`, `BEARING_IN_LAND_R`, `BEARING_OUT_LAND_R`, `BEARING_FIT` | **the 6810-2RS**, and **print its seats as a coupon first**: in the slicer, cut `deck.stl` to a Ø80 cylinder about the axis from z 394 to 402 and `plate.stl` to a Ø60 one from z 395 to 406 - two 10 mm rings, the outer ring's pocket and the inner ring's hub. The bearing should slide into both by hand; change `BEARING_FIT` (0.2) until it does. 50 × 65 × 7, and how far its inner ring's face runs out (53.5 across) and its outer ring's face runs in (61.5): the lips and the cap bear there and nowhere near the seals. Both printed seats are 0.15 over |
 | `PIN_D`, `PIN_L`, `BUSH_OD`, `BUSH_L` | the Ø4 × 14 dowel and the 4 × 6 × 6 bronze bushing |
 | `NOZZLE_D`, `NOZZLE_L` (`MOUTH_D` follows) | **the brass nozzle: Ø8 × 10 at most.** A 25 mm fountain nozzle does not fit - see the known limits. The holder's bore is 0.1 under `NOZZLE_D`, a press fit |
 | `XL4015_HOLES`, `XL4015_HOLE_D`, `MOSFET_HOLES`, `ESP32` | the boards |
@@ -166,11 +166,11 @@ enclosure. Four perimeters on anything the mechanism screws into; the divider at
 |---|---|---|---:|---:|---|
 | `base_left`, `base_right` | Boots, hem and skirt to the belt, split at y 0; drain arches, stake holes; the lower belt flange and the floor plate inside | 219 × 164 × 240 | 352, 353 | 447, 449 | Cut face down |
 | `hand_left`, `hand_right` | The mitten caps, glued to the base halves | 127 × 31 × 44 | 14 | 18 | Cut face down |
-| `torso` | The coat's belt ring, open on top: the camera window, the intake at the back, the upper belt flange inside, four countersunk holes for the collar | 186 × 210 × 67 | 176 | 224 | Belt down |
-| `collar` | **The socket**: the coat from the ring's top up to the dome, closed over with a 55 mm bore, the bib the beard lies on, and four tabs under it that go 10 mm down into the ring | 184 × 196 × 134 | 199 | 252 | Tabs up, dome on the bed |
+| `torso` | The coat's belt ring, open on top: the camera window, the intake at the back (12 mm right of the meridian), the filler port, the upper belt flange inside, four countersunk holes for the collar | 188 × 210 × 67 | 180 | 228 | Belt down |
+| `collar` | **The socket**: the coat from the ring's top up to the dome, closed over with a 55 mm bore, the bib the beard lies on, and four tabs under it that go 10 mm down into the ring | 184 × 196 × 134 | 200 | 253 | Tabs up, dome on the bed |
 | `panel_left`, `panel_right` | The sleeves' sides, fixed, glued to the ring | 126 × 31 × 63 | 19 | 23 | Cut face down |
-| `beard_left`, `beard_right` | **The beard in two halves**, split at y 0, each with two tongues up into the head | 181 × 117 × 113 | 63 | 80 | Top edge down |
-| `head` | Face, ears, the nozzle's holder printed in, the mouth, four countersunk M3 × 30 into the spider and four more for the beard's tongues | 188 × 221 × 88 | 159 | 201 | Cut face down |
+| `beard_left`, `beard_right` | **The beard in two halves**, split at y 0 and, in front of x 80, at y +2.5 round the middle web; each with two tongues up into the head | 180 × 115 × 113, 181 × 120 × 113 | 65, 66 | 82, 84 | Top edge down |
+| `head` | Face, ears, the nozzle's holder printed in, the mouth, four countersunk M3 × 30 into the spider and four more for the beard's tongues; z 409 (the holder) to 503 (the scraps the hat's cut leaves) | 188 × 221 × 94 | 160 | 204 | Cut face down |
 | `hat` | Brim and cone, glued to the head | 152 × 150 × 200 | 138 | 175 | Brim down |
 
 ![The seam at rest, close up from the front-right: the beard lying on the collar's bib](docs/parting_closeup_rest.png)
@@ -187,7 +187,7 @@ straight up; each half of the beard comes off sideways and up, 63° from vertica
 the front to its own side. So the beard's halves go on first, each from its side, and then the head
 and hat come down over them and are screwed to them.
 
-### Mechanism — 28 parts
+### Mechanism — 31 parts
 
 Eight never print on their own: they are blanks the assembler clips to the cavity and unions into a
 shell section.
@@ -211,7 +211,9 @@ shell section.
 | `plate` | Rides the inner ring: disc, hub, the −Y cheek with the bushing and the stop slot, the thin +Y cheek, the nod servo's posts, the column down to the pan linkage — one print | 114 × 100 × 79 | 82 | 104 | Disc down |
 | `hub_ring` | Clamps the inner ring up against the plate's shoulder; two radial countersunk M3 × 10 | 60 × 60 × 7 | 5 | 6 | Flat |
 | `stop_pin` | **Glued** into the deck; the plate's tab runs into it at ±65°. **Print two** | 6 × 6 × 15 | 0.4 | 1 | On end |
-| `stem` | The blade the head stands on: its hub on the pin at C with the horn let in, its neck through the bearing, its head under the spider; the tube runs inside it | 28 × 12 × 95 | 17 | 22 | **On its side**, −Y face down |
+| `stem` | The blade the head stands on: its hub on the pin at C with the collar and the horn's drive slots on its +Y face, its neck through the bearing, its head under the spider; the tube runs inside it | 28 × 19 × 95 | 18 | 23 | **On its side**, −Y face down |
+| `servo_shim` | Between one of the nod servo's tabs and its post, 2 mm. **Print two** | 15 × 2 × 6 | 0.1 | 0 | Flat |
+| `tube_clip` | Holds the tube vertical under the yoke; screws to a lug on the −Y cheek | 14 × 21 × 33 | 2 | 3 | On its plate |
 | `spider` | On the stem's head; four radial inserts at z 440, faces at r 57, for the head's four screws | 65 × 103 × 24 | 41 | 52 | Top face down |
 | `servo_crank`, `pan_link` | The pan parallelogram, as before but with a 26 mm crank, 3 mm lower | | 3, 1 | 3, 2 | Flat |
 
@@ -231,7 +233,7 @@ the pin; the plate, the servos and the deck have not.*
 
 - **The pan bearing** is a 6810-2RS, 50 × 65 × 7. Its outer ring drops into a pocket in the deck
   onto a 1 mm lip and is clamped from above by the printed cap; its inner ring is on the plate's
-  hub under a shoulder, clamped from below by the hub ring. Both seats are 0.15 mm over. A single
+  hub under a shoulder, clamped from below by the hub ring. Both seats are 0.2 mm over. A single
   row carries it: 7.4 N of weight and about 35 N on the loaded side from 1 N·m of wind, against a
   static rating of kilonewtons. What it cannot do is resist tilt with a second row, so its radial
   clearance shows as a few arc-minutes of rock - 0.5 to 1 mm at the hat's tip.
@@ -244,30 +246,47 @@ the pin; the plate, the servos and the deck have not.*
   −10..+10 from vertical. The hole it needs through the bearing is **33.0, 35.0 and 37.0 mm** across
   at z 394, 400 and 406, measured by slicing it at every degree of the nod; the bearing's bore is
   50. Its neck bends to 1.3 MPa in a 20 m/s wind.
-- **The nod servo**, an MG996R, hangs on the +Y side from two posts on the plate, shaft on the Y axis
-  at C, case out to y 48.5 - 6.6 mm from the cage's legs at the nearest pose. Its round horn is let
-  into the stem's hub and screwed to it; the servo's own output bearing is the pin's other support.
-  **This is not the arrangement first asked for** - a horn clamped onto the pin outside a +Y cheek.
-  There is not the room: the case face can stand no further out than y 14 before the cage's +Y legs
-  are nearer than 3 mm, the hub's face is at 6, and a cheek, a coupler and a horn need 15.
-- **Hard stops** at −16° and +6°: a sleeve on an M3 screw in the hub's −Y face runs in an arc slot in
-  the −Y cheek whose ends meet it exactly there (`test_the_nod_stops_meet_the_lug_exactly`: clear a
-  degree inside, touching at the stop, in a quarter of a degree past it).
+- **Two bearings carry the stem; the servo only turns it.** On −Y the pin runs 6 mm in the bushing.
+  On +Y a collar on the hub's face - a cup r 11–13 the servo's round horn sits in - runs 6.6 mm in a
+  bore in the +Y cheek, 0.25 radial clearance. They are 19.1 apart: a side wind on the unit (0.03 m²,
+  Cd 1.2, 112 mm above C) puts 12, 26 and 52 N on them at 10, 15 and 20 m/s - 0.3 MPa on the collar
+  and 2.3 MPa on the bushing at 20 m/s - where before it was the MG996R's output shaft that took it.
+  The unit rolls 0.75° on their clearances, 4 mm at the hat's tip.
+- **The nod servo**, an MG996R, hangs on the +Y side, shaft on the Y axis at C, case face at y 13.5
+  and out to y 51.5, 3.7 mm from the cage's legs at the nearest pose. Its tabs lie on two printed
+  shims (`servo_shim`, 2 mm, print two) on two posts on the plate: the posts stop short so the plate
+  and yoke still drop through the bearing's 50 mm bore. The horn drives the stem through two pins -
+  M2.5 × 8 screws through two of its holes, standing 3 mm out - in two radial slots in the hub's
+  face: torque passes, a millimetre of misalignment between the shaft and the collar's bore does not.
+  **Not the arrangement first asked for** (a horn clamped on the pin outside a cheek): there is not
+  the room between the hub's face and the cage's legs for a cheek, a coupler and a horn.
+- **Hard stops** at **−18° and +8°**, three degrees outside the range, because a degree is 0.15 mm of
+  lug travel and a print is not that true. A sleeve on an M3 screw in the hub's −Y face runs in an
+  arc slot in the −Y cheek, 0.3 each side, whose ends meet it exactly there
+  (`test_the_nod_stops_meet_the_lug_exactly`). The head can reach the stops, so everything is
+  checked there: the parting's nod trim and sweep cover −18..+8 (17.3 cm³ off the beard's bottom
+  rim), and so does the pose sweep.
+- **Fits** a printer can hold: the pan column 0.7 in the deck's arc slot, the blade 0.5 each side
+  between the cheeks with its first 0.6 mm on the bed stepped in 0.6 against the elephant's foot,
+  the bearing's seats 0.2 (print them as a coupon first: "Before printing", above), the stem's collar 0.25.
 - **Loads.** Gravity puts 0.05 N·m on the servo at rest and 0.10 nose down 15°. Wind on the head:
   0.24, 0.55 and 0.97 N·m at 10, 15 and 20 m/s; the last is the servo's stall, and past about 15 m/s
   a gust back-drives the head onto its stops, which is what they are for.
 - **The spider** is bolted to the stem's head by two M3 × 12 from above and carries the turning unit
-  on the four radial inserts the old shroud had. Outside r 30 its undersides are the sphere 100.5
+  on the four radial inserts the old shroud had. Outside r 28 its undersides are the sphere 100.5
   from C, so it keeps off the dome at every pose (2.44 mm at the nearest, nose down).
 - **The nozzle** is fixed in the mouth, pressed into a holder printed with the head, its axis along
   +X at z 424, its tip 1.1 mm proud of the skin. The water joint is made by putting the head on: the
   tube runs inside the stem, stands 12 mm out of the spider's top on the axis as a stab, and the
   holder's socket, with a 5 × 1.5 O-ring, slides down over it. The spider's clamp screw stops the
   water pushing the tube down, 20 N at 7 bar.
-- **The tube** runs from the stab down the stem's channel, out through the neck's back 16 mm above C,
-  behind the hub, down in a loop under the yoke and onto the pan axis at z 303, where it twists
-  with the pan on its way to the valve. `test_pose.py` routes it for every pose and tests it against
-  everything; the loop takes the ±10°.
+- **The tube** runs from the stab down the stem's channel, its corners filleted, out of the neck's
+  back at z 362 close to C, then in a free loop to a printed `tube_clip` screwed to the −Y cheek,
+  which holds it vertical at (−21, 0, 305–313). The loop is one length, 58 mm: nearly taut nose-down
+  at −18, bowed 8 mm more nose-up at +8, and nowhere on the tube is a bend tighter than 23 mm
+  (`TUBE_BEND_R` is 15) - modelled as a Bezier fitted at each nod, tested at the stops and between.
+  Below the clip the tube is **not held**: it runs free down the board deck's back edge to the valve's
+  gland and takes the pan's twist over that length, so leave it slack there.
 
 ## Fasteners
 
@@ -294,12 +313,13 @@ measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are
 | `bearing_cap` | the same three, countersunk | 3 | **M3 × 8 countersunk**, driven through the plate's three holes at pan 0 |
 | `plate` | two radial in the hub, at 90/270° | 2 | M3 insert, 6 mm |
 | `hub_ring` | the same two, countersunk | 2 | **M3 × 10 countersunk**, on the bench |
-| `plate` | four on the nod servo's posts | 4 | M3 insert, 6 mm — the MG996R's tabs, M3 × 10 |
+| `plate` | four on the nod servo's posts | 4 | M3 insert, 6 mm — the MG996R's tabs, **M3 × 14** through the tab and a 2 mm shim |
+| `plate` | the tube clip's, in a lug on the −Y cheek | 1 | M3 insert, 6 mm — M3 × 10, along +Y on the bench |
 | `plate`, `servo_crank` | the link's two pivots | 2 | M3 insert, 4.5 mm |
 | `stem` | the stop lug's, in the hub's −Y face | 1 | M3 insert, 6 mm — an M3 × 10 through a Ø6 sleeve |
 | `stem` | two in its head, down | 2 | M3 insert, 6 mm — **M3 × 12** down through the spider |
 | `stem` | the pin's set screw | 1 | M2 × 4 grub, self-tapped |
-| `stem` | the nod horn's four | 4 | M2.5 self-tapping |
+| nod horn | two of its holes | 2 | **M2.5 × 8** through the horn into its own holes, 3 mm standing out as drive pins |
 | `spider` | four radial at z 440 | 4 | M3 insert, 6 mm — the head's **M3 × 30 countersunk** |
 | `spider` | the tube's clamp | 1 | M3 insert, 6 mm — M3 × 8 |
 | `collar_spigot` | four radial in the tabs | 4 | M3 insert, 6 mm — **M3 × 16** at 45/315°, **M3 × 20** at 125/235°, countersunk, through the ring |
@@ -307,12 +327,14 @@ measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are
 | `servo_crank` | the pan horn's four | 4 | M2.5 self-tapping |
 | `electronics_deck` | the modules' own feet | 20 | their own screws |
 
-**Totals.** **69 M3 inserts** - 4 at 9 mm, 4 at 7 mm, 2 at 4.5 mm, 7 at 4 mm and **52 at 6 mm** - and
-69 M3 screws to fill them: 4 × M3 × 20 (belt), 4 × M3 × 30 countersunk (head), 2 × M3 × 16, 2 × M3 × 14
-and 2 × M3 × 12 countersunk (collar, beard), 2 × M3 × 20 countersunk (the collar's back pair), 2 × M3 × 12 (spider), 3 × M3 × 8 countersunk (bearing
-cap), 2 × M3 × 10 countersunk (hub ring), and the rest socket heads between 8 and 14 mm. Plus
-8 M2.5 self-tappers for the two horns, one M2 grub for the pin, the modules' own screws, a Ø4 × 14
-dowel, a 4 × 6 × 6 bushing and a 5 × 1.5 O-ring. The lazy susan's eight bolts are gone.
+**Totals.** **70 M3 inserts** - 4 at 9 mm, 4 at 7 mm, 2 at 4.5 mm, 7 at 4 mm and **53 at 6 mm** - and
+70 M3 screws to fill them: 4 × M3 × 20 (belt), 4 × M3 × 30 countersunk (head onto the spider),
+2 × M3 × 16 and 2 × M3 × 20 countersunk (the collar), 2 × M3 × 8 and 2 × M3 × 14 countersunk (the
+beard's tongues), 3 × M3 × 8 countersunk (bearing cap), 2 × M3 × 10 countersunk (hub ring),
+4 × M3 × 14 (the nod servo's tabs), 2 × M3 × 12 (spider), 1 × M3 × 10 (tube clip), and the rest
+socket heads between 8 and 14 mm. Plus 4 M2.5 self-tappers for the pan horn and 2 M2.5 × 8 as the
+nod horn's drive pins, one M2 grub for the pin, the modules' own screws, a Ø4 × 14 dowel, a
+4 × 6 × 6 bushing and a 5 × 1.5 O-ring.
 
 Where the M3 × 30 comes from: the head's skin at z 440 is r 84.33 at 60 and 300° and r 84.09 at
 120 and 240°; the spider's boss faces are at r 57 and its inserts' floors at 51. So the hole is 27.1
@@ -351,9 +373,10 @@ against what is on the bench at that moment (`bench_screws()` in `test_mech.py`)
    hub ring up over the yoke and its two radial countersunk screws;
 2. the plate and bearing down into the deck (the column through its arc slot), and the cap's three
    screws through the plate's three holes;
-3. the horn screwed into the stem's hub; the stem down through the plate's slot; the pin through the
-   bushing into the hub and its set screw from behind; the stop lug's screw and sleeve;
-4. the nod servo in from +Y, its spline into the horn, four screws into its posts;
+3. the stem down through the plate's slot; the pin through the bushing into the hub and its set
+   screw from behind; the stop lug's screw and sleeve; the tube clip onto its lug, one screw along +Y;
+4. the round horn on the nod servo's spline, its two drive pins in; the servo in from +Y, the pins
+   into the hub's slots, the collar into the cheek's bore; two shims and four screws into its posts;
 5. the fan, the pan servo into its hangers, the stop pins glued.
 
 **The deck sub-assembly** goes down onto the cage's four legs and four screws; then **the crank and
@@ -394,48 +417,63 @@ countersunk screws from outside: four into the spider, four into the beard's ton
 ## What the tests check
 
 `test_params.py` (20) is arithmetic on `params.py`: the stack, the phone under the deck, the
-linkage clear of the pan axis, the nod stops a degree outside the owner's range, and - a strict
+linkage clear of the pan axis, the nod stops three degrees outside the owner's range, and - a strict
 xfail - the firmware's tilt limits, which are still −30/+40 until the follow-up on the firmware
 branch.
 
-`test_mech.py` (37) builds every build123d part: valid, one solid, in the bed; the cage inside the
+`test_mech.py` (46) builds every build123d part: valid, one solid, in the bed; each part sized
+from the statue's measurements refusing to build without them; the cage inside the
 turning bore; the bearing seated and held both ways, each clamp on its own ring and off the seals;
 the yoke through the bearing's bore; the stem's channel; the clear hole; the stem clear of the yoke
-at every degree; the nod stops meeting the lug exactly; the nod servo seated on its posts and 6 mm
-inside the cage's legs; the pin and the bushing; the spider's inserts and its keeping off the dome;
+at every degree; the nod stops meeting the lug exactly; the stem carried by two bearings with the
+servo taken away; the tube's loop one length with no bend under 23 mm at any nod; the nod servo
+seated on its shims and 3 mm or more inside the cage's legs; the pin and the bushing; the spider's inserts and its keeping off the dome;
 the deck inside the socket and the collar's shadow; the linkage through the whole pan, and 2 mm under
 the yoke; every group of parts, bought ones included, overlapping nothing but its designed contacts;
 and every bench screw's driver path.
 
-`test_wet_and_head.py` (16) is the wet zone: the cap on the port's neck; the port 43 mm over the
+`test_wet_and_head.py` (17) is the wet zone: the cap on the port's neck; the port 43 mm over the
 bottle's top with the hose falling all the way; the hose from the port's barb to the tank head's,
 touching nothing else and nothing with 3 mm more round it; both barbs; a drip down the hose going
-through to the wet side.
+through to the wet side; the divider closing to 0.5 round it, with its funnel and skirt.
 
 `test_fit.py` (4): every placed part inside `cavity.stl`, and everything fixed or panning over the
 ring's top inside the socket's sphere, bought parts included.
 
-`test_wall.py` (15) measures the shell's wall; the statue's parting did not move and it is unchanged.
+`test_wall.py` (17) measures the shell's wall, and casts rays for holes a thickness sample cannot
+see.
 
-`test_shell.py` (105): every section watertight, one body, in the bed; no two share a millimetre;
-every interface part welded into its section; the window, the intake, the mouth and the dome's bore
+`test_shell.py` (106): every section watertight, one body, in the bed; no two share a millimetre;
+every interface part welded into its section, and at least 90 % of each blank welded at all (the
+assembler refuses less); every radial screw with its receiving part's boss and insert bore behind
+its hole, measured by rays on the assembled STLs; the window, the intake, the mouth and the dome's bore
 open, and the seam air all round; the head's four screws on their inserts; the unit turned over the
 fixed mechanism - the xfail on the deck is gone, the deck is 5.9 mm from the unit at the nearest -
 and to its stops against the fixed shell; the jet's 3° cone clear of the beard and moustache.
 
-`test_pose.py` (22, 13 s - every pose moves Manifolds united once at rest, and the gaps are
-manifold3d's `min_gap`): **the whole machine posed**, pan −65, −30, 0, 30, 65 by nod −15, −8, 0, +5 -
+`test_pose.py` (34 - every pose moves Manifolds united once at rest, and the gaps are manifold3d's
+`min_gap`): **the whole machine posed**, pan −65, −30, 0, 30, 65 by nod −18, −15, −8, 0, +5, +8 -
 what nods, what pans, the linkage and the tube against what is fixed and against each other; the
-least gap to each neighbour at the stops; and the 2 mm seam, proved by distance from C.
+least gap to each neighbour, the shell's pieces included, at the worst pose; no fin on the beard's
+cut; the parts in the turning shell placed as turning; and the 2 mm seam, proved by distance from C
+over 20 000 surface points a piece.
 
-`test_assembly.py`: the order above, swept step by step; the filler port open, its cap on it and
+`test_assembly.py` (24): the order above, swept step by step, with only the declared pairs (the
+collar on the ring, the head on the beard's halves) allowed to touch at home; the filler port open, its cap on it and
 14.5 mm out of the skin, its weep draining, a funnel and a hand reaching it with the head parked and
 how far the head may turn with a funnel in it; why the beard is in halves; the
-chassis through the ring's top; the collar joint's screws under the unit at rest and reachable; the
+chassis through the ring's top; the collar joint's screws under the unit at rest and reachable with
+a driver's handle behind the shank; the
 radial screws' lengths; and the phone going in with its lens clipped on, along its dog-leg, which
 straight down it could not.
 
 ## Known limits
+
+- **Do not power the nod servo with today's firmware.** It still drives the tilt channel over
+  −30..+40, and the printed stops are at −18 and +8: powered, the MG996R stalls against a stop and
+  cooks. The firmware branch has to set `tiltMin`/`tiltMax` in `firmware/lib/dwarf/types.h` to
+  −15/+5 (and its calibration to an MG996R's) first; `test_the_firmware_tilt_limits_sit_inside_the_nod_stops`
+  is a strict xfail until it does.
 
 - **The dome shows when the head turns.** The collar's grey sphere is what the beard lies on, and
   at 65° it is bare behind the beard. That is inherent to parting on a sphere.
@@ -444,8 +482,8 @@ straight down it could not.
 - **The nozzle is 10 mm long, not 25.** The unit keeps 100 mm from C where it faces the coat, and
   at the mouth that sphere is at x 67; with the nozzle's radius and the holder's wall, its back can
   be no nearer the axis than x 73.5, and its tip is at the skin. Buy a short one.
-- **The horn is screwed to the stem, not clamped to the pin**, and the pin turns in one cheek, the
-  servo's output bearing being the other support. See the nod drive above for the numbers.
+- **The horn drives the stem through two pins, not a clamp on the pin**; the stem runs in its own
+  two bearings. See the nod drive above for the numbers.
 - **The beard is two prints**, for the reason above, and there are 8 screws in the head where
   there were 4.
 - **The phone goes in on a dog-leg** with its lens clipped on (above). A clip wider than 28 mm or
@@ -462,5 +500,7 @@ straight down it could not.
 - **The exhaust is the dome's bore and the 2 mm seam**, and nothing is filtered or sealed: rain on
   the seam runs down the collar's outside, but rain that reaches the bore goes onto the plate.
 - **The tightest bought part is still the bottle** (2.5 mm at its shoulder corners), and the
-  tightest fits in the neck are the stop lug in its slot (0.2 mm each side) and the blade between
-  the cheeks (0.4).
+  tightest fits in the neck are the stem's collar in its bore (0.25), the stop lug in its slot (0.3
+  each side) and the blade between the cheeks (0.5).
+- **The divider has a 0.5 mm gap round the filler's hose**, 13 mm², between the water's side and the
+  electronics' - small, but not a seal. Run a bead of the divider's PU round the hose to close it.
