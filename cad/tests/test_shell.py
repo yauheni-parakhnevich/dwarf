@@ -105,25 +105,71 @@ def test_no_two_sections_share_a_millimetre(sections, pair):
 
 # --- the interface parts ----------------------------------------------------------------------
 def test_every_interface_part_is_welded_into_its_section(sections):
-    """What the assembler clipped into a section has to be inside that section."""
+    """What the assembler clipped into a section has to be inside that section, and - the half this
+    used to miss - enough of each blank has to have been welded at all: a blank sized from a guess
+    once lost three quarters of itself as pieces standing free, and the assembler dropped them
+    without a word. Each blank must keep assemble.KEEP of what the cavity leaves of it."""
     import assemble as A
 
     grown = trimesh.load(STATUE / "cavity_grown.stl")
     seen = 0
+    A.KEPT.clear()
+    targets_of = {}
     for name, targets in A.INTO.items():
-        if not (STL / f"{name}.stl").exists():
-            continue
-        for target in targets:
-            raw = trimesh.load(STATUE / "raw" / f"{target}.stl")
-            printed = (trimesh.boolean.union([sections[h] for h, _ in P.FITTING_SPLIT[target]], engine=ENGINE)
-                       if target in P.FITTING_SPLIT else sections[target])
-            for piece, _ in A.blanks(target, raw, grown):
-                seen += 1
-                outside = volume_of(trimesh.boolean.difference(
-                    [piece, printed], engine=ENGINE))
-                assert outside <= 0.02 * abs(piece.volume) + 50.0, (
-                    f"{name}: {outside / 1e3:.2f} cm3 of it stands outside {target}")
+        for t in targets:
+            targets_of.setdefault(t, []).append(name)
+    for target, names in targets_of.items():
+        raw = trimesh.load(STATUE / "raw" / f"{target}.stl")
+        printed = (trimesh.boolean.union([sections[h] for h, _ in P.FITTING_SPLIT[target]], engine=ENGINE)
+                   if target in P.FITTING_SPLIT else sections[target])
+        for piece, name in A.blanks(target, raw, grown):
+            seen += 1
+            outside = volume_of(trimesh.boolean.difference([piece, printed], engine=ENGINE))
+            assert outside <= 0.02 * abs(piece.volume) + 50.0, (
+                f"{name}: {outside / 1e3:.2f} cm3 of it stands outside {target}")
     assert seen, "no interface part was found at all"
+    for name, (welded, clipped) in A.KEPT.items():
+        need = A.KEEP.get(name, A.KEEP_DEFAULT)
+        assert welded >= need * clipped, f"{name}: {welded / clipped:.0%} welded, under {need:.0%}"
+    assert set(A.KEPT) == set(A.INTO), set(A.INTO) - set(A.KEPT)
+
+
+def test_every_radial_screw_has_a_boss_behind_its_hole(sections):
+    """Every radial hole the assembler drilled (out/stl/holes.json), measured on the assembled
+    sections: along the screw's axis from outside there is nothing of the section it goes through -
+    the hole is open to the insert - and the first thing met is the receiving part, at the insert's
+    floor; a ray INSERT_D / 2 + 0.6 off the axis meets the boss's face INSERT_DEPTH further out, so
+    there is a boss round a bore of INSERT_D x INSERT_DEPTH, not a hole in the air."""
+    import json
+    holes = json.loads((STL / "holes.json").read_text())
+    spider = trimesh.load(STL / "spider.stl")
+    beard = trimesh.boolean.union([sections["beard_left"], sections["beard_right"]], engine=ENGINE)
+    kinds = [(P.HEAD_SCREW_ANGLES, P.HEAD_SCREWS_Z, "head", spider),
+             (P.COLLAR_SCREW_ANGLES, P.COLLAR_SCREWS_Z, "torso", sections["collar"])]
+    from mech.head import TONGUE_ANGLES, TONGUE_SCREWS_Z
+    kinds.append((TONGUE_ANGLES, TONGUE_SCREWS_Z, "head", beard))
+    checked = 0
+    for angles, z, through, into in kinds:
+        for a in angles:
+            h = holes[f"{a:g}@{z:g}"]
+            u = np.array([math.cos(math.radians(a)), math.sin(math.radians(a)), 0.0])
+            start = 300.0 * u + np.array([0.0, 0.0, z])
+            d_into = hits(into, start, -u)
+            assert d_into is not None, f"{a:g}@{z:g}: nothing behind the hole"
+            r_hit = 300.0 - d_into
+            assert abs(r_hit - h["floor"]) <= 0.6, f"{a:g}@{z:g}: meets the part at r {r_hit:.2f}, not the insert's floor {h['floor']}"
+            d_sec = hits(sections[through], start, -u)
+            assert d_sec is None or d_sec > d_into, f"{a:g}@{z:g}: the hole in {through} is closed"
+            side = np.cross(u, [0.0, 0.0, 1.0])
+            beside = start + (P.INSERT_D / 2 + 0.6) * side
+            f = hits(into, beside, -u)
+            assert f is not None and abs((300.0 - f) - (h["floor"] + P.INSERT_DEPTH)) <= 1.0, \
+                f"{a:g}@{z:g}: no boss face round the insert ({None if f is None else 300.0 - f})"
+            bore = start + (P.INSERT_D / 2 - 0.4) * side
+            b = hits(into, bore, -u)
+            assert b is not None and abs((300.0 - b) - h["floor"]) <= 0.6, f"{a:g}@{z:g}: the bore is narrower than INSERT_D"
+            checked += 1
+    assert checked == len(holes), (checked, len(holes))
 
 
 # --- the openings -----------------------------------------------------------------------------

@@ -72,14 +72,15 @@ def _chamfer():
 # --- the beard's halves to the head ------------------------------------------------------------
 # The beard goes on in two halves before the head (params' FITTING_SPLIT), and each is held to the
 # head, not to the other: two tongues rise from each half's top edge TONGUE_H into the head, a
-# CLEAR_SHELL inside it, and a radial countersunk M3 x 10 through the head's lower band goes into
-# an insert in each. They are at 30 and 75 degrees either side, where both the beard and the head
-# have a wall at their joint, well outside the sphere the unit keeps from C, and clear of the
-# head's own four screws at 60/120/240/300. (At the back corners the joint is inside it.)
+# CLEAR_SHELL inside it, and a radial countersunk M3 through the head's lower band goes into an
+# insert in each. They are at 45 and 90 degrees either side: there both the beard and the head have
+# a wall at their joint that stands well outside the sphere the unit keeps from C (at 30 degrees the
+# insert would have been inside it, and was cut away with it - which a ray test now catches), and
+# they are 15 and 30 degrees from the head's own four screws at 60/120/240/300.
 TONGUE_H = 10.0
 TONGUE_T = 3.0
 TONGUE_HALF_DEG = 7.0
-TONGUE_ANGLES = (30.0, 75.0, 285.0, 330.0)
+TONGUE_ANGLES = (45.0, 90.0, 270.0, 315.0)
 TONGUE_SCREWS_Z = 417.0
 Z_BEARD_TOP = P.SECTIONS_STATUE["beard"][1]            # 412
 

@@ -51,6 +51,13 @@ INTO = {
 # Blanks unioned whole, not clipped to the grown cavity: the filler's neck stands in the pocket, half
 # of it outside where the skin was, and the pocket is cut round it afterwards.
 UNCLIPPED = {"filler_neck"}
+# How much of each blank, clipped to the cavity, has to end up welded to a wall. The rest is pieces
+# standing free - a tab or a tongue sized from a wrong guess, clipped to the cavity and touching
+# nothing - and the assembler refuses to ship a section without them. The upper belt flange is the
+# one that loses a known part by design: its ends inside the sleeves' boxes touch no panel's wall.
+KEEP = {"belt_flange_upper": 0.8}
+KEEP_DEFAULT = 0.9
+KEPT = {}                  # name -> [welded, clipped], filled in by blanks()
 # A blank may reach past its section's own box where the part is meant to: the collar's spigot
 # tabs hang SPIGOT_H under the collar into the ring, a clearance inside it. (down, up), in mm.
 REACH = {("collar_spigot", "collar"): (P.SPIGOT_H + 1.0, 0.0),
@@ -254,6 +261,9 @@ def blanks(section, raw, grown):
                 welded.append(piece)
             else:
                 loose += abs(piece.volume)
+        tally = KEPT.setdefault(name, [0.0, 0.0])
+        tally[0] += sum(abs(p.volume) for p in welded)
+        tally[1] += sum(abs(p.volume) for p in welded) + loose
         note = f", {loose / 1e3:.1f} cm3 of it standing free and left out" if loose else ""
         if not welded:
             print(f"      {section}: {name} touches no wall here ({clipped.volume / 1e3:.1f} cm3); skipped")
@@ -350,6 +360,7 @@ def main():
         raise RuntimeError(f"{', '.join(missed)} declare a shell section in mech/ but this "
                            f"module does not know where to put them; add them to INTO")
     HOLES.clear()
+    KEPT.clear()
     grown = trimesh.load(CAD / "out" / "statue" / "cavity_grown.stl")
     print(f"assemble cavity_grown {grown.volume / 1e6:.2f} L; sections from {RAW}")
     for name in SECTIONS:
@@ -377,6 +388,13 @@ def main():
                 raise RuntimeError(f"{out} came out as {back.body_count} bodies, not one printable "
                                    f"piece; it needs something to join them")
     write_holes()
+    for name, (welded, clipped) in sorted(KEPT.items()):
+        need = KEEP.get(name, KEEP_DEFAULT)
+        if clipped and welded / clipped < need:
+            raise RuntimeError(f"{name}: only {welded / clipped:.0%} of it ({welded / 1e3:.1f} of "
+                               f"{clipped / 1e3:.1f} cm3) is welded to a wall, and it must be {need:.0%}; "
+                               f"the rest stands free. Was mech built from the statue's measurements?")
+        print(f"assemble {name}: {welded / clipped:.0%} welded (at least {need:.0%})")
 
 
 def write_holes():

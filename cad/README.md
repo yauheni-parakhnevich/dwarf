@@ -303,7 +303,7 @@ measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are
 | `spider` | four radial at z 440 | 4 | M3 insert, 6 mm — the head's **M3 × 30 countersunk** |
 | `spider` | the tube's clamp | 1 | M3 insert, 6 mm — M3 × 8 |
 | `collar_spigot` | four radial in the tabs | 4 | M3 insert, 6 mm — **M3 × 16** at 45/315°, **M3 × 20** at 125/235°, countersunk, through the ring |
-| `beard_tongue` | four radial | 4 | M3 insert, 6 mm — **M3 × 14** at 30/330°, **M3 × 12** at 75/285°, countersunk, through the head |
+| `beard_tongue` | four radial | 4 | M3 insert, 6 mm — **M3 × 8** at 45/315°, **M3 × 14** at 90/270°, countersunk, through the head |
 | `servo_crank` | the pan horn's four | 4 | M2.5 self-tapping |
 | `electronics_deck` | the modules' own feet | 20 | their own screws |
 

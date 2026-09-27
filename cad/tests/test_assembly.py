@@ -84,6 +84,9 @@ STEPS = {
     "right half of the beard": (("beard_right",), 200.0),
     "head and hat": (("head", "hat", "nozzle"), 300.0),
 }
+# The pairs that sit on each other at home: the collar's bottom edge on the ring's top at z 307 (they
+# are cut from one shell along that plane), and the head's bottom edge on the beard's top at z 412.
+HOME_CONTACTS = {frozenset(p) for p in (("collar", "torso"), ("head", "beard_left"), ("head", "beard_right"))}
 WAY = {"left half of the beard": fit_dir(1.0), "right half of the beard": fit_dir(-1.0)}
 # The phone goes in with its lens clipped on, and the clip reaches 89.8 out where the ring's top edge
 # is 84-87: so the sled comes down 6 mm behind its place - all the room there is while its lugs
@@ -130,11 +133,24 @@ def test_each_step_goes_on_along_its_path(world, step):
     worst = (0.0, None)
     for off in path_points(step, rise):
         v = M.mvolume(moving.translate(tuple(float(c) for c in off)), there)
-        if np.linalg.norm(off) < 1e-9 and v <= 5.0:
-            continue       # at home it sits on its seat: the sections' own allowance for a shared face
+        if np.linalg.norm(off) < 1e-9:
+            continue       # home is checked pair by pair below, against the declared contacts
         if v > worst[0]:
             worst = (v, tuple(round(float(c), 1) for c in off))
     assert worst[0] <= 0.05, f"{step}: {worst[0]:.2f} mm3 in the way at {worst[1]}"
+    # at home, only the pairs that are made to sit on each other may touch, and only as two
+    # faces that meet - a boolean of coincident faces leaves a sliver of a few mm3 at most
+    there_parts = already(index, world)
+    for n in names:
+        if n not in world:
+            continue
+        mine = M.manifold(world[n])
+        for k, m in there_parts.items():
+            v = M.mvolume(mine, M.manifold(m))
+            if frozenset((n, k)) in HOME_CONTACTS:
+                assert v <= 3.0, (step, n, k, v)
+            else:
+                assert v <= 0.05, f"{step}: {n} is in {k} by {v:.3f} mm3 at home"
 
 
 def test_the_glued_unit_has_no_way_on_and_its_pieces_have(world):
@@ -229,8 +245,8 @@ def test_the_head_screws_have_a_driver(world):
 
 SCREWS = {    # (angles, z, length at each angle): the kit's countersunk M3s, from the drilled holes
     "the head onto the spider": (P.HEAD_SCREW_ANGLES, P.HEAD_SCREWS_Z, {a: 30.0 for a in P.HEAD_SCREW_ANGLES}),
-    "the beard's halves onto the head": ((30.0, 75.0, 285.0, 330.0), 417.0,
-                                         {30.0: 14.0, 330.0: 14.0, 75.0: 12.0, 285.0: 12.0}),
+    "the beard's halves onto the head": ((45.0, 90.0, 270.0, 315.0), 417.0,
+                                         {45.0: 8.0, 315.0: 8.0, 90.0: 14.0, 270.0: 14.0}),
     "the collar onto the ring": (P.COLLAR_SCREW_ANGLES, P.COLLAR_SCREWS_Z,
                                  {45.0: 16.0, 315.0: 16.0, 125.0: 20.0, 235.0: 20.0}),
 }
