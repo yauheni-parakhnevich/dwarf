@@ -51,6 +51,7 @@ BRACKET_BOLT = 25.0          # half-pitch of the four inserts each leg bracket h
 CRADLE_BOLT = (40.0, 70.0)   # the bottle cradle's four inserts in the floor plate
 
 GLAND_BORE_R = 7.0           # wiring holes over the divider's glands: a 14 mm hole per bundle
+SKIRT_H = 6.0                # the skirt under the divider round the filler's hose
 BEAD_GROOVE = (1.3, 3.3)     # the bead groove's edges, in from the divider's rim
 BOSS_R = 5.5                 # the chassis's bosses round a blind M3 insert
 # the sled's lock screws sit just in front of its tray's back wall - any further back and the
@@ -233,9 +234,15 @@ def divider():
         d = d - cyl_z(P.M3_CLEAR / 2, z0 - 1, z1 + 1, x, y)
     for x, y in P.GLAND_POS:
         d = d - cyl_z(P.GLAND_D / 2, z0 - 1, z1 + 1, x, y)
-    # the filler's hose passes here, near the rim at the back, in a hole 1.5 mm round it: what
-    # drips down the hose goes through to the wet side
-    return d - cyl_z(P.FILLER_PASSAGE_D / 2, z0 - 1, z1 + 1, *passage_xy())
+    # the filler's hose passes here, near the rim at the back, 0.5 mm round it: little air between
+    # the wet side and the boards, and a drip down the hose is led into the gap by a funnel on top
+    # and down the hose by a skirt underneath, inside the lower flange's bore. Print it top down.
+    px, py = passage_xy()
+    r = P.FILLER_DIVIDER_D / 2
+    skirt = cyl_z(r + 0.9, z0 - SKIRT_H, z0 + 0.01, px, py)
+    d = d + skirt
+    d = d - cyl_z(r, z0 - SKIRT_H - 1, z1 + 1, px, py)
+    return d - _cone_z(r, r + 2.5, z1 - 2.5, z1 + 0.01, px, py)
 
 
 # --- the floor over the sand ---------------------------------------------------------------------

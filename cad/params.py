@@ -408,8 +408,12 @@ FILLER_PASSAGE = (71.0, 147.0)              # the hose's way down through the ch
                                             # outside the cage's foot ring (63.5), its bore inside the
                                             # divider's bead groove (76.6) and the hose outside the belt
                                             # ring's bore below (65.8 there)
-FILLER_PASSAGE_D = 11.0                     # bored this wide, 1.5 round the hose, so a drip down the hose
-                                            # goes through to the wet side and not onto the divider's top
+FILLER_PASSAGE_D = 11.0                     # bored this wide through the chassis and both flanges, 1.5
+                                            # round the hose, so a drip down the hose follows it down
+FILLER_DIVIDER_D = 9.0                      # ... but through the divider, the wet zone's lid, only 0.5
+                                            # round it: 13 mm2 of annulus, where 11 left 45, under a
+                                            # funnel that leads a drip into it and over a skirt that
+                                            # leads it down the hose on the wet side
 HOSE_OD = 8.0                               # the filler hose, port to tank head. It could not be wider:
                                             # where it rises beside the tank head's stub, at y 86.5, the
                                             # belt ring's bore is 90.9 out (it gave 8.9 mm there, and 8 is

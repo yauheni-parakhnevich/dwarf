@@ -539,8 +539,11 @@ def test_belt_screws_line_up(parts):
 
 
 def test_divider_fills_the_base_cup(parts):
+    from mech.torso import SKIRT_H
     bb = parts["divider"].bounding_box()
-    assert math.isclose(bb.min.Z, P.Z_BELT, abs_tol=1e-6)
+    assert math.isclose(bb.min.Z, P.Z_BELT - SKIRT_H, abs_tol=1e-6)               # the hose's skirt under it
+    plate = parts["divider"] & box(-200, 200, -200, 200, P.Z_BELT - 5.0, P.Z_BELT + 10) - box(-200, -30, -200, 200, P.Z_BELT - 6, P.Z_BELT)
+    assert math.isclose(plate.bounding_box().min.Z, P.Z_BELT, abs_tol=1e-6)
     assert math.isclose(bb.max.Z, P.Z_BASE_TOP + P.DIVIDER_PROUD, abs_tol=1e-6)   # proud of the rim
     assert bb.max.X <= P.shell_r(P.BASE_PROFILE, P.Z_BELT) - P.WALL - P.CLEAR + 1e-6
 

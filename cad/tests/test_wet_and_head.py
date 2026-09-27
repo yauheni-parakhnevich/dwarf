@@ -199,6 +199,24 @@ def test_a_drip_down_the_hose_goes_to_the_wet_side():
     assert P.FILLER_PASSAGE_D - P.HOSE_OD >= 3.0
 
 
+def test_the_divider_closes_round_the_hose(parts):
+    """The divider is the lid between the water and the electronics: round the hose it leaves 0.5
+    mm, with a funnel over the gap and a skirt under it that the lower flange's bore still passes."""
+    from mech.filler import passage_xy
+    from mech.torso import SKIRT_H
+    d = parts["divider"]
+    px, py = passage_xy()
+    r = P.HOSE_OD / 2
+    z0, z1 = P.Z_BELT, P.Z_BASE_TOP + P.DIVIDER_PROUD
+    assert (cyl_z(r + 0.45, z0 - SKIRT_H, z1 - 3.0, px, py) & d).volume < 1e-6          # the hose passes
+    wall = cyl_z(r + 0.8, z0 - SKIRT_H + 0.5, z1 - 3.0, px, py) - cyl_z(r + 0.55, z0 - 20, z1, px, py)
+    assert (wall & d).volume > 0.95 * wall.volume                                        # ... and 0.5 is all
+    assert (P.FILLER_DIVIDER_D - P.HOSE_OD) / 2 <= 0.5
+    funnel = cyl_z(r + 1.8, z1 - 0.5, z1 - 0.1, px, py)
+    assert (funnel & d).volume < 1e-6                                                    # the funnel's mouth
+    assert (d & parts["belt_flange_lower"]).volume < 1e-6                                # the skirt in its bore
+
+
 # --- the bottle, its cradle and the floor plate ------------------------------------------------------
 
 def test_the_bottle_sits_in_its_cradle_on_the_floor_plate(parts, placed):
