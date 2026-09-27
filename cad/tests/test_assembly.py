@@ -44,7 +44,7 @@ def fit_dir(side):
     return np.array([math.sin(th) * math.cos(az), math.sin(th) * math.sin(az), math.cos(th)])
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def world():
     """Everything, at rest, by name: printed parts, bought envelopes, shell sections."""
     iface = M.interfaces()
@@ -96,14 +96,12 @@ def test_each_step_goes_on_along_its_path(world, step):
     leaves a sliver."""
     names, rise = STEPS[step]
     index = list(STEPS).index(step)
-    moving = M.union([world[n] for n in names if n in world])
-    there = M.union(list(already(index, world).values()))
+    moving = M.manifold(M.union([world[n] for n in names if n in world]))
+    there = M.manifold(M.union(list(already(index, world).values())))
     worst = (0.0, None)
     way = WAY.get(step, np.array([0.0, 0.0, 1.0]))
     for dz in np.arange(rise, -1e-9, -STEP):
-        m = moving.copy()
-        m.apply_translation(way * float(dz))
-        v = M.overlap(m, there)
+        v = M.mvolume(moving.translate(tuple(float(c) for c in way * float(dz))), there)
         if dz < 1e-9 and v <= 5.0:
             continue       # at home it sits on its seat: the sections' own allowance for a shared face
         if v > worst[0]:

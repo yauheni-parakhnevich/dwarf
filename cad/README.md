@@ -43,7 +43,8 @@ uv venv --python 3.11 .venv-cad
 uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 
 .venv-cad/bin/python cad/build.py              # every stage, about two minutes
-.venv-cad/bin/pytest cad/tests -q              # 235 tests in eight files, about 15 minutes
+.venv-cad/bin/pytest cad/tests -q              # 235 tests in eight files, under 2 minutes: the build's final check
+.venv-cad/bin/pytest cad/tests -q -m "not slow"  # the quick suite, about 1 minute: leaves out test_wall and test_fit
 ```
 
 Blender 5.2 is driven headless from `/Applications/Blender.app`; set `BLENDER` to point
@@ -391,7 +392,8 @@ open, and the seam air all round; the head's four screws on their inserts; the u
 fixed mechanism - the xfail on the deck is gone, the deck is 5.9 mm from the unit at the nearest -
 and to its stops against the fixed shell; the jet's 3° cone clear of the beard and moustache.
 
-`test_pose.py` (22): **the whole machine posed**, pan −65, −30, 0, 30, 65 by nod −15, −8, 0, +5 -
+`test_pose.py` (22, 13 s - every pose moves Manifolds united once at rest, and the gaps are
+manifold3d's `min_gap`): **the whole machine posed**, pan −65, −30, 0, 30, 65 by nod −15, −8, 0, +5 -
 what nods, what pans, the linkage and the tube against what is fixed and against each other; the
 least gap to each neighbour at the stops; and the 2 mm seam, proved by distance from C.
 

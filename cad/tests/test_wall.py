@@ -36,8 +36,8 @@ GROWN = OUT / "cavity_grown.stl"
 OUTER = OUT / "outer.stl"
 SAMPLES = 25000
 
-pytestmark = pytest.mark.skipif(not (CAVITY.exists() and GROWN.exists() and OUTER.exists()),
-                                reason="the statue stage has not written out/statue/ yet")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(not (CAVITY.exists() and GROWN.exists() and OUTER.exists()),
+                                reason="the statue stage has not written out/statue/ yet")]
 
 
 def measure(path):

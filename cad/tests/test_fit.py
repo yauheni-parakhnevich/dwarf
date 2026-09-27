@@ -16,8 +16,8 @@ OUT = Path(__file__).resolve().parents[1] / "out" / "statue"
 CAVITY = OUT / "cavity.stl"
 FEATURES = OUT / "features.json"
 
-pytestmark = pytest.mark.skipif(not CAVITY.exists(),
-                                reason="the statue stage has not written out/statue/cavity.stl yet")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(not CAVITY.exists(),
+                                reason="the statue stage has not written out/statue/cavity.stl yet")]
 
 
 def blanks():

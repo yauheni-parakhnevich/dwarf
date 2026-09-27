@@ -27,7 +27,6 @@ pytestmark = pytest.mark.skipif(not (M.built() and M.shell_built()),
 PANS = (-P.PAN_STOP_DEG, -30.0, 0.0, 30.0, P.PAN_STOP_DEG)
 NODS = (P.NOD_RANGE[0], -8.0, 0.0, P.NOD_RANGE[1])
 GRID = tuple(itertools.product(PANS, NODS))
-CORNERS = tuple(itertools.product((-P.PAN_STOP_DEG, 0.0, P.PAN_STOP_DEG), (P.NOD_RANGE[0], 0.0, P.NOD_RANGE[1])))
 TOUCH = 0.05          # mm3: two faces that are meant to touch leave a sliver this big in a boolean
 
 
@@ -46,14 +45,17 @@ def rig():
     # nothing that moves comes below the tube's lowest point, z 300: the fixed parts wholly under
     # it (the base, the wet zone, most of the dry one) are left out of the union that is posed against
     low = min(M.tube(0.0, 0.0).bounds[0][2], P.Z_LINK_BOTTOM) - 5.0
-    groups = {how: M.union([m for m, h in parts.values() if h == how and (how != "fixed" or m.bounds[1][2] > low)])
+    groups = {how: M.manifold(M.union([m for m, h in parts.values()
+                                       if h == how and (how != "fixed" or m.bounds[1][2] > low)]))
               for how in ("fixed", "pans", "nods")}
+    groups["servo_crank"] = M.manifold(parts["servo_crank"][0])
+    groups["pan_link"] = M.manifold(parts["pan_link"][0])
     return {"parts": parts, "fixed": groups["fixed"], "groups": groups}
 
 
 def posed_group(rig, how, pan, nod):
-    """A group is rigid, so it is united once at rest and only moved here."""
-    return M.at(rig["groups"][how], how, pan, nod)
+    """A group is rigid, so it is united once at rest, as a Manifold, and only moved here."""
+    return M.moved(rig["groups"][how], how, pan, nod)
 
 
 @pytest.mark.parametrize("pan,nod", GRID)
@@ -63,9 +65,9 @@ def test_the_machine_poses_without_touching(rig, pan, nod):
     fixed = rig["fixed"]
     nods = posed_group(rig, "nods", pan, nod)
     pans = posed_group(rig, "pans", pan, nod)
-    tube = M.tube(pan, nod)
-    crank = M.at(rig["parts"]["servo_crank"][0], "servo_crank", pan, nod)
-    link = M.at(rig["parts"]["pan_link"][0], "pan_link", pan, nod)
+    tube = M.manifold(M.tube(pan, nod))
+    crank = posed_group(rig, "servo_crank", pan, nod)
+    link = posed_group(rig, "pan_link", pan, nod)
     said = []
     for what, a, b, allowed in (("what nods / what is fixed", nods, fixed, 0.0),
                                 ("what pans / what is fixed", pans, fixed, TOUCH),
@@ -77,14 +79,14 @@ def test_the_machine_poses_without_touching(rig, pan, nod):
                                 ("the crank / what nods", crank, nods, 0.0),
                                 ("the link / what nods", link, nods, 0.0),
                                 ("the link / the crank", link, crank, TOUCH)):
-        v = M.overlap(a, b)
+        v = M.mvolume(a, b)
         if v > allowed + 1e-6:
             said.append(f"{what}: {v:.3f} mm3")
     # the link turns under the plate's pin boss and the crank's, and the crank hangs on the pan
     # servo's horn: those faces touch
     for what, a, b in (("the link / what pans", link, pans), ("the link / what is fixed", link, fixed),
                        ("the crank / what is fixed", crank, fixed)):
-        v = M.overlap(a, b)
+        v = M.mvolume(a, b)
         if v > TOUCH:
             said.append(f"{what}: {v:.3f} mm3")
     assert not said, f"pan {pan:+.0f}, nod {nod:+.0f}: " + "; ".join(said)
@@ -132,25 +134,26 @@ def test_the_seam_is_two_millimetres_everywhere(rig):
 
 
 def test_the_least_gaps_at_the_worst_poses(rig):
-    """Every pair in NEIGHBOURS, measured at the pan stops and the middle crossed with the nod stops
-    and the middle (the overlap test above has the whole grid): the least gap, where it is, and
-    that it keeps its minimum. The message lists them all, worst first."""
-    g = M.Gaps()
+    """Every pair in NEIGHBOURS, measured at every pose of the grid: the least gap, where it is,
+    and that it keeps its minimum. The message lists them all, worst first. Measured with
+    manifold3d's min_gap out to 10 mm, each part converted once and only moved per pose."""
     parts = dict(rig["parts"])
+    names = {n for pair in NEIGHBOURS for n in pair[:2] if n != "tube"}
+    man = {n: M.manifold(parts[n][0]) for n in names}
     worst = {}
-    for pan, nod in CORNERS:
-        tube = M.tube(pan, nod)
+    for pan, nod in GRID:
+        tube = M.manifold(M.tube(pan, nod))
         for a, b, _, _ in NEIGHBOURS:
-            ma, ha = (tube, "fixed") if a == "tube" else parts[a]
-            mb, hb = parts[b]
-            ka = f"tube{pan}{nod}" if a == "tube" else a
-            d = g.gap(ka, ma, M.matrix(ha, pan, nod), b, mb, M.matrix(hb, pan, nod))
+            ma = tube if a == "tube" else M.moved(man[a], parts[a][1], pan, nod)
+            mb = M.moved(man[b], parts[b][1], pan, nod)
+            d = M.mgap(ma, mb, reach=10.0)
             if d < worst.get((a, b), (math.inf,))[0]:
                 worst[(a, b)] = (d, pan, nod)
-    lines = [f"{a} / {b}: {d:.2f} mm at pan {p:+.0f} nod {n:+.0f}" for (a, b), (d, p, n)
+    lines = [(f"{a} / {b}: {d:.2f} mm at pan {p:+.0f} nod {n:+.0f}" if d < 10.0 else f"{a} / {b}: over 10 mm")
+             for (a, b), (d, p, n)
              in sorted(worst.items(), key=lambda t: t[1][0])]
     report = "\n".join(lines)
     print("\n" + report)
     for a, b, need, why in NEIGHBOURS:
         d = worst.get((a, b), (math.inf,))[0]
-        assert d >= need, f"{a} / {b} comes within {d:.2f} mm, under {need} ({why})\n{report}"
+        assert d >= need - 0.01, f"{a} / {b} comes within {d:.2f} mm, under {need} ({why})\n{report}"

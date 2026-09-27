@@ -137,6 +137,7 @@ def at(mesh, how, pan=0.0, nod=0.0):
     return out
 
 
+@lru_cache(maxsize=None)
 def tube(pan=0.0, nod=0.0):
     from mech.nod import tube_route
     return to_mesh(tube_route(pan, nod), f"tube_{pan:+.0f}_{nod:+.0f}")
@@ -203,3 +204,28 @@ class Gaps:
             _, d, _ = self.query(kq, q).on_surface(near)
             best = min(best, float(d.min()))
         return best
+
+
+def manifold(mesh):
+    """A trimesh as a manifold3d Manifold, for fast booleans and gaps (its own BVH)."""
+    import manifold3d as mf
+    m = mf.Manifold(mf.Mesh(vert_properties=np.asarray(mesh.vertices, np.float32),
+                            tri_verts=np.asarray(mesh.faces, np.uint32)))
+    if m.status() != mf.Error.NoError:
+        raise ValueError(f"not a manifold: {m.status()}")
+    return m
+
+
+def moved(man, how, pan=0.0, nod=0.0):
+    """A Manifold carried to a pose, the way at() carries a mesh."""
+    return man.transform(matrix(how, pan, nod)[:3, :].astype(np.float32).tolist())
+
+
+def mgap(a, b, reach=40.0):
+    """The least distance between two Manifolds, capped at `reach` (0 if they touch)."""
+    return float(a.min_gap(b, reach))
+
+
+def mvolume(a, b):
+    """The volume two Manifolds share."""
+    return float((a ^ b).volume())
