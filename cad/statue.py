@@ -729,6 +729,156 @@ def collar_height(skin):
     return float(zs[over[0]])
 
 
+RIM_STEP = 0.5                   # the rim's grid about C, in degrees of azimuth and of polar angle
+RIM_BLUR = 1.5                   # mm over which the rim's cut is feathered into the grid
+
+
+def polar(mesh, thetas, phi, reach):
+    """Every crossing of `mesh` along the rays from C at polar angles `thetas` in the vertical
+    half-plane at azimuth `phi`, and each ray point's in-plane distance to the section at `reach`.
+
+    One `mesh_plane` per azimuth and then 2D algebra, as `rays` does horizontally; a ray from C
+    stays in its own vertical plane, so this is exact for the direction and only the distance
+    (the thickness) is the in-plane one - never less than the true one.
+    """
+    a = math.radians(phi)
+    segs = trimesh.intersections.mesh_plane(mesh, (-math.sin(a), math.cos(a), 0.0),
+                                            (0.0, 0.0, P.Z_NOD))
+    segs = np.asarray(segs)
+    if not len(segs):
+        return [np.zeros(0)] * len(thetas), np.full(len(thetas), np.inf)
+    rho = segs[..., 0] * math.cos(a) + segs[..., 1] * math.sin(a)
+    q = np.stack([rho, segs[..., 2] - P.Z_NOD], axis=-1)            # (k, 2, 2) in (rho, h)
+    th = np.radians(thetas)
+    d = np.stack([np.sin(th), np.cos(th)], axis=1)
+    s0, e = q[:, 0], q[:, 1] - q[:, 0]
+    den = d[:, None, 0] * e[None, :, 1] - d[:, None, 1] * e[None, :, 0]
+    ok = np.abs(den) > 1e-12
+    w = np.where(ok, den, 1.0)
+    t = (s0[None, :, 0] * e[None, :, 1] - s0[None, :, 1] * e[None, :, 0]) / w
+    u = (s0[None, :, 0] * d[:, None, 1] - s0[None, :, 1] * d[:, None, 0]) / w
+    hit = ok & (t > 1e-9) & (u >= 0.0) & (u <= 1.0)
+    out = [np.sort(t[i][hit[i]]) for i in range(len(th))]
+    pt = d * reach
+    ll = np.maximum(np.einsum("ij,ij->i", e, e), 1e-12)
+    f = np.clip(np.einsum("tkj,kj->tk", pt[:, None, :] - s0[None], e) / ll, 0.0, 1.0)
+    foot = s0[None] + f[..., None] * e[None]
+    near = np.linalg.norm(pt[:, None, :] - foot, axis=2).min(axis=1)
+    return out, near
+
+
+def star(radius, thetas, phis):
+    """A closed star-shaped solid about C: `radius[i, j]` along azimuth phis[i], polar thetas[j],
+    a pole at radius[:, 0].mean() and a fan from the last ring down to C itself. Every such mesh
+    is watertight by construction, whatever the radii, which is why the rim is built this way
+    rather than by extruding a patch of faces."""
+    c = np.array([0.0, 0.0, P.Z_NOD])
+    ph, th = np.radians(phis), np.radians(thetas)
+    dirs = np.stack([np.sin(th)[None, :] * np.cos(ph)[:, None],
+                     np.sin(th)[None, :] * np.sin(ph)[:, None],
+                     np.broadcast_to(np.cos(th)[None, :], (len(ph), len(th)))], axis=-1)
+    v = c + dirs * radius[..., None]
+    n_p, n_t = radius.shape
+    verts = np.vstack([v.reshape(-1, 3), [c + (0, 0, radius[:, 0].mean())], [c]])
+    top, bot = n_p * n_t, n_p * n_t + 1
+    idx = lambda i, j: (i % n_p) * n_t + j
+    f = []
+    for i in range(n_p):
+        f.append([top, idx(i, 0), idx(i + 1, 0)])
+        for j in range(n_t - 1):
+            f += [[idx(i, j), idx(i, j + 1), idx(i + 1, j + 1)], [idx(i, j), idx(i + 1, j + 1), idx(i + 1, j)]]
+        f.append([idx(i, n_t - 1), bot, idx(i + 1, n_t - 1)])
+    m = trimesh.Trimesh(vertices=verts, faces=np.array(f), process=False)
+    if m.volume < 0:
+        m.invert()
+    return m
+
+
+def rim(skin, cavity):
+    """Where the unit leaves the sphere, and how its edge there is made printable.
+
+    The sphere cuts the statue's skin at a shallow angle round the nape and behind the ears,
+    and there the unit's edge came out as a feather - a skirt of skin thinner than any nozzle
+    lays - and the hair strands the sphere crossed came out as loose tongues. On a grid about C
+    every RIM_STEP degrees this finds, at radius R, the directions where the unit's material is
+    thinner than WALL_MIN (the feather) or part of a region narrower than RIM_MIN_W across (the
+    tongues), and cuts the unit back along those rays to just past the skin. What is left meets
+    the sphere with at least WALL_MIN of wall, and that edge is then given a flange RIM_FLANGE_T
+    thick lying on the sphere, RIM_FLANGE_W wide, turned inward over the cavity - so the edge
+    prints as a border and not a knife, and water running off the hair leaves at the outside.
+
+    Returns the cutter (a star about C, radius R except along the cut rays) and the flange.
+    """
+    r = P.NECK_SPHERE_R
+    thetas = np.arange(RIM_STEP, math.degrees(math.acos((P.Z_BEARD_BOT - 4.0 - P.Z_NOD) / r)), RIM_STEP)
+    phis = np.arange(0.0, 360.0, RIM_STEP)
+    keep = lambda m: m.submesh([np.flatnonzero(np.linalg.norm(
+        m.triangles_center - (0.0, 0.0, P.Z_NOD), axis=1) < r + 25.0)], append=True)
+    sk, cv = keep(skin), keep(cavity)
+    shape = (len(phis), len(thetas))
+    ins, inc, exitr, thick = (np.zeros(shape, bool), np.zeros(shape, bool),
+                              np.full(shape, np.inf), np.full(shape, np.inf))
+    for i, ph in enumerate(phis):
+        ts, near = polar(sk, thetas, ph, r)
+        tc, _ = polar(cv, thetas, ph, r)
+        for j in range(len(thetas)):
+            ins[i, j] = (ts[j] < r).sum() % 2 == 0      # C is inside the skin and the cavity
+            inc[i, j] = (tc[j] < r).sum() % 2 == 0      # both, so an even count is inside
+            beyond = ts[j][ts[j] > r]
+            exitr[i, j] = beyond[0] if len(beyond) else np.inf
+        thick[i] = near
+    z = P.Z_NOD + r * np.cos(np.radians(thetas))[None, :] * np.ones(shape)
+    unit = ins & (z >= P.Z_BEARD_BOT)                  # the statue at radius R, above the bottom
+    wall = unit & ~inc                                 # ... and there solid, not cavity
+    thin = wall & (thick < P.WALL_MIN)
+    ph, th = np.radians(phis), np.radians(thetas)
+    pts = r * np.stack([np.sin(th)[None, :] * np.cos(ph)[:, None],
+                        np.sin(th)[None, :] * np.sin(ph)[:, None],
+                        np.broadcast_to(np.cos(th)[None, :], shape)], axis=-1).reshape(-1, 3)
+    tree = cKDTree(pts)
+    def grow(mask, rad):
+        m = mask.ravel()
+        hit = tree.query_ball_point(pts[m], rad, return_sorted=False)
+        out = np.zeros(len(pts), bool)
+        out[np.fromiter((k for h in hit for k in h), int)] = True
+        return out.reshape(shape)
+    half = P.RIM_MIN_W / 2
+    opened = grow(~grow(~unit, half) & unit, half) & unit  # erode then dilate: an opening
+    drop = (unit & ~opened) | thin
+    # A cutter that jumps from R to past the skin between one grid point and the next leaves a
+    # sawtooth at the grid's pitch along the edge. The mask is blurred over RIM_BLUR first, so the
+    # cutter ramps across several points and the edge follows a smooth contour of it instead.
+    near = tree.query_ball_point(pts, RIM_BLUR, return_sorted=False)
+    wgt = drop.ravel().astype(float)
+    for _ in range(2):
+        wgt = np.array([wgt[h].mean() for h in near])
+    wgt = np.clip(2.0 * wgt.reshape(shape), 0.0, 1.0)
+    target = np.where(np.isfinite(exitr), exitr + 1.0, r + 15.0)
+    cutr = r + wgt * (np.minimum(target, r + 15.0) - r)
+    lip = grow(wall & ~drop, P.RIM_FLANGE_W) & unit & ~drop
+    lipr = np.where(lip, r + P.RIM_FLANGE_T, r - 1.0)
+    # the stars close with a fan from their last ring to C, so a ring that is not at R would
+    # leave a sliver inside the ball: the last ring is under Z_BEARD_BOT anyway, and stays plain
+    lipr[:, -1], cutr[:, -1] = r - 1.0, r
+    print(f"statue rim      {thin.sum()} directions of feather under {P.WALL_MIN} mm and "
+          f"{(unit & ~opened).sum()} of tongues under {P.RIM_MIN_W:.0f} mm cut back; "
+          f"flange on {lip.sum()} ({P.RIM_FLANGE_W:.0f} x {P.RIM_FLANGE_T} mm), "
+          f"grid {RIM_STEP:.0f} deg = {math.radians(RIM_STEP) * r:.1f} mm at R")
+    return star(cutr, thetas, phis), star(lipr, thetas, phis), star(np.full(shape, r), thetas, phis)
+
+
+def chamfer(r0, z0, deg, rim=300.0):
+    """The solid under a cone about Z that runs down and out from (r0, z0) at `deg` below the
+    horizontal - the coat's top edge, sloped down from the socket instead of stepped."""
+    a = math.radians(deg)
+    za = z0 - (rim - r0) * math.tan(a)
+    prof = np.array([[0.0, -5.0], [rim, -5.0], [rim, za], [r0, z0], [0.0, z0]])
+    m = trimesh.creation.revolve(prof, sections=256)
+    if m.volume < 0:
+        m.invert()
+    return m
+
+
 def parting(skin, cavity, shell):
     """Cut the statue into the fixed coat and the turning unit on the sphere about C.
 
@@ -744,25 +894,69 @@ def parting(skin, cavity, shell):
     zb, gap = P.Z_BEARD_BOT, P.TURN_GAP
     ro = P.NECK_SPHERE_R - gap                          # the coat may not pass this
     ri = ro - P.WALL                                    # the bib's inner face
-    # The ball's own top is up inside the head (z Z_NOD + r), and `skin` is a solid, so a plain
-    # intersection would hand the coat a spherical cap of the head's inside. The coat is cut off
-    # TURN_GAP under the collar instead, which at the nape is exactly where the sphere leaves
-    # the skin anyway, and everywhere else is deep inside the turning unit and never seen.
+    # The ball's own top is up inside the head, and `skin` is a solid, so the band under the
+    # collar is cut off at the collar and the dome over it is added separately, as a shell.
     lid = P.Z_COLLAR - gap
     above = box((-FAR, -FAR, zb - gap), (FAR, FAR, lid))
     bib = wedge(P.BEARD_AZ, zb - gap, lid)
-    bo, bi, bm = ball(ro), ball(ri), ball(P.NECK_SPHERE_R)
+    bo, bi = ball(ro), ball(ri)
+    # Below the seam the coat keeps its skin, but its top edge is sloped down from the socket at
+    # SEAM_CHAMFER_DEG instead of stepping out to the skin: the step was a ledge up to 31 mm
+    # wide that every pan uncovered. The unit never comes below Z_BEARD_BOT at any pan or nod,
+    # so nothing here can reach it.
+    z0 = zb - gap
+    r0 = math.sqrt(ro ** 2 - (z0 - P.Z_NOD) ** 2)
+    k_out = chamfer(r0, z0, P.SEAM_CHAMFER_DEG)
+    k_in = chamfer(r0 - P.WALL / math.sin(math.radians(P.SEAM_CHAMFER_DEG)), z0, P.SEAM_CHAMFER_DEG)
+    low = box((-FAR, -FAR, -1.0), (FAR, FAR, z0))
     o1 = trimesh.boolean.boolean_manifold(
-        [cut(skin, (-FAR, -FAR, -1.0), (FAR, FAR, zb - gap)),
+        [trimesh.boolean.boolean_manifold([skin, low, k_out], "intersection"),
          trimesh.boolean.boolean_manifold([skin, above, bo], "intersection"),
          trimesh.boolean.boolean_manifold([bo, bib], "intersection")], "union")
     c1 = trimesh.boolean.boolean_manifold(
-        [cut(cavity, (-FAR, -FAR, -1.0), (FAR, FAR, zb - gap)),
+        [trimesh.boolean.boolean_manifold([cavity, low, k_in], "intersection"),
          trimesh.boolean.boolean_manifold([cavity, above, bi], "intersection"),
          trimesh.boolean.boolean_manifold([bi, bib], "intersection")], "union")
     fixed = trimesh.boolean.boolean_manifold([o1, c1], "difference")
-    moving = trimesh.boolean.boolean_manifold(
-        [cut(shell, (-FAR, -FAR, zb), (FAR, FAR, P.Z_TOP + 1.0)), bm], "difference")
+    chamfered = trimesh.boolean.boolean_manifold([cut(shell, (-FAR, -FAR, -1.0), (FAR, FAR, z0)),
+                                                  k_out], "difference").volume
+    # The dome: the socket closed over the top, one wall thick on the sphere, bored on the axis
+    # for the neck. A rim standing up round the bore was tried and cannot be had: the dome's
+    # outside already is the ball, so anything raised on it is outside the ball, and the sweep
+    # found a 3 mm dam 101.8 mm from C meeting the nape at pan -65, nose down 15. The bore's edge
+    # is given a drip skirt instead, hanging NECK_DAM_H under the dome inside the ball, so what
+    # does run in over the lip falls clear of the dome's underside rather than tracking along it.
+    bore = P.NECK_BORE_R
+    zc_out = P.Z_NOD + math.sqrt(ro ** 2 - bore ** 2)
+    zs_out = P.Z_NOD + math.sqrt(ro ** 2 - (bore + P.WALL) ** 2)
+    zc_in = P.Z_NOD + math.sqrt(ri ** 2 - (bore + P.WALL) ** 2)
+    dome = trimesh.boolean.boolean_manifold(
+        [trimesh.boolean.boolean_manifold([bo, bi], "difference"), skin,
+         box((-FAR, -FAR, lid - 3.0), (FAR, FAR, FAR))], "intersection")
+    dam = trimesh.boolean.boolean_manifold(
+        [cylinder(bore + P.WALL, zc_in - P.NECK_DAM_H, zs_out),
+         cylinder(bore, zc_in - P.NECK_DAM_H - 1.0, zs_out + 1.0)], "difference")
+    fixed = trimesh.boolean.boolean_manifold([fixed, dome, dam], "union")
+    fixed = trimesh.boolean.boolean_manifold([fixed, cylinder(bore, lid, FAR)], "difference")
+    print(f"statue dome     socket closed to its crown: bore r {bore:.0f} (shroud {P.SHROUD_R_OUT:.0f} "
+          f"+ 3) at z {zc_out:.1f}, drip skirt {P.NECK_DAM_H:.0f} mm under it to z "
+          f"{zc_in - P.NECK_DAM_H:.1f}; seam chamfer {P.SEAM_CHAMFER_DEG:.0f} deg from r {r0:.1f} at z {z0:.0f}, "
+          f"{chamfered / 1e3:.1f} cm3 off the coat's top edge")
+    cutter, lip, sphere_r = rim(skin, cavity)
+    unit = cut(shell, (-FAR, -FAR, zb), (FAR, FAR, P.Z_TOP + 1.0))
+    plain = trimesh.boolean.boolean_manifold([unit, sphere_r], "difference")
+    moving = trimesh.boolean.boolean_manifold([unit, cutter], "difference")
+    lost = plain.volume - moving.volume
+    band = trimesh.boolean.boolean_manifold([lip, sphere_r], "difference")
+    if len(band.faces):
+        flange = trimesh.boolean.boolean_manifold(
+            [band, skin, box((-FAR, -FAR, zb), (FAR, FAR, FAR))], "intersection")
+        # the two stars close on the same cone to C, and their difference leaves slivers along
+        # it, inside the ball: a true ball takes them out, so the flange is outside R, full stop
+        flange = trimesh.boolean.boolean_manifold([flange, ball(P.NECK_SPHERE_R)], "difference")
+        moving = trimesh.boolean.boolean_manifold([moving, flange], "union")
+    print(f"statue rim      {lost / 1e3:.1f} cm3 of feather and tongue off the unit's edge, "
+          f"{(moving.volume - plain.volume + lost) / 1e3:.1f} cm3 of flange on")
     # The flat bottom is the one face of the unit that is not on the sphere, and the coat under
     # it is outside the ball, so a nod would drive it in. The coat is not cut; the unit keeps
     # only what stays above Z_BEARD_BOT at every nod in NOD_RANGE. Pan is about Z and leaves z
@@ -826,8 +1020,8 @@ def sweep(moving, fixed):
     # how the unit's lowest edges move at the ends of the nod
     v = np.asarray(moving.vertices)
     for sign, nod, what in ((1, P.NOD_RANGE[0], "beard's bottom edge"), (-1, P.NOD_RANGE[1], "back edge")):
-        side = v[sign * v[:, 0] > 0]
-        p0 = side[np.argmin(side[:, 2])]
+        low = v[v[:, 2] < P.Z_BEARD_BOT + 30.0]
+        p0 = low[np.argmax(sign * low[:, 0])]
         p1 = turned(trimesh.Trimesh(vertices=[p0], faces=np.zeros((0, 3), int), process=False),
                     0.0, nod).vertices[0]
         print(f"       nod {nod:+.0f}: the {what} at x {p0[0]:+.0f} z {p0[2]:.0f} moves "
@@ -845,7 +1039,7 @@ def sections(fixed, moving):
     """
     RAW.mkdir(parents=True, exist_ok=True)
     py, pb, pt = P.PANEL_Y, P.PANEL_BOTTOM, P.PANEL_TOP
-    top = P.Z_COLLAR - P.TURN_GAP
+    top = P.SECTIONS_STATUE["torso"][1]
     chin = P.SECTIONS_STATUE["beard"][1]
     sides = {
         "panel_left":  ((-FAR, py, P.Z_BELT), (FAR, FAR, pt)),
@@ -859,10 +1053,11 @@ def sections(fixed, moving):
         below = trimesh.boolean.boolean_manifold([below, out[name]], "difference")
     out["base_left"] = cut(below, (-FAR, KERF / 2, -1.0), (FAR, FAR, P.Z_BELT))
     out["base_right"] = cut(below, (-FAR, -FAR, -1.0), (FAR, -KERF / 2, P.Z_BELT))
-    ring = cut(fixed, (-FAR, -FAR, P.Z_BELT), (FAR, FAR, top))
-    for name in ("panel_left", "panel_right"):
-        ring = trimesh.boolean.boolean_manifold([ring, out[name]], "difference")
-    out["torso"] = ring
+    # the ring's own region, not the coat less the panels: subtracting the panel meshes left
+    # slivers along the chamfer's faces, which coincide with theirs
+    region = trimesh.boolean.boolean_manifold(
+        [box((-FAR, -py, P.Z_BELT), (FAR, py, pt)), box((-FAR, -FAR, pt), (FAR, FAR, top))], "union")
+    out["torso"] = trimesh.boolean.boolean_manifold([fixed, region], "intersection")
     for name, (lo, hi) in {"beard": (P.Z_BEARD_BOT - 1.0, chin), "head": (chin, P.Z_HAT),
                            "hat": (P.Z_HAT, P.Z_TOP + 1.0)}.items():
         out[name] = cut(moving, (-FAR, -FAR, lo), (FAR, FAR, hi))

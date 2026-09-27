@@ -187,7 +187,8 @@ for name, (pan, nod) in {"rest": (0.0, 0.0), "pan65": (65.0, 0.0), "noddown15": 
                          "nodup5": (0.0, 5.0), "pan65_noddown15": (65.0, -15.0)}.items():
     parting(name, pan, nod, VIEWS)
 # the bib, the beard's edge and the shoulder, close up, with the head turned and nodded down
-parting("closeup", 65.0, -15.0, {"quarter": (74.0, 34.0)}, centre=(0.0, 0.0, 352.0), span=250.0)
+parting("closeup", 65.0, -15.0, {"quarter": (74.0, 34.0), "back": (74.0, 215.0)},
+        centre=(0.0, 0.0, 352.0), span=250.0)
 # and the cutaway at rest, in the existing style: the coat halved at y = 0, the unit whole over it
 parting("cutaway", 0.0, 0.0, {"side": (90.0, 0.0)}, halve_fixed=True,
         centre=(0.0, 0.0, 380.0), span=420.0)
