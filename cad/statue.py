@@ -794,7 +794,7 @@ def star(radius, thetas, phis):
     return m
 
 
-def rim(skin, cavity, protect=None):
+def rim(skin, cavity, protect=None, shield=None):
     """Where the unit leaves the sphere, and how its edge there is made printable and smooth.
 
     The sphere cuts the skin at a shallow angle round the nape and behind the ears; there the
@@ -850,6 +850,18 @@ def rim(skin, cavity, protect=None):
         near_p = cKDTree(u).query(grid.reshape(-1, 3), distance_upper_bound=20.0)[0].reshape(shape)
         held = thin & (near_p <= 6.0)
         thin = thin & ~held
+    guard = np.zeros(shape, bool)
+    if shield is not None and len(shield):
+        # directions through which the finished unit was found open (see `holes_from_c`): the
+        # cut is kept off them, and thin skin there is lifted to a wall
+        u = (shield - (0.0, 0.0, P.Z_NOD))
+        u = r * u / np.linalg.norm(u, axis=1)[:, None]
+        grid = r * np.stack([np.sin(np.radians(thetas))[None, :] * np.cos(np.radians(phis))[:, None],
+                             np.sin(np.radians(thetas))[None, :] * np.sin(np.radians(phis))[:, None],
+                             np.broadcast_to(np.cos(np.radians(thetas))[None, :], shape)], axis=-1)
+        guard = (cKDTree(u).query(grid.reshape(-1, 3), distance_upper_bound=20.0)[0] <= 4.0).reshape(shape)
+        held = held | (thin & guard)
+        thin = thin & ~guard
     foot = unit & ~thin
     ph, th = np.radians(phis), np.radians(thetas)
     pts = r * np.stack([np.sin(th)[None, :] * np.cos(ph)[:, None],
@@ -930,7 +942,7 @@ def rim(skin, cavity, protect=None):
     # the bridge under the moustache that holds the beard's two halves together - survives.
     reach = dist(must).reshape(shape)
     taper = np.clip((10.0 - reach) / 4.0, 0.0, 1.0)
-    w = np.clip(0.5 - f / P.RIM_RAMP, 0.0, 1.0) * unit * np.maximum(taper, must)   # 1 = cut
+    w = np.clip(0.5 - f / P.RIM_RAMP, 0.0, 1.0) * unit * np.maximum(taper, must) * ~guard   # 1 = cut
     # The smoothing may not cut a piece off: where it has - the beard's centre lock hangs from
     # the moustache by a bridge narrower than the inset - the plain cut, which only takes what
     # the filters dropped, is put back round that piece.
@@ -964,7 +976,10 @@ def rim(skin, cavity, protect=None):
     kept = unit & (w < 0.5)
     # the flange's width follows the smoothed edge too, not the grid's cells: its mask is blurred
     # like the cut's field before it is turned into a radius
-    near_wall = (dist(kept & ~inc) <= P.RIM_FLANGE_W).reshape(shape) & unit
+    # the flange stands only where the skin is a full flange beyond the sphere: nearer the
+    # crossing the skin would clip it thinner - 1.0 mm at the nape's shallow edge - and there the
+    # unit's own wall, never under RIM_MIN_T, is the edge
+    near_wall = (dist(kept & ~inc) <= P.RIM_FLANGE_W).reshape(shape) & unit & (exitr >= r + P.RIM_FLANGE_T + 0.3)
     soft = np.clip(2.0 * gaussian_filter(near_wall.astype(float), (sig[0] * 0.5, sig[1] * 0.5),
                                          mode=("wrap", "nearest")), 0.0, 1.0) * unit
     lipr = np.where(soft * (1.0 - w) >= 0.5, r + P.RIM_FLANGE_T, r - 1.0)   # constant section
@@ -1158,6 +1173,43 @@ def tongues(unit):
     return cutters, found
 
 
+def holes_from_c(unit, skin, grace=12.0):
+    """Directions from C, every degree, that leave the statue through the turning unit where the
+    unit's own material walls them in on every side - holes, as against the unit's edge, which
+    borders the coat's ground. The same question test_wall asks; asked here so it is answered
+    before anything is written. Returns points at radius R in those directions."""
+    from scipy.ndimage import binary_fill_holes
+    thetas = np.arange(1.0, 120.0, 1.0)
+    phis = np.arange(0.0, 360.0, 1.0)
+    r = P.NECK_SPHERE_R
+    hit = np.zeros((len(phis), len(thetas)), bool)
+    excused = np.zeros_like(hit)
+    trims = [math.radians(-n) for n in np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 1.0)]
+    for i, ph in enumerate(phis):
+        tu, _ = polar(unit, thetas, ph, r)
+        ts, _ = polar(skin, thetas, ph, r)
+        a = math.radians(ph)
+        for j, th in enumerate(np.radians(thetas)):
+            if not len(ts[j]):
+                excused[i, j] = True
+                continue
+            t_exit = ts[j][0]
+            hit[i, j] = len(tu[j]) and tu[j][0] <= t_exit + grace
+            if not hit[i, j]:
+                rho, h = t_exit * math.sin(th), t_exit * math.cos(th)
+                x = rho * math.cos(a)
+                excused[i, j] = (t_exit < r + 0.3 or h + P.Z_NOD < P.Z_BEARD_BOT + 0.5 or
+                                 any(-x * math.sin(t) + h * math.cos(t) + P.Z_NOD < P.Z_BEARD_BOT
+                                     for t in trims) or
+                                 (abs(rho * math.sin(a)) < 3.0 and abs(h + P.Z_NOD - P.Z_MOUTH) < 5.0))
+    tiled = np.vstack([hit, hit, hit])
+    holes = binary_fill_holes(tiled)[len(phis):2 * len(phis)] & ~hit & ~excused
+    ii, jj = np.nonzero(holes)
+    th, ph = np.radians(thetas[jj]), np.radians(phis[ii])
+    return np.stack([r * np.sin(th) * np.cos(ph), r * np.sin(th) * np.sin(ph),
+                     P.Z_NOD + r * np.cos(th)], axis=1)
+
+
 def parting(skin, cavity, shell):
     """Cut the statue into the fixed coat and the turning unit on the sphere about C.
 
@@ -1209,8 +1261,11 @@ def parting(skin, cavity, shell):
     up = box((-FAR, -FAR, z0), (FAR, FAR, FAR))
     outer_up = trimesh.boolean.boolean_manifold(
         [bo, up, trimesh.boolean.boolean_manifold([skin, bib], "union")], "intersection")
-    hollow = trimesh.boolean.boolean_manifold(
-        [cavity, bib, cut(skin, (-FAR, -FAR, lid - 3.0), (FAR, FAR, FAR))], "union")
+    # Inside, the cavity: wherever the skin is inside the sphere - between the hair locks at the
+    # nape - the collar is then the skin walled in as everywhere else. It used to be the ball
+    # itself above the collar's height, which left nothing where the skin dips under the inner
+    # sphere: four through-slots at the nape, z 402..406, just under the unit's rim.
+    hollow = trimesh.boolean.boolean_manifold([cavity, bib], "union")
     inner_up = trimesh.boolean.boolean_manifold([bi, up, hollow], "intersection")
     fixed_up = trimesh.boolean.boolean_manifold([outer_up, inner_up], "difference")
     bore = P.NECK_BORE_R
@@ -1262,6 +1317,33 @@ def parting(skin, cavity, shell):
             [trimesh.boolean.boolean_manifold(added, "union"), sphere_r,
              ball(P.NECK_SPHERE_R - 0.5)], "difference")
         moving = trimesh.boolean.boolean_manifold([moving, extra], "union")
+    shut = holes_from_c(moving, skin)
+    shields = np.zeros((0, 3))
+    for attempt in range(5):
+        if not len(shut):
+            break
+        shields = np.vstack([shields, shut])
+        print(f"statue holes    {len(shut)} directions from C open through the unit: cut again "
+              f"shielding {len(shields)}")
+        cutter, lip, lifter, sphere_r, rep = rim(skin, cavity, np.vstack([b.vertices for b in loose])
+                                                 if loose else None, shields)
+        moving = trimesh.boolean.boolean_manifold([unit, cutter], "difference")
+        lost = plain.volume - moving.volume
+        added = []
+        band = trimesh.boolean.boolean_manifold([lip, sphere_r], "difference")
+        if len(band.faces):
+            added.append(trimesh.boolean.boolean_manifold([band, skin, above_b], "intersection"))
+        raised = trimesh.boolean.boolean_manifold([lifter, sphere_r], "difference")
+        if len(raised.faces):
+            added.append(trimesh.boolean.boolean_manifold([raised, above_b], "intersection"))
+        before = moving.volume
+        if added:
+            extra = trimesh.boolean.boolean_manifold(
+                [trimesh.boolean.boolean_manifold(added, "union"), sphere_r,
+                 ball(P.NECK_SPHERE_R - 0.5)], "difference")
+            moving = trimesh.boolean.boolean_manifold([moving, extra], "union")
+        shut = holes_from_c(moving, skin)
+    print(f"statue holes    {len(shut)} directions from C open through the unit")
     cutters, found = tongues(moving)
     if cutters:
         before_t = moving.volume
@@ -1378,6 +1460,28 @@ def sections(fixed, moving):
     for name, (lo, hi) in {"beard": (P.Z_BEARD_BOT - 1.0, chin), "head": (chin, P.Z_HAT),
                            "hat": (P.Z_HAT, P.Z_TOP + 1.0)}.items():
         out[name] = cut(moving, (-FAR, -FAR, lo), (FAR, FAR, hi))
+    # A cut plane that grazes a wall - the hat's at z 500 runs along the brim's underside - leaves
+    # scraps on the wrong side of it, cut off from their own section but joined to the next one
+    # across the plane. `tidy` would drop them as crumbs and leave a hole in the brim; they go to
+    # the section they touch instead.
+    for group in (("beard", "head", "hat"), ("torso", "collar")):
+        for name in group:
+            pieces = sorted(out[name].split(only_watertight=False), key=lambda m: -abs(m.volume))
+            if len(pieces) < 2:
+                continue
+            out[name] = pieces[0]
+            for bit in pieces[1:]:
+                if abs(bit.volume) < 1e-3:
+                    continue
+                near = {o: float(trimesh.proximity.closest_point(out[o], bit.vertices[:200])[1].min())
+                        for o in group if o != name}
+                to = min(near, key=near.get)
+                if near[to] < 0.05:
+                    out[to] = trimesh.boolean.boolean_manifold([out[to], bit], "union")
+                    print(f"statue scraps   {abs(bit.volume):.0f} mm3 of {name} at z "
+                          f"{bit.bounds[0][2]:.0f}..{bit.bounds[1][2]:.0f} goes to {to}, which it touches")
+                else:
+                    out[name] = trimesh.boolean.boolean_manifold([out[name], bit], "union")
     glue = cut(moving, (-FAR, -FAR, chin - 0.5), (FAR, FAR, chin + 0.5)).volume
     print(f"statue glue     the beard meets the head at z {chin:.0f} over "
           f"{glue:.0f} mm2 of face (a 1 mm slice of the unit, by volume)")

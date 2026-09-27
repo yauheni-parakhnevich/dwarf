@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import params as P
-from statue import GROW
+from statue import GROW, KERF
 
 OUT = Path(__file__).resolve().parents[1] / "out" / "statue"
 CAVITY = OUT / "cavity.stl"
@@ -197,6 +197,12 @@ def parts():
     _, dc, _ = trimesh.proximity.closest_point(cavity, pts)
     wall = clear & (dc < 0.05)
     _, dskin, _ = trimesh.proximity.closest_point(skin, pts[wall])
+    # the unit's faces on the sphere - its back and the flange - are sampled on their own, one
+    # sample per square millimetre, so a narrow band along the rim is not missed between samples
+    fc = unit.triangles_center
+    on_face = np.abs(np.linalg.norm(fc - C, axis=1) - P.NECK_SPHERE_R) < 0.05
+    sph = unit.submesh([np.flatnonzero(on_face)], append=True)
+    pts, _ = trimesh.sample.sample_surface_even(sph, int(sph.area), seed=7)
     d = np.linalg.norm(pts - C, axis=1)
     on = _inside_face(unit, pts, d, P.NECK_SPHERE_R)
     radial = (pts[on] - C) / d[on][:, None]
@@ -232,7 +238,218 @@ def test_almost_none_of_the_partings_walls_is_thin(parts, region):
 
 def test_the_partings_walls_are_what_they_were_drawn(parts):
     """The ordinary wall, the socket and the flange are drawn one wall thick; the unit's back is
-    the beard standing proud of the sphere, which is thicker than a wall wherever it is kept."""
+    the beard standing proud of the sphere, never under a wall where it is kept - and where the
+    skin was lifted it is exactly one, so its median is held to the same 0.15 as the others."""
     for region, want in (("unit_wall", P.WALL), ("socket", P.WALL), ("flange", P.RIM_FLANGE_T)):
         assert abs(float(np.median(parts[region])) - want) <= 0.15, _report(region, parts[region])
-    assert np.median(parts["unit_back"]) >= P.WALL, _report("unit_back", parts["unit_back"])
+    assert np.median(parts["unit_back"]) >= P.WALL - 0.15, _report("unit_back", parts["unit_back"])
+
+
+# --- the backstop: rays that find holes ---------------------------------------------------------
+#
+# The thickness tests above sample surfaces, and a sample only exists where there is surface: a
+# slot where the wall is simply missing has no samples to be thin, and the tests above cannot see
+# it. That is how four through-slots at the nape went unnoticed. So rays are cast from inside and
+# must be stopped before they leave the statue's skin:
+#
+#   * from the pan axis, every 2 mm from z 245 to 430, every degree of azimuth, level and at
+#     +-20 degrees, against every shell section as assembled (fixed and turning, at rest);
+#   * from C, every degree of azimuth and of polar angle, against the turning unit alone.
+#
+# A ray passes if it meets a shell before it has gone RAY_GRACE past the point where it leaves the
+# sculpt's skin: the bib is filled out to the socket's sphere over the beard's central groove, up
+# to 11 mm proud of the skin there, and the lifted pinholes up to 3 mm. It is excused if it leaves through a
+# designed opening, named in OPENINGS below with its reason. What this does not see: a hole
+# smaller than the ray spacing (2 mm and 1 degree), and anything in a direction the rays do not
+# go - under z 245, and from C below the unit's rim, which is the coat's business and the first
+# sweep's.
+
+import json
+
+STL = OUT.parent / "stl"
+RAY_GRACE = 12.0
+FIXED = ("torso", "collar", "panel_left", "panel_right", "hand_left", "hand_right",
+         "base_left", "base_right")
+
+
+def _piece(name):
+    import trimesh
+    for p in (STL / f"{name}.stl", RAW / f"{name}.stl"):
+        if p.exists():
+            return trimesh.load_mesh(str(p))
+    return None
+
+
+def _unit_pieces():
+    got = [m for m in (_piece("beard_left"), _piece("beard_right")) if m is not None]
+    if not got:
+        got = [_piece("beard")]
+    return got + [_piece("head"), _piece("hat")]
+
+
+def _plane_segments(meshes, phi, centre_z):
+    """Every mesh's section by the vertical half-plane at azimuth `phi`, in (rho, z - centre_z)."""
+    import trimesh
+    a = math.radians(phi)
+    out = []
+    for m in meshes:
+        s = trimesh.intersections.mesh_plane(m, (-math.sin(a), math.cos(a), 0.0), (0.0, 0.0, centre_z))
+        s = np.asarray(s)
+        if len(s):
+            rho = s[..., 0] * math.cos(a) + s[..., 1] * math.sin(a)
+            out.append(np.stack([rho, s[..., 2] - centre_z], axis=-1))
+    return np.concatenate(out) if out else np.zeros((0, 2, 2))
+
+
+def _first_hits(segs, origins, dirs):
+    """For 2D rays, the distance to the first crossing of `segs` (inf if none)."""
+    if not len(segs):
+        return np.full(len(origins), np.inf)
+    a, e = segs[:, 0], segs[:, 1] - segs[:, 0]
+    oa = a[None] - origins[:, None]
+    den = dirs[:, None, 0] * e[None, :, 1] - dirs[:, None, 1] * e[None, :, 0]
+    ok = np.abs(den) > 1e-12
+    w = np.where(ok, den, 1.0)
+    t = (oa[..., 0] * e[None, :, 1] - oa[..., 1] * e[None, :, 0]) / w
+    u = (oa[..., 0] * dirs[:, None, 1] - oa[..., 1] * dirs[:, None, 0]) / w
+    t = np.where(ok & (t > 1e-6) & (u >= 0.0) & (u <= 1.0), t, np.inf)
+    return t.min(axis=1)
+
+
+def _holes_table():
+    """(az, z, radius) of every radial screw hole the assembler cut, from its holes.json."""
+    f = STL / "holes.json"
+    if not f.exists():
+        return []
+    out = []
+    for key, v in json.loads(f.read_text()).items():
+        az, z = (float(x) for x in key.split("@"))
+        out.append((az, z, v.get("skin", 90.0)))
+    return out
+
+
+def _opening(p, screws):
+    """Why a ray that left the skin at `p` is allowed out, or None."""
+    x, y, z = p
+    az = math.degrees(math.atan2(y, x)) % 360.0
+    for a, zz, rr in screws:
+        if abs(((az - a + 180.0) % 360.0) - 180.0) * math.pi / 180.0 * rr < 4.0 and abs(z - zz) < 4.0:
+            return "a screw hole"
+    if x > 0 and abs(y - P.CAM_Y) <= P.WINDOW_W / 2 + 2 and abs(z - (P.Z_LENS + P.WINDOW_Z_BIAS)) <= P.WINDOW_H / 2 + 2:
+        return "the camera window"
+    if x < 0 and abs(y - P.VENT_IN_Y) <= P.VENT_IN_W / 2 + 2 and abs(z - P.Z_VENT_IN) <= P.VENT_IN_H / 2 + 2:
+        return "the air intake"
+    fa = math.radians(P.FILLER_PORT_AZ)
+    port = np.array([P.FILLER_PORT_SKIN_R * math.cos(fa), P.FILLER_PORT_SKIN_R * math.sin(fa), P.FILLER_PORT_Z])
+    if np.linalg.norm(np.asarray(p) - port) <= P.FILLER_POCKET_R + 4.0:
+        return "the filler's pocket and its weep"
+    if x > 0 and abs(y) <= P.MOUTH_D / 2 + 2 and abs(z - P.Z_MOUTH) <= P.MOUTH_D / 2 + 2:
+        return "the mouth"
+    if x > 0 and abs(y) <= P.BEARD_KERF / 2 + 1.0 and P.Z_BEARD_BOT <= z <= 412.0:
+        return "the kerf between the beard's halves"
+    if abs(y) <= KERF / 2 + 0.5 and z <= P.Z_BELT:
+        return "the kerf between the base halves"
+    d = math.dist(p, C)
+    if z >= P.Z_BEARD_BOT - P.TURN_GAP - 0.5 and P.NECK_SPHERE_R - P.TURN_GAP - 0.3 <= d <= P.NECK_SPHERE_R + 0.3:
+        return "the turning gap"
+    if P.Z_BEARD_BOT - P.TURN_GAP - 0.5 <= z <= P.Z_BEARD_BOT + 0.5:
+        return "the turning gap under the unit's flat bottom"
+    return None
+
+
+def _cast(pieces, skin, origin_z, zs, angles, phis, screws, grace=RAY_GRACE):
+    """Rays from (0, 0, z) for z in zs (relative to origin_z) in directions `angles` (radians from
+    horizontal, in the vertical half-plane), every azimuth in `phis`. Returns the escapes."""
+    escapes = []
+    for phi in phis:
+        segs = _plane_segments(pieces, phi, origin_z)
+        sk = _plane_segments([skin], phi, origin_z)
+        o = np.array([(0.0, z) for z in zs for _ in angles])
+        dv = np.array([(math.cos(a), math.sin(a)) for _ in zs for a in angles])
+        t_skin = _first_hits(sk, o, dv)
+        t_hit = _first_hits(segs, o, dv)
+        bad = np.isfinite(t_skin) & (t_hit > t_skin + grace)
+        for k in np.flatnonzero(bad):
+            q = o[k] + dv[k] * t_skin[k]
+            a = math.radians(phi)
+            p = (q[0] * math.cos(a), q[0] * math.sin(a), q[1] + origin_z)
+            why = _opening(p, screws)
+            if why is None:
+                escapes.append((round(phi, 1), round(p[2], 1), p))
+    return escapes
+
+
+def _summary(esc):
+    """The escapes grouped into runs of neighbouring azimuths, as (az from..to, z from..to, count)."""
+    if not esc:
+        return "none"
+    esc = sorted(esc)
+    groups, cur = [], [esc[0]]
+    for e in esc[1:]:
+        if e[0] - cur[-1][0] <= 1.5:
+            cur.append(e)
+        else:
+            groups.append(cur)
+            cur = [e]
+    groups.append(cur)
+    return "; ".join(f"az {g[0][0]:.0f}..{g[-1][0]:.0f} z {min(x[1] for x in g):.0f}..{max(x[1] for x in g):.0f}"
+                     f" ({len(g)} rays)" for g in groups)
+
+
+def test_no_ray_from_the_axis_gets_out_of_the_statue_shut():
+    import trimesh
+    if not OUTER.exists():
+        pytest.skip("no statue")
+    pieces = [m for m in [_piece(n) for n in FIXED] + _unit_pieces() if m is not None]
+    if len(pieces) < len(FIXED) + 3:
+        pytest.skip("the statue's sections are not all built")
+    skin = trimesh.load_mesh(str(OUTER))
+    esc = _cast(pieces, skin, 0.0, np.arange(245.0, 430.1, 2.0),
+                [0.0, math.radians(20.0), math.radians(-20.0)], np.arange(0.0, 360.0, 1.0),
+                _holes_table())
+    assert not esc, f"{len(esc)} rays from the pan axis leave through the shell: {_summary(esc)}"
+
+
+def test_no_hole_in_the_turning_unit():
+    """From C, every degree of azimuth and polar angle, against the unit alone.
+
+    Along its edge the unit is cut back on purpose - skin thinner than RIM_MIN_T, the nod trim -
+    and there the socket shows through by design; a ray there leaves unmet, but its miss borders
+    the coat's ground. A hole is a miss walled in by the unit's own material on every side, as
+    the flank's pinhole was: those are what this finds. Misses on the coat's ground (the ray left
+    the statue inside the ball, below the unit's flat bottom, or through what the nod trim takes
+    off) and through designed openings (the mouth, the screw holes, the beard's kerf) do not count.
+    """
+    import trimesh
+    from scipy.ndimage import binary_fill_holes
+    if not OUTER.exists():
+        pytest.skip("no statue")
+    unit = [m for m in _unit_pieces() if m is not None]
+    skin = trimesh.load_mesh(str(OUTER))
+    screws = _holes_table()
+    polar = np.radians(np.arange(1.0, 120.0, 1.0))
+    phis = np.arange(0.0, 360.0, 1.0)
+    hit = np.zeros((len(phis), len(polar)), bool)
+    excused = np.zeros_like(hit)
+    trims = [math.radians(-n) for n in np.arange(P.NOD_RANGE[0], P.NOD_RANGE[1] + 1e-9, 1.0)]
+    for i, phi in enumerate(phis):
+        segs = _plane_segments(unit, phi, P.Z_NOD)
+        sk = _plane_segments([skin], phi, P.Z_NOD)
+        o = np.zeros((len(polar), 2))
+        dv = np.stack([np.sin(polar), np.cos(polar)], axis=1)
+        ts, th = _first_hits(sk, o, dv), _first_hits(segs, o, dv)
+        hit[i] = th <= ts + RAY_GRACE
+        a = math.radians(phi)
+        for j in np.flatnonzero(~hit[i] & np.isfinite(ts)):
+            q = dv[j] * ts[j]
+            pnt = (q[0] * math.cos(a), q[0] * math.sin(a), q[1] + P.Z_NOD)
+            coat = (math.dist(pnt, C) < P.NECK_SPHERE_R + 0.3 or pnt[2] < P.Z_BEARD_BOT + 0.5 or
+                    any(-pnt[0] * math.sin(t) + q[1] * math.cos(t) + P.Z_NOD < P.Z_BEARD_BOT for t in trims))
+            excused[i, j] = coat or _opening(pnt, screws) is not None
+        excused[i] |= ~np.isfinite(ts)
+    tiled = np.vstack([hit, hit, hit])                    # azimuth wraps round
+    walled = binary_fill_holes(tiled)[len(phis):2 * len(phis)] & ~hit
+    holes = walled & ~excused
+    found = [(float(phis[i]), float(np.degrees(polar[j]))) for i, j in zip(*np.nonzero(holes))]
+    assert not found, (f"{len(found)} directions from C leave through a hole in the turning unit, "
+                       f"(az, polar): {found[:40]}")
