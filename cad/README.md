@@ -5,30 +5,36 @@ place a dimension is written down; the mechanism is build123d, the shell is the 
 statue, and the two meet in `assemble.py`, where manifold booleans let the interface parts into
 the shell and cut the openings out of it. Nothing generated is committed.
 
-The gnome stands **700 mm**. There are **ten shell sections** and **25 mechanism parts**, three
-of which are unioned into the shell rather than printed on their own, and the stop pin prints
-twice: **33 prints** in all, none wider than the 256 mm bed. About 1.8 kg of shell and 1.1 kg of
+| | |
+|---|---|
+| ![The gnome at rest, three-quarter view: grey coat, pink head](docs/pose_rest_quarter.png) | ![The gnome with its head turned 65 degrees and nodded 15 degrees down](docs/pose_pan65_nod-15_quarter.png) |
+| At rest. Pink is what moves: beard, head and hat. | Turned +65°, nodded −15°: the collar's grey dome shows behind the beard. |
+| ![The mechanism alone at rest: cage, deck, bearing, plate, stem and spider](docs/pose_mech_rest_quarter.png) | ![Section at y = 0 through the neck at rest](docs/pose_cutaway_rest_side.png) |
+| The mechanism alone at rest: the cage, the deck with the pan servo (orange, left) and the nod servo (orange, right), the plate on its bearing, the stem and the spider, the tube in blue. | Cut at y = 0, at rest: the pin and the horn in the stem's hub at C, the stem up through the bearing, the deck and the plate to the spider, the tube in the stem, the brass nozzle in the mouth. |
+
+*Renders from `build.py preview`, reduced. The full set - `pose_*` at rest, turned, nodded and
+both, the mechanism from three sides, two cutaways and every section - is written to
+`out/preview/`, and `out/statue/preview_*.png` and `out/preview/parting_*.png` show the statue and
+its parting.*
+
+The gnome stands **700 mm**. There are **twelve shell pieces** and **28 mechanism parts**, six of
+which are unioned into the shell rather than printed on their own, and the stop pin prints twice:
+**35 prints** in all, none wider than the 256 mm bed. About 1.9 kg of shell and 0.9 kg of
 mechanism at 1.27 g/cm³.
 
-The shell is no longer sculpted. It is an image-to-3D reconstruction of the user's own garden
-gnome, hollowed to a 2.4 mm wall and cut into pieces around what has to turn: the coat's belt
-ring and the two sleeve panels stay still, and everything above the beard's bottom edge - beard,
-face, ears, hat - is one **bell** that turns on the neck shroud through ±65°. The head does not
-nod; only the nozzle tilts, on a micro servo inside the beard, and its jet leaves through the
-beard's parting under the mouth. There is no belly hatch: with the bell lifted off, the whole
-inside is open from the top.
-
-![The gnome, front and three-quarter](docs/gnome_front.png) ![](docs/gnome_iso.png)
-
-![Cutaway through the assembled gnome](docs/cutaway_iso.png) ![The mechanism alone](docs/mechanism_iso.png)
-
-*Renders from `build.py preview`, reduced. The full set is written to `out/preview/`, and
-`out/statue/preview_*.png` shows the statue, its sections and the bell on its own.*
+The shell is an image-to-3D reconstruction of the user's own garden gnome, hollowed to a 2.4 mm
+wall and parted on **one sphere**: the head pans ±65° and nods −15° (nose down) to +5° about a
+single point C = (0, 0, 350) in the neck, and a rotation about a point keeps every sphere about it.
+So the fixed coat is kept inside 98 mm of C and the turning unit - beard, head and hat - outside
+100 mm, and no pan and no nod brings them together. The coat is the belt ring and, screwed onto
+it, the **collar**: a socket closed over the top by a dome with a 55 mm bore, which the neck comes
+up through. The nozzle is fixed in the mouth; the jet goes where the head looks.
 
 **To look at the assembly in Blender:** `.venv-cad/bin/python cad/build.py scene` writes
 `out/gnome.blend` with every section and part as its own object, in collections (Shell, with the
-bell tinted apart from the fixed pieces; Mechanism split into fixed / turns with the head /
-interface; bought-part envelopes as wireframes). `open -a Blender cad/out/gnome.blend`.
+turning unit tinted apart; Mechanism split into fixed / pans with the plate / pans and nods /
+pan linkage / interface; bought-part envelopes). `POSE=65,-15` before the command poses it.
+`open -a Blender cad/out/gnome.blend`.
 
 ## Build
 
@@ -36,8 +42,8 @@ interface; bought-part envelopes as wireframes). `open -a Blender cad/out/gnome.
 uv venv --python 3.11 .venv-cad
 uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 
-.venv-cad/bin/python cad/build.py              # every stage, about a minute and a half
-.venv-cad/bin/pytest cad/tests -q              # 172 tests in six files, 60-90 s
+.venv-cad/bin/python cad/build.py              # every stage, about two minutes
+.venv-cad/bin/pytest cad/tests -q              # 235 tests in eight files, about 15 minutes
 ```
 
 Blender 5.2 is driven headless from `/Applications/Blender.app`; set `BLENDER` to point
@@ -46,23 +52,19 @@ hollowing the statue and the previews.
 
 | Stage | What it does | Time |
 |---|---|---:|
-| `mech` | build123d: every mechanism part to `out/step/` and `out/stl/`, in the frame it prints in, plus the placed `mechanism_assembly` in both formats | 5 s |
-| `statue` | the reconstruction into the project frame, hollowed in Blender, both voids cut back off the folds, measured, cut into the ten raw sections in `out/statue/raw/`, and its own previews | 60 s |
-| `assemble` | trimesh + manifold3d: interface parts clipped into the cavity and unioned in, openings cut, ten printable sections to `out/stl/` | 3 s |
-| `preview` | Blender: 38 renders to `out/preview/` — the gnome, each section, the mechanism, and a cutaway | 12 s |
-| `scene` | Blender: `out/gnome.blend`, every section and part as its own object in assembled position | 2 s |
+| `mech` | build123d: every mechanism part to `out/step/` and `out/stl/`, in the frame it prints in; the placed `mechanism_assembly`; `out/placements.json` (where each part sits and how it moves) and the bought parts' envelopes to `out/stl/bought/` with `out/bought.json` | 8 s |
+| `statue` | the reconstruction into the project frame, hollowed in Blender, both voids cut back off the folds, measured, parted on the sphere, cut into the raw sections in `out/statue/raw/`, swept through pan and nod, and its own previews | 105 s |
+| `assemble` | trimesh + manifold3d: interface parts clipped into the cavity and unioned in, openings and screw holes cut, the beard split in two, twelve printable sections to `out/stl/`, and `out/stl/holes.json` - every radial hole's measured skin and insert floor | 6 s |
+| `preview` | Blender: the posed renders and every section to `out/preview/` | 20 s |
+| `scene` | Blender: `out/gnome.blend`, every section and part as its own object, posed | 3 s |
 
-That is about a minute and a half on an idle machine — 82 s measured — and the `statue` stage is
-three quarters of it, most of that the two keep-out passes that cut the folds out of the voids.
-With other work running the whole build has been measured at two and a half minutes.
-Stages can be named individually and run in any order, as long as `mech` and `statue` have run
-before `assemble`. The tests that need built files skip themselves when there are none. The
-`shell` stage is still in the list and does nothing: it says so and points here.
+That is 2:07 measured for the whole build. Stages can be named individually and run in any order,
+as long as `mech` and `statue` have run before `assemble`. The tests that need built files skip
+themselves when there are none. The `shell` stage is still in the list and does nothing.
 
 A Blender script that raises still exits 0 - Blender prints the traceback and quits happily - so
 the stages that drive it delete what each script owns before running it and check afterwards
-that it came back, by name and by mtime. A broken run fails the build instead of quietly leaving
-yesterday's mesh for everything downstream to validate.
+that it came back, by name and by mtime.
 
 ## The statue
 
@@ -111,8 +113,11 @@ What that stage does, in order:
    cavity's reach from the pan axis every 5 mm in five directions, and the two trouser legs'
    centres and free radius at `Z_FLOOR − 50`. **Everything else reads that file rather than
    guessing at the skin**, including the layout tests and the pump and valve brackets.
-5. **Cut.** The ten raw sections, and the bell is turned through its stops against the fixed
-   pieces every 5° to prove it does not touch them.
+5. **Cut.** The raw sections - two base halves, two mitten caps, the belt ring, the collar, two
+   sleeve panels, beard, head, hat - and the turning unit is swept through pan ±65 by nod −15..+5
+   against the fixed pieces to prove it touches none of them. Then `socket()` publishes the
+   inside of the ring's top, the collar, the beard's top and the head's bottom into
+   `features.json`, which the deck, the collar's tabs and the beard's tongues are sized from.
 
 Every mesh it writes is read back from its own file and re-checked before the stage goes on: an
 STL has no vertex identity, so a boolean that leaves two vertices in one place makes a solid
@@ -125,387 +130,300 @@ rebuild, and only then print anything that has to fit it.
 
 | Parameter | Measure |
 |---|---|
-| `CAN_THREAD_PITCH`, `CAN_THREAD_LEN`, `CAN_NECK_ID` | **first, before anything else.** 3.0 mm, 12 mm and 30 mm are guesses, and the tank head's thread is cut to them: if the bottle's pitch is 4 or 6 the head does not screw on at all and no amount of sanding fixes a wrong pitch. Measure the bottle's neck — thread pitch, how far the thread runs down, the bore through it — and **print `tank_head` first as the coupon**, before the divider or anything else that takes a day |
-| `BOTTLE`, `BOTTLE_SHOULDER_H`, `BOTTLE_SHOULDER_IN`, `BOTTLE_THREAD_MAJOR` | the 1 L rectangular bottle lying on its wide face, **and the taper of its shoulder**: its shoulder corners pass the coat's wall with about 2.5 mm at both ends. A squarer bottle does not go in |
-| `PUMP`, `PUMP_FEET` | the micro diaphragm pump's body and the pitch of its feet — it stands in the left trouser leg, hanging under the floor plate |
+| `CAN_THREAD_PITCH`, `CAN_THREAD_LEN`, `CAN_NECK_ID` | **first, before anything else.** 3.0 mm, 12 mm and 30 mm are guesses, and the tank head's thread is cut to them. Measure the bottle's neck and **print `tank_head` first as the coupon** |
+| `BOTTLE`, `BOTTLE_SHOULDER_H`, `BOTTLE_SHOULDER_IN`, `BOTTLE_THREAD_MAJOR` | the 1 L rectangular bottle lying on its wide face, **and the taper of its shoulder**: its shoulder corners pass the coat's wall with about 2.5 mm at both ends |
+| `PUMP`, `PUMP_FEET` | the micro diaphragm pump's body and the pitch of its feet |
 | `VALVE`, `VALVE_STRAP` | the solenoid's body, and how tall the strap has to arch over it |
 | `DS3218` | the pan servo as delivered: body, tab span, tab thickness, tab height, shaft offset, hole pitch |
-| `MG92B` | the tilt servo, the same six numbers. It is a micro servo now, inside the beard |
-| `HORN_D`, `HORN_T`, `HORN_SCREW_R`, `MICRO_HORN_D` | the round horns in both servos' bags — the crank and the nozzle arm are pocketed for them |
-| `BEARING_SQ`, `BEARING_T`, `BEARING_PITCH`, `BEARING_HOLE` | the lazy susan: plate size, thickness, the bolt pitch and the bolt holes |
-| `XL4015_HOLES`, `XL4015_HOLE_D` | the buck converters' mounting holes; the outlines come from `EDECK_LAYOUT` |
-| `MOSFET_HOLES` | the MOSFET modules' hole pitch — the listing rarely gives it |
-| `ESP32` | the devkit's outline. It has no usable hole pattern, so it sits in a printed cradle with tie slots |
-| `FAN`, `FAN_T`, `FAN_PITCH` | the 40 mm fan's frame and screw pitch. It hangs under the deck and blows up through it |
-| `LENS_CLIP_T`, `LENS_CLIP_W` | how far the clip-on lens stands off the phone's back glass, and how wide the clip is |
+| `MG996R`, `SPLINE_BOSS` | **the nod servo**: its case 40.5 × 20 × 38 from the shaft face to the bottom, tab span 54, tab height 27 from the bottom, tab hole pitch 49.5 × 10, shaft 10 from the near end; and its top boss and spline as one cylinder, 12 across and 4.7 from the case to the round horn's far face. Its case face is 7 mm inside the cage's legs and the spline goes through a 14 mm hole in the +Y cheek |
+| `HORN_D`, `HORN_T`, `HORN_SCREW_R` | the round horns in both servos' bags. The pan crank is pocketed for its horn from above; **the nod servo's round horn is let into the stem's hub** and screwed to it with four M2.5 self-tappers at r 7 |
+| `BEARING_ID`, `BEARING_OD`, `BEARING_B`, `BEARING_IN_LAND_R`, `BEARING_OUT_LAND_R` | **the 6810-2RS**: 50 × 65 × 7, and how far its inner ring's face runs out (53.5 across) and its outer ring's face runs in (61.5): the lips and the cap bear there and nowhere near the seals. Both printed seats are 0.15 over |
+| `PIN_D`, `PIN_L`, `BUSH_OD`, `BUSH_L` | the Ø4 × 14 dowel and the 4 × 6 × 6 bronze bushing |
+| `NOZZLE_D`, `NOZZLE_L` (`MOUTH_D` follows) | **the brass nozzle: Ø8 × 10 at most.** A 25 mm fountain nozzle does not fit - see the known limits. The holder's bore is 0.1 under `NOZZLE_D`, a press fit |
+| `XL4015_HOLES`, `XL4015_HOLE_D`, `MOSFET_HOLES`, `ESP32` | the boards |
+| `FAN`, `FAN_T`, `FAN_PITCH` | **a 30 mm fan** (3010), 24 mm screw pitch. It hangs under the deck's back and blows up through it |
+| `LENS_CLIP_T`, `LENS_CLIP_W` | the clip-on lens - and see the known limits: as the parting leaves the ring's top, it does not go in with the phone |
 | `GLAND_D` | the M12 cable glands' thread |
-| `NOZZLE_D` (`MOUTH_D` follows it) | the brass nozzle's shank, which the mouth is a bearing for |
-| `FLOAT_HOLE_D`, `DIP_TUBE_D`, `FILLER_D`, `TUBE_OD`, `TUBE_BEND_R` | the float switch, the dip tube, the filler, and the PU tube with its static bend radius — the tube's route is planned by that radius |
+| `FLOAT_HOLE_D`, `DIP_TUBE_D`, `FILLER_D`, `TUBE_OD`, `TUBE_BEND_R` | the float switch, the dip tube, the filler, and the 6 mm PU tube |
 | `FILLER_CAP_THREAD_MAJOR`, `FILLER_CAP_PITCH` | the filler cap is printed against its own neck; print the pair first as a coupon |
-| `PHONE_L`, `PHONE_W`, `PHONE_T`, `PHONE_CAM_FROM_END`, `PHONE_CAM_FROM_SIDE` | the phone, with its case off. The sled is the second fit coupon |
-| `HOSE_OD`, `HOSE_BARB_D`, `HOSE_BARB_L` | the filler hose. 8 mm silicone with about a 5 mm bore is what the belly leaves room for, and both barbs are cut to it — the tank head's and the filler neck's. A stiffer hose of the same bore will not take the corners; see `HOSE_BEND_R` |
+| `PHONE_L`, `PHONE_W`, `PHONE_T`, `PHONE_CAM_FROM_END`, `PHONE_CAM_FROM_SIDE` | the phone, with its case off |
+| `HOSE_OD`, `HOSE_BARB_D`, `HOSE_BARB_L` | the filler hose |
 | `INSERT_D`, `INSERT_DEPTH`, `INSERT_DEPTH_SHORT` | the heat-set inserts you actually bought |
 
 ## What prints, and how it lies on the bed
 
-Material is **PETG** throughout: PLA softens in a closed body in the sun, and ASA wants an
-enclosure at these sizes. If you have one, the bell - beard, head and hat - is
-the part worth printing in ASA: it is the most sun-exposed and it is what anyone looks at.
-Four perimeters on anything the mechanism screws into; the divider at 100 % infill.
+Material is **PETG** throughout; the turning unit is the part worth printing in ASA if you have an
+enclosure. Four perimeters on anything the mechanism screws into; the divider at 100 % infill.
 
-The shell's sections are a 2.4 mm wall, so their volume is very nearly what they weigh: there is
-no infill to speak of. Grams are at 1.27 g/cm³, solid.
-
-### Shell — ten pieces
+### Shell — twelve pieces
 
 | File | What it is | mm | cm³ | g | On the bed |
 |---|---|---|---:|---:|---|
-| `base_left` | Boots, hem and skirt to the belt, split at y 0; drain arches, stake holes; the lower belt flange and the floor plate inside | 219 × 164 × 240 | 352 | 447 | Cut face down |
-| `base_right` | Its mirror image | 219 × 164 × 240 | 353 | 449 | Cut face down |
-| `hand_left` | The mitten cap, glued to the base half | 127 × 31 × 44 | 14 | 18 | Cut face down |
-| `hand_right` | Its mirror image | 127 × 31 × 44 | 14 | 18 | Cut face down |
-| `torso` | The coat's belt ring between the sleeves: the camera window, the intake at the back, the upper belt flange inside | 186 × 210 × 67 | 167 | 212 | Belt down |
-| `panel_left` | The left sleeve and the shoulder's side, fixed, glued to the ring | 126 × 31 × 160 | 31 | 39 | Cut face down |
-| `panel_right` | Its mirror image | 126 × 31 × 160 | 31 | 39 | Cut face down |
-| `beard` | The bell's skirt: the beard to the chin, turned down to r 103 where it sweeps inside the panels, with the nozzle's parting | 189 × 228 × 103 | 177 | 225 | Rim down |
-| `head` | Face, ears and the top of the beard, the mouth, the parting's upper half, four countersunk M3 × 30 into the shroud at z 440 | 188 × 221 × 88 | 137 | 174 | Cut face down |
-| `hat` | Brim and cone, leaning back | 152 × 150 × 200 | 138 | 175 | Brim down |
+| `base_left`, `base_right` | Boots, hem and skirt to the belt, split at y 0; drain arches, stake holes; the lower belt flange and the floor plate inside | 219 × 164 × 240 | 352, 353 | 447, 449 | Cut face down |
+| `hand_left`, `hand_right` | The mitten caps, glued to the base halves | 127 × 31 × 44 | 14 | 18 | Cut face down |
+| `torso` | The coat's belt ring, open on top: the camera window, the intake at the back, the upper belt flange inside, four countersunk holes for the collar | 186 × 210 × 67 | 176 | 224 | Belt down |
+| `collar` | **The socket**: the coat from the ring's top up to the dome, closed over with a 55 mm bore, the bib the beard lies on, and four tabs under it that go 10 mm down into the ring | 184 × 196 × 134 | 199 | 252 | Tabs up, dome on the bed |
+| `panel_left`, `panel_right` | The sleeves' sides, fixed, glued to the ring | 126 × 31 × 63 | 19 | 23 | Cut face down |
+| `beard_left`, `beard_right` | **The beard in two halves**, split at y 0, each with two tongues up into the head | 181 × 117 × 113 | 63 | 80 | Top edge down |
+| `head` | Face, ears, the nozzle's holder printed in, the mouth, four countersunk M3 × 30 into the spider and four more for the beard's tongues | 188 × 221 × 88 | 159 | 201 | Cut face down |
+| `hat` | Brim and cone, glued to the head | 152 × 150 × 200 | 138 | 175 | Brim down |
 
-### Mechanism — 25 parts
+![The seam at rest, close up from the front-right: the beard lying on the collar's bib](docs/parting_closeup_rest.png)
 
-Three of them never print on their own: they are blanks the assembler clips to the cavity and
-unions into a shell section, and their STLs exist only because that is how it eats them.
+*The parting at rest, from the statue stage: the beard lies 2 mm off the collar's bib, and the
+coat's top edge slopes away under it rather than stepping.*
+
+**Why the beard is two pieces.** Glued, the turning unit cannot go onto the collar at all. Its back
+is the sphere wherever it faces the coat, and those faces look at C from directions that cover more
+than a hemisphere - down to 22° under C at the back corners - so there is no straight path that
+lifts it off: over 2 000 directions tried, the best still has some of the unit moving into the
+collar (`test_the_glued_unit_has_no_way_on_and_its_pieces_have`). The head and hat alone lift
+straight up; each half of the beard comes off sideways and up, 63° from vertical and 66° round from
+the front to its own side. So the beard's halves go on first, each from its side, and then the head
+and hat come down over them and are screwed to them.
+
+### Mechanism — 28 parts
+
+Six never print on their own: they are blanks the assembler clips to the cavity and unions into a
+shell section.
 
 | File | What it is | mm | cm³ | g | On the bed |
 |---|---|---|---:|---:|---|
-| `belt_flange_lower` | The ring under the split the belt screws thread into, and its tongue | 178 × 240 × 16 | 204 | — | — into `base_left`/`base_right` |
-| `belt_flange_upper` | The ring the belt screws pass down through, inside the skirt | 178 × 240 × 8 | 120 | — | — into `torso` |
-| `floor_plate` | The wet zone's floor at `Z_FLOOR`, with the pour hole and the two leg ports | 212 × 250 × 4 | 159 | — | — into `base_left`/`base_right` |
+| `belt_flange_lower`, `belt_flange_upper`, `floor_plate` | The belt joint's two rings and the wet zone's floor | — | — | — | — into the base halves and `torso` |
+| `collar_spigot` | The collar's four tabs into the ring, with their inserts | — | 11 | — | — into `collar` |
+| `nozzle_holder` | The O-ring socket on the axis for the tube's stab, the web forward, the nozzle's press bore | — | 25 | — | — into `head` |
+| `beard_tongue` | The four tongues from the beard's halves up into the head | — | 5 | — | — into `beard_left`/`beard_right` |
 | `divider` | The base's lid, sealed with a PU bead. **100 % infill, six perimeters** | 147 × 209 × 8 | 197 | 250 | Flat, with a brim |
 | `sand_plug` | Closes the floor plate's pour hole | 38 × 38 × 6 | 4 | 5 | Disc down |
-| `chassis` | The dry zone's floor, bolted down by the belt screws; carries the sled and the electronics deck | 135 × 200 × 12 | 79 | 100 | Flat |
-| `phone_sled` | The phone drops in camera-down, screen to −X, from above. Fits one way | 26 × 73 × 136 | 31 | 39 | Upright, back to the bed |
-| `electronics_deck` | ESP32 cradle, two XL4015, three MOSFET modules, a fuse holder; its front edge slotted for the sled's lock lugs | 100 × 92 × 8 | 36 | 45 | Flat |
-| `filler_neck` | Bonded into the divider's front: the cap screws onto the M22 above it, the hose pushes onto the Ø6.5 barb hanging below it | 32 × 32 × 33 | 4.9 | 6 | Flange down |
-| `tank_cradle` | The bottle's bed on the floor plate | 103 × 201 × 14 | 57 | 72 | Flat, as it stands |
-| `tank_head` | Screws onto the bottle: dip tube, float switch, vent, and the filler's Ø6.5 barb off the shoulder | 44 × 60 × 30 | 24 | 31 | Axis vertical, mouth down; one blob under the barb |
-| `filler_cap` | Retention thread; an O-ring in the groove seals | 32 × 32 × 14 | 5 | 7 | Open end down |
-| `pump_bracket` | Hangs the pump in the left trouser leg under the floor plate | 51 × 46 × 103 | 43 | 54 | On its plate, cage up |
-| `valve_bracket` | The same for the solenoid, in the right leg | 51 × 31 × 63 | 17 | 22 | On its plate, cage up |
-| `valve_strap` | The bar that closes the valve's cage | 51 × 12 × 3 | 2 | 2 | Flat |
-| `deck_ring` | A cage: four legs from the chassis to the deck, tied only at their feet | 89 × 132 × 134 | 68 | 86 | **Foot ring down**, legs up, no support |
-| `deck` | Carries the bearing, the pan servo hanging under it, the fan, and the pan hard stops | 152 × 166 × 45 | 118 | 149 | Flat, hangers up |
-| `stop_pin` | **Glued** into a Ø6.4 seat in the deck; the plate's tab runs into it. **Print two** | 6 × 6 × 16 | 0.4 | 1 | On end |
-| `plate` | The head's foundation on the bearing; carries the shaft and the stop tab | 114 × 100 × 76 | 43 | 54 | Column up |
-| `shaft` | Hollow and passive: water and wires up through the turning neck | 27 × 27 × 90 | 20 | 25 | On end |
-| `servo_crank` | On the pan servo's horn, pocketed from above | 48 × 27 × 6 | 3 | 3 | Flat |
-| `pan_link` | Joins the plate's pin to the crank's pin | 14 × 69 × 3 | 1 | 2 | Flat |
-| `neck_shroud` | Turns with the plate and carries the bell; six radial inserts — four for the bell, two for the tilt bracket — and four Ø7 chimneys through the roof | 106 × 104 × 40 | 52 | 66 | **Closed (roof) end down** |
-| `tilt_bracket` | Hangs off the shroud's front, carries the micro servo and the nozzle arm's pivot | 29 × 55 × 44 | 5 | 6 | Flat, on its back |
-| `nozzle_arm` | The lever on the micro horn that swings the nozzle through the parting | 36 × 15 × 14 | 4 | 5 | Flat |
+| `chassis` | The dry zone's floor, **71.5 × 77 now** so it goes in through the ring's top; three screws at the back | 134 × 154 × 12 | 65 | 83 | Flat |
+| `phone_sled`, `electronics_deck`, `filler_neck`, `tank_cradle`, `tank_head`, `filler_cap`, `pump_bracket`, `valve_bracket`, `valve_strap` | as before | | | | as before |
+| `deck_ring` | The cage: four legs from the chassis to the deck, tied at their feet | 87 × 131 × 134 | 65 | 83 | Foot ring down, no support |
+| `deck` | Carries the bearing's outer ring on a lip, the pan servo hanging beneath, the 30 mm fan, the pan stops. Its outline is the collar's narrowest opening under it less 1.5, and the socket's sphere less 1.5 | 148 × 163 × 48 | 93 | 118 | Top face down, hangers up |
+| `bearing_cap` | Clamps the bearing's outer ring down; three countersunk M3 × 8 | 79 × 80 × 5 | 8 | 11 | Top face down |
+| `plate` | Rides the inner ring: disc, hub, the −Y cheek with the bushing and the stop slot, the thin +Y cheek, the nod servo's posts, the column down to the pan linkage — one print | 114 × 100 × 79 | 82 | 104 | Disc down |
+| `hub_ring` | Clamps the inner ring up against the plate's shoulder; two radial countersunk M3 × 10 | 60 × 60 × 7 | 5 | 6 | Flat |
+| `stop_pin` | **Glued** into the deck; the plate's tab runs into it at ±65°. **Print two** | 6 × 6 × 15 | 0.4 | 1 | On end |
+| `stem` | The blade the head stands on: its hub on the pin at C with the horn let in, its neck through the bearing, its head under the spider; the tube runs inside it | 28 × 12 × 95 | 17 | 22 | **On its side**, −Y face down |
+| `spider` | On the stem's head; four radial inserts at z 440, faces at r 57, for the head's four screws | 65 × 103 × 24 | 41 | 52 | Top face down |
+| `servo_crank`, `pan_link` | The pan parallelogram, as before but with a 26 mm crank, 3 mm lower | | 3, 1 | 3, 2 | Flat |
 
-### Three of those orientations were measured, not assumed
+**Measured, not assumed** - the down-facing area within 45° of horizontal with nothing within a
+millimetre under it: `plate` disc down **637 mm²** (8 005 the other way up: the cheeks and posts
+hang), `stem` on its side **710 mm²** (the tube's channel and the horn's pocket bridging), `spider`
+top down **344 mm²** (1 933 hub down), `bearing_cap` top down **12 mm²**, `hub_ring` **20 mm²**,
+`deck` hangers up **408 mm²** (its rim is bevelled to the socket's sphere now; 13 034 the other
+way), `deck_ring` foot ring down **50 mm²**.
 
-Counting the down-facing area — within 45° of horizontal — that has nothing within a millimetre
-under it in the stated pose:
+## The nod drive
 
-- **`neck_shroud` prints closed end down, not open end down.** Stood on its rim, the whole
-  ceiling of the cup hangs 40 mm over a void: **7 486 mm²**. Roof on the bed it is **1 902 mm²**,
-  and 1 528 of that is one feature — the base ring's inward step, where the bore goes from
-  r 49.6 to r 44 across 5.6 mm at the very top of the print. The remaining 342 mm² is the
-  undersides of the six radial bosses. The four Ø7 access chimneys are bored along the axis, so
-  they print vertically either way up.
-- **`deck_ring` needs no support at all now.** It used to need it whichever way up, because
-  both of its annuli cantilevered off the legs: 4 261 mm² legs down, 2 505 mm² top annulus down.
-  Both rings are gone and what is left is a foot ring with four legs standing on it, so printed
-  **foot ring down** the overhang is **50 mm²** — the ceilings of the four feet's insert bores,
-  which bridge — over 2 294 mm² of ring flat on the bed. Upside down it would be 1 995. Use a
-  brim: it is a 134 mm tower on a 12 mm-wide ring.
-- **`tank_head` still prints mouth down.** Under the old Ø22 filler stub that left 1 723 mm²
-  hanging. The stub is a Ø6.5 barb off the shoulder now and the figure is **119 mm²** — a 16 mm
-  cantilever 19 mm above the bed, which wants one small support blob under its end and nothing
-  else. The other 674 mm² the measurement finds is the bottle thread's spiral and the 45° roof
-  over the bore, both self-supporting by construction.
+![The mechanism nodded 15 degrees nose down, from the side](docs/pose_mech_nod-15_side.png)
 
-`deck` hangers-up measures 0 mm² and `plate` column-up 148. `pump_bracket` on its plate,
-cage up, measures 2 068 — but that is the cage's floor bridging the 45 mm between its two flank
-walls, not a cantilever, and it stays as it is.
+*Nodded −15°, from the side: the stem, the spider and the nozzle (brass, right) have turned about
+the pin; the plate, the servos and the deck have not.*
+
+- **The pan bearing** is a 6810-2RS, 50 × 65 × 7. Its outer ring drops into a pocket in the deck
+  onto a 1 mm lip and is clamped from above by the printed cap; its inner ring is on the plate's
+  hub under a shoulder, clamped from below by the hub ring. Both seats are 0.15 mm over. A single
+  row carries it: 7.4 N of weight and about 35 N on the loaded side from 1 N·m of wind, against a
+  static rating of kilonewtons. What it cannot do is resist tilt with a second row, so its radial
+  clearance shows as a few arc-minutes of rock - 0.5 to 1 mm at the hat's tip.
+- **The plate and its yoke** pan. The hub goes down through the bearing to z 388 and the cheeks
+  hang from it to C. Everything below the hub is inside r 23.3, so the plate drops through the
+  bearing's bore. The neck of the stem swings in a slot through the plate and the hub.
+- **The pin** is a Ø4 × 14 dowel along Y through C, pressed into the stem's hub and held by an M2
+  set screw from behind, turning in a 4 × 6 × 6 bushing in the −Y cheek. It is loaded to 0.5 MPa.
+- **The stem** is a 12 mm blade, 15 wide at the neck, leaning back 5° so that over −15..+5 it swings
+  −10..+10 from vertical. The hole it needs through the bearing is **33.0, 35.0 and 37.0 mm** across
+  at z 394, 400 and 406, measured by slicing it at every degree of the nod; the bearing's bore is
+  50. Its neck bends to 1.3 MPa in a 20 m/s wind.
+- **The nod servo**, an MG996R, hangs on the +Y side from two posts on the plate, shaft on the Y axis
+  at C, case out to y 48.5 - 6.6 mm from the cage's legs at the nearest pose. Its round horn is let
+  into the stem's hub and screwed to it; the servo's own output bearing is the pin's other support.
+  **This is not the arrangement first asked for** - a horn clamped onto the pin outside a +Y cheek.
+  There is not the room: the case face can stand no further out than y 14 before the cage's +Y legs
+  are nearer than 3 mm, the hub's face is at 6, and a cheek, a coupler and a horn need 15.
+- **Hard stops** at −16° and +6°: a sleeve on an M3 screw in the hub's −Y face runs in an arc slot in
+  the −Y cheek whose ends meet it exactly there (`test_the_nod_stops_meet_the_lug_exactly`: clear a
+  degree inside, touching at the stop, in a quarter of a degree past it).
+- **Loads.** Gravity puts 0.05 N·m on the servo at rest and 0.10 nose down 15°. Wind on the head:
+  0.24, 0.55 and 0.97 N·m at 10, 15 and 20 m/s; the last is the servo's stall, and past about 15 m/s
+  a gust back-drives the head onto its stops, which is what they are for.
+- **The spider** is bolted to the stem's head by two M3 × 12 from above and carries the turning unit
+  on the four radial inserts the old shroud had. Outside r 30 its undersides are the sphere 100.5
+  from C, so it keeps off the dome at every pose (2.44 mm at the nearest, nose down).
+- **The nozzle** is fixed in the mouth, pressed into a holder printed with the head, its axis along
+  +X at z 424, its tip 1.1 mm proud of the skin. The water joint is made by putting the head on: the
+  tube runs inside the stem, stands 12 mm out of the spider's top on the axis as a stab, and the
+  holder's socket, with a 5 × 1.5 O-ring, slides down over it. The spider's clamp screw stops the
+  water pushing the tube down, 20 N at 7 bar.
+- **The tube** runs from the stab down the stem's channel, out through the neck's back 16 mm above C,
+  behind the hub, down in a loop under the yoke and onto the pan axis at z 303, where it twists
+  with the pan on its way to the valve. `test_pose.py` routes it for every pose and tests it against
+  everything; the loop takes the ±10°.
 
 ## Fasteners
 
 M3 heat-set inserts everywhere a printed part is screwed into, M3 machine screws through. Depths
-are what the geometry actually gives, and the counts are the ones in the code.
+are what the geometry gives; the radial screws' lengths come from the holes the assembler drilled,
+measured skin to insert floor (`out/stl/holes.json`, `test_the_radial_screws_are_the_right_length`).
 
 | Part | Feature | Count | Type |
 |---|---|---|---|
-| `belt_flange_lower` | on the belt ring's mid-line ellipse (67, 98) at 55/140/220/305°, which lands at r 89.0 and 81.3, down from `Z_BELT` | 4 | M3 insert, **9 mm** |
-| `belt_flange_upper` | the same four, 3.4 through with a Ø6.4 head recess | 4 | **M3 × 20** — the belt, through the divider into the lower flange |
-| `divider` | the same four, 3.4 through | 4 | the same belt screws |
-| `belt_flange_upper` | the same ellipse at 70/150/210/330° — r 94.9 and 75.9 — up from its top face | 4 | M3 insert, 6 mm — the chassis |
-| `chassis` | the same four, 3.4 through | 4 | **M3 × 10** through 4 mm of chassis into a 6 mm insert |
-| `floor_plate` | four at (±40, ±70), down | 4 | M3 insert, 6 mm — the bottle's cradle |
-| `tank_cradle` | the same four, 3.4 through | 4 | M3 up into the plate |
-| `floor_plate` | four per leg at the two leg centres (−6.9, ±39), up | 8 | M3 insert, 6 mm — the pump and valve brackets |
-| `pump_bracket`, `valve_bracket` | four each, 3.4 up through the plate | 8 | M3 into those inserts |
-| `valve_bracket` | two strap bosses | 2 | M3 insert, 6 mm |
-| `valve_strap` | two 3.4 through | 2 | M3 up into the bracket |
-| `chassis` | two lock bosses on the sled's line | 2 | M3 insert, 6 mm |
-| `phone_sled` | two lugs, 3.4 through | 2 | M3 into those inserts |
-| `chassis` | three e-deck standoffs | 3 | M3 insert, 6 mm |
-| `electronics_deck` | three 3.4 through | 3 | M3 into those inserts |
-| `electronics_deck` | 8 × Ø3.2 (two XL4015), 12 × Ø3.4 (three MOSFET modules) | 20 | the modules' own screws |
-| `deck_ring` | four feet, up from the bottom of each leg | 4 | M3 insert, 6 mm — up through the chassis |
-| `deck_ring` | r 61 at 82/98/238/250°, down from its top face | 4 | M3 insert, **7 mm** |
-| `deck` | the same four, 3.4 through | 4 | M3 down from the deck's top face into the ring |
-| `deck` | r 33.94 at 45/135/225/315° | 4 | the lazy susan's own bolts |
+| `belt_flange_lower` | the belt ring's four, down from `Z_BELT` | 4 | M3 insert, **9 mm** |
+| `belt_flange_upper`, `divider` | the same four, through | 4 | **M3 × 20** — the belt |
+| `belt_flange_upper` | three at the back, at 145/180/215°, up | 3 | M3 insert, 6 mm — the chassis |
+| `chassis` | the same three, through | 3 | M3 × 10 |
+| `floor_plate` | the cradle's four and the two brackets' eight | 12 | M3 insert, 6 mm |
+| `tank_cradle`, `pump_bracket`, `valve_bracket` | through into those | 12 | M3 |
+| `valve_bracket` / `valve_strap` | the strap | 2 | M3 insert, 6 mm / M3 |
+| `chassis` | two sled locks, three e-deck standoffs | 5 | M3 insert, 6 mm |
+| `phone_sled`, `electronics_deck` | into those | 5 | M3 |
+| `deck_ring` | four feet, up | 4 | M3 insert, 6 mm — up through the chassis |
+| `deck_ring` | four leg tops | 4 | M3 insert, **7 mm** — the deck's four |
 | `deck` | four hangers, up | 4 | M3 insert, 6 mm — the pan servo's tabs |
-| `deck` | four at `FAN_PITCH` round the fan hole, up | 4 | M3 insert, **4 mm**, blind in a 6 mm deck — the fan hangs under it |
-| `deck` | two Ø6.4 seats (`STOP_PIN_SEAT_D`) at ±70.7°, r 60, right through the deck | 2 | stop pins — **glue them, do not press**: a Ø6.0 pin in a Ø6.1 seat split the deck |
-| `plate` | r 33.94 at 45/135/225/315° | 4 | the lazy susan's own bolts |
-| `plate` | r 46.7 at 45/135/225/315°, down | 4 | M3 insert, **5 mm** — the shroud |
-| `neck_shroud` | the same four, 3.4 through with the heads sunk and a Ø7 chimney (`SHROUD_ACCESS_D`) carried up through the roof over each | 4 | **M3 × 10** into the plate, driven down the chimney with a long driver |
-| `plate` | pin boss, up | 1 | M3 insert, 4.5 mm — the link's pivot |
-| `servo_crank` | pin boss, up | 1 | M3 insert, 4.5 mm — the link's pivot |
-| `servo_crank` | r 7, four positions, 2.8 through | 4 | M2.5 self-tapping into the pan horn |
-| `pan_link` | two 3.2 eyes | 2 | turn on the pivot screws' shanks |
-| `neck_shroud` | four radial bosses at 60/120/240/300°, z 440 | 4 | M3 insert, 6 mm — **the bell screws onto these** |
-| `head` | the same four, 3.4 through with a Ø6 countersink sunk 2 mm; the skin there is at r 84.1–84.3 | 4 | **M3 × 30 countersunk**, driven from outside. They are in the `head` section, which spans 412–500 — not in `beard` |
-| `neck_shroud` | two more radial bosses at ±24°, z 424 | 2 | M3 insert, 6 mm — the tilt bracket |
-| `tilt_bracket` | two radial 3.4 through, into those | 2 | M3, driven before the beard goes on |
-| `tilt_bracket` | the micro servo's two tabs and the arm's pivot | 3 | M2 into the servo, M3 through the pivot |
-| `nozzle_arm` | the micro horn's screws | 2 | M2 self-tapping into the horn |
+| `deck` | four round the fan's hole, up | 4 | M3 insert, **4 mm** — the fan |
+| `deck` | three under the cap, down | 3 | M3 insert, **4 mm** |
+| `bearing_cap` | the same three, countersunk | 3 | **M3 × 8 countersunk**, driven through the plate's three holes at pan 0 |
+| `plate` | two radial in the hub, at 90/270° | 2 | M3 insert, 6 mm |
+| `hub_ring` | the same two, countersunk | 2 | **M3 × 10 countersunk**, on the bench |
+| `plate` | four on the nod servo's posts | 4 | M3 insert, 6 mm — the MG996R's tabs, M3 × 10 |
+| `plate`, `servo_crank` | the link's two pivots | 2 | M3 insert, 4.5 mm |
+| `stem` | the stop lug's, in the hub's −Y face | 1 | M3 insert, 6 mm — an M3 × 10 through a Ø6 sleeve |
+| `stem` | two in its head, down | 2 | M3 insert, 6 mm — **M3 × 12** down through the spider |
+| `stem` | the pin's set screw | 1 | M2 × 4 grub, self-tapped |
+| `stem` | the nod horn's four | 4 | M2.5 self-tapping |
+| `spider` | four radial at z 440 | 4 | M3 insert, 6 mm — the head's **M3 × 30 countersunk** |
+| `spider` | the tube's clamp | 1 | M3 insert, 6 mm — M3 × 8 |
+| `collar_spigot` | four radial in the tabs | 4 | M3 insert, 6 mm — **M3 × 16** at 45/315°, **M3 × 8** at 135/225°, countersunk, through the ring |
+| `beard_tongue` | four radial | 4 | M3 insert, 6 mm — **M3 × 14** at 30/330°, **M3 × 12** at 75/285°, countersunk, through the head |
+| `servo_crank` | the pan horn's four | 4 | M2.5 self-tapping |
+| `electronics_deck` | the modules' own feet | 20 | their own screws |
 
-**Totals.** 55 M3 inserts — 4 at 9 mm, 4 at 7 mm, 4 at 5 mm, 2 at 4.5 mm, 4 at 4 mm and **37 at
-6 mm** — and 55 M3 screws to fill them, of which four are the M3 × 20 belt screws, four the
-M3 × 10 that hold the shroud down, four the M3 × 30 countersunk through the head, and the rest
-between 8 and 14 mm. Add 8 M3 through the lazy susan's own holes, 20 small screws for the
-modules' own feet, and eight small self-tappers — four M2.5 into the pan horn, four M2 into the
-micro horn and the micro servo's tabs. Buy the inserts and the soldering tip before anything
-else: half the assembly below is inserts.
+**Totals.** **69 M3 inserts** - 4 at 9 mm, 4 at 7 mm, 2 at 4.5 mm, 7 at 4 mm and **52 at 6 mm** - and
+69 M3 screws to fill them: 4 × M3 × 20 (belt), 4 × M3 × 30 countersunk (head), 2 × M3 × 16, 2 × M3 × 14
+and 2 × M3 × 12 countersunk (collar, beard), 2 × M3 × 12 (spider), 3 + 2 × M3 × 8 countersunk (cap,
+collar), 2 × M3 × 10 countersunk (hub ring), and the rest socket heads between 8 and 14 mm. Plus
+8 M2.5 self-tappers for the two horns, one M2 grub for the pin, the modules' own screws, a Ø4 × 14
+dowel, a 4 × 6 × 6 bushing and a 5 × 1.5 O-ring. The lazy susan's eight bolts are gone.
 
-**Where the M3 × 30 comes from.** Nothing in `params.py` states it. The bell hangs on four
-countersunk screws driven inward along the meridians at z 440, and the length is the distance
-from the skin they sit flush in to the floor of the insert they land in. The statue's skin at
-z 440 measures r 84.33 at 60 and 300°, r 84.09 at 120 and 240°; the boss's face is at
-`SHROUD_R_OUT` + 5 = r 57 and the insert's floor `INSERT_DEPTH` further in, at r 51. So the hole
-is 33.1–33.3 mm deep and **M3 × 30** is the screw: it takes about 2.7 mm of the 6 mm insert, and
-an M3 × 35 bottoms out on the boss's back wall before its head seats. Note what that length is
-made of — 27 mm of it crosses the open gap between the bell's inner skin and the shroud, and
-only the last few millimetres are in anything.
+Where the M3 × 30 comes from: the head's skin at z 440 is r 84.33 at 60 and 300° and r 84.09 at
+120 and 240°; the spider's boss faces are at r 57 and its inserts' floors at 51. So the hole is 27.1
+to 27.3 mm deep to the boss's face and an M3 × 30 takes 2.7 to 2.9 mm of its insert.
 
 ## Assembly
 
-Heat every insert first, with the parts cold and on a flat surface. Then:
+Heat every insert first. The order below is **swept** by `test_assembly.py`: each step's parts are
+moved along their path 2 mm at a time against everything already in, and touch nothing.
 
-**The legs, before the base is glued.** The pump's bracket and the valve's bracket bolt **up**
-into the floor plate from underneath, and once the two halves are together there is no way under
-that plate at all - the boots are closed. Every one of a bracket's four bolts lies wholly on one
-side of y 0, so each bracket goes on its own half while that half is still open at the cut face:
-pump into the left leg with its tie wraps, valve into the right with the strap over it, both
-with their hoses and their wiring already fitted and long enough to reach the divider's glands.
+**The legs and the base**, as before: the pump's and the valve's brackets up into the floor plate
+while each half is open, then the halves glued, the mitten caps, the sand and its plug, the bottle
+in its cradle, the tank head, the filler hose on both barbs, the divider with its bead and glands,
+the belt ring with its sleeves, and the four M3 × 20 belt screws.
 
-**The base.** Now glue the two halves together at y 0 and the two mitten caps onto their flanks;
-the belt flange's lower ring and the floor plate are already inside them, printed in. Then the
-sand, and it is not a straight pour. `SAND_PLUG_XY` in `mech/torso.py` puts the hole at (−78, 0)
-in the floor plate, 18 mm behind the belt joint's own bore (`BELT_IN_RX` 60), so nothing drops
-onto it from above: reach in through the bore with a funnel and a length of hose snaked back and
-down the 94 mm to the plate, or a rigid pipe held about 11° off vertical. Fill to `SAND_Z_TOP`,
-well under the pump. Then the sand plug, which goes in the same way and is the last thing that
-has to reach that corner: a Ø30 disc through the plate with a Ø38 lip that rests on the plate's
-**top** face.
+**On the bench: the cage onto the chassis** (four M3 × 10 up into its feet), then the pair **down
+through the ring's top** onto the flange, three screws at the back. The chassis is 71.5 × 77 so that
+it passes: the ring's top, chamfered by the parting, is 79.9 out at the sides and 73.3 at the back.
 
-Then the bottle's cradle on top of the plate, the bottle in it neck to +Y, and the tank head
-screwed on with its dip tube, float switch and vent. Push the filler hose onto the tank head's
-barb now.
+**The boards**, down onto their standoffs, and **the phone** in its sled, down through the chassis's
+pocket; two lock screws.
 
-**The divider** goes on next, and the hose's far end has to be on the filler neck's barb
-*before* it does - that barb hangs under the divider and there is no reaching it afterwards. PU
-bead in its groove, glands through it, filler neck bonded into its hole, hose on, divider down.
+**On the bench: the deck sub-assembly**, in this order - every screw's driver path is checked
+against what is on the bench at that moment (`bench_screws()` in `test_mech.py`):
+1. the bearing cap loose over the plate's hub, then the 6810 up over the yoke onto the hub, then the
+   hub ring up over the yoke and its two radial countersunk screws;
+2. the plate and bearing down into the deck (the column through its arc slot), and the cap's three
+   screws through the plate's three holes;
+3. the horn screwed into the stem's hub; the stem down through the plate's slot; the pin through the
+   bushing into the hub and its set screw from behind; the stop lug's screw and sleeve;
+4. the nod servo in from +Y, its spline into the horn, four screws into its posts;
+5. the fan, the pan servo into its hangers, the stop pins glued.
 
-**The belt, with the cage already on the chassis.** Bolt the deck ring cage to the chassis on
-the bench: four M3 × 10 up through the chassis into the feet's inserts. It has to be done there
-and not in the statue — once the chassis is down, the divider is 7.7 mm under it and no driver
-fits that gap. Then the torso ring goes on with the two sleeve panels glued to it, and the four
-M3 × 20 belt screws pass down through the ring's flange and the divider into the base's inserts.
-The chassis and its cage go in as one and land on the flange's four inserts, four M3 × 10 driven
-from above, outside the cage's legs.
+**The deck sub-assembly** goes down onto the cage's four legs and four screws; then **the crank and
+the link** from below, between the legs, as before.
 
-**The boards, then the sled, both straight down through the cage.** The cage is four 10 mm legs
-on a foot ring and nothing else, so both drop past it: the electronics deck onto its three
-standoffs and two bare posts, boards and all, and then the phone in the sled from above — camera
-end down, screen to −X — and the sled down through the chassis's pocket, locked with its two
-screws. Its two lock lugs come up through the slots in the board deck's front edge, which is
-what lets the sled come out again later without disturbing the boards.
+**The collar**, down over all of it - its opening is what the deck's outline was trimmed to - onto
+the ring, its tabs 10 mm into the ring's top; four countersunk screws through the ring into them.
 
-**The neck and the drive.** The deck is assembled on the bench - pan servo up into its four
-hangers, fan under it, bearing's fixed ring on top - and goes in **from above, through the bell's
-opening**, then four screws drive down into the cage's inserts. Plate onto the bearing, shaft
-bonded into the plate, stop pins **glued** into their Ø6.4 seats. The neck shroud goes on with four M3 × 10 into the plate: they are driven
-downward from inside the cup, and the four Ø7 chimneys bored through its roof are how a long
-driver gets onto their heads and out again. The crank, the link and the two pivot screws go on
-**last, from below**.
+**The spider** onto the stem's head, two M3 × 12 from above; the tube's clamp screw.
 
-**The head.** The tilt bracket hangs off the shroud's front on two M3 into its radial inserts at
-±24°, with the micro servo in it and the nozzle arm on its horn; the brass nozzle presses into
-the arm and the tube goes on its barb. Glue the beard, head and hat into one bell - it is one
-piece from there on - and lower it over the shroud. Four **M3 × 30 countersunk** through the head
-shell at z 440 into the shroud's radial inserts hold it: they are in the `head` section, not the
-beard, and their heads sit flush in the skin at 60/120/240/300°.
+**The beard's two halves**, each on from its own side, up and in, and then **the head with the hat
+glued to it** straight down over the spider - its socket slides onto the tube's stab - and eight
+countersunk screws from outside: four into the spider, four into the beard's tongues.
 
 ## Service
 
-- **The bell** comes off on four screws, countersunk into the **head** section at 60/120/240/300°
-  and z 440 — above the mouth and below the nose, not down in the `beard` section, which is where
-  this used to say they were. With the bell off the whole inside is visible from the top. Most of
-  it is not yet reachable.
-- **The phone** comes out after the bell, the neck shroud (four M3 × 10 down the roof's
-  chimneys), the plate and shaft off the bearing, and the deck (four screws into the cage). The
-  cage itself stays where it is, and so do the boards: undo the sled's two screws and it lifts
-  straight up through the cage, its lock lugs rising through the slots in the board deck's edge.
-  Recalibrate aim afterwards: the lens sits behind the ring's window and a millimetre of sled
-  travel is a degree of aim.
-- **Refilling** is the cap on the divider at (42, 54), reached with the bell off. Use a funnel:
-  the phone's sled stands 8.8 mm from the cap's rim on the same divider, its tray floor 1 mm above
-  the divider's face, and anything spilt at the cap runs straight at it. Wipe the divider before
-  closing up. Filling is slow — the hose is 5 mm in the bore, so about 1 L/min falling to 0.6 as
-  the bottle fills, call it a minute and a half for a litre. The float switch stops the pump.
-- **The bottle** comes out only by opening the belt: four screws, and the whole upper shell lifts
-  off the base. The tube and the loom have drip loops long enough to allow it.
+- **The phone** comes out after the head, the beard's halves, the spider, the collar and the deck
+  sub-assembly: 8 + 4 + 2 + 4 + 4 screws (the crank and the link come out with the deck, they hang
+  under it), and the tube's stab pulls out of the head's socket as the head lifts. Then the sled's two screws and it lifts straight up.
+  This is more than it was, and it is honest: the phone is under everything that turns.
+- **The head** alone comes off on its eight screws; with it off the spider, the stem's head and the
+  dome's bore are in view, and nothing below the dome is reachable.
+- **Refilling** is the cap on the divider at (42, 54), under the deck: it now needs the collar off
+  as well as the head. Use a funnel and wipe the divider.
+- **The bottle** comes out only by opening the belt.
 
 ## What the tests check
 
-`test_params.py` (20) is arithmetic on `params.py` alone, so it runs without a build: the stack
-adds up from the floor to the hat, the phone fits between the chassis and the deck, the window
-sees where the camera needs to see, and the firmware fixture's soft limits sit inside the
-mechanical hard stops.
+`test_params.py` (20) is arithmetic on `params.py`: the stack, the phone under the deck, the
+linkage clear of the pan axis, the nod stops a degree outside the owner's range, and - a strict
+xfail - the firmware's tilt limits, which are still −30/+40 until the follow-up on the firmware
+branch.
 
-`test_mech.py` (36) builds every build123d part and checks it is one valid solid inside the bed,
-that the deck's cage stands inside the bell's bore and is cut around the pan servo, that the fan's
-hole clears the bearing and the deck's rim, that the shaft's bore takes the tube and the wires,
-that the linkage sweeps without touching anything and stays below the deck, that the phone drops
-into the sled one way only, and that no two fixed parts share a millimetre. Five of them are
-new: the shroud stands inside the statue's own cavity; **its four screws have a driver path** -
-40 mm of driver down the roof's chimney onto each head, the radial insert bores are probed round
-rather than square, and the stop pin's seat is probed with a pin 0.3 mm fat; the electronics
-deck's three standoffs are whole, 326.7 mm³ each, with none of them standing in the chassis's
-bore for the filler cap; and **the order above is swept rather than asserted** - the board deck
-with a box on it for every board, and then the sled with the phone in it, each brought down the
-60 mm to its home 2 mm at a time against everything already in the statue, 0 mm³ at every step,
-the sled's leg of it being the service lift as well. The cage's own four feet are checked the
-same way, which is how the bench sub-assembly got into the order above: the divider is what
-stands in their drivers' way.
+`test_mech.py` (37) builds every build123d part: valid, one solid, in the bed; the cage inside the
+turning bore; the bearing seated and held both ways, each clamp on its own ring and off the seals;
+the yoke through the bearing's bore; the stem's channel; the clear hole; the stem clear of the yoke
+at every degree; the nod stops meeting the lug exactly; the nod servo seated on its posts and 6 mm
+inside the cage's legs; the pin and the bushing; the spider's inserts and its keeping off the dome;
+the deck inside the socket and the collar's shadow; the linkage through the whole pan, and 2 mm under
+the yoke; every group of parts, bought ones included, overlapping nothing but its designed contacts;
+and every bench screw's driver path.
 
-`test_wet_and_head.py` (15) is the wet zone: the tank head's thread matches the bottle and its
-ports pass its neck and the filler's bore, the threaded parts print standing up, the filler is
-reachable from above and its hose reaches and clashes with nothing, **both ends of that hose are
-barbs** - solid from the bore out to `HOSE_BARB_D` over the whole grip, nothing out there wider
-than the ridges, bored through, and the route's two ends on the two mouths - the bottle sits in
-its cradle and can still come out through the belt, the floor plate carries the sand and the two
-leg ports, the brackets hang in the legs far enough apart that their cages cannot touch, and no
-two wet parts overlap.
+`test_wet_and_head.py` (15) is the wet zone, unchanged.
 
-`test_fit.py` (3) is the statue's own contract: every placed part and every bought-part envelope
-is inside `out/statue/cavity.stl`, and the trouser legs are where the brackets expect them.
+`test_fit.py` (4): every placed part inside `cavity.stl`, and everything fixed or panning over the
+ring's top inside the socket's sphere, bought parts included.
 
-`test_wall.py` (6) is the shell's: 25 000 points spread evenly over a void's surface, each
-measured to the skin. The thinnest is at least the floor, next to none of the surface is under
-0.4 mm below nominal, and the median is still nominal - the last so that buying a minimum by
-fattening the whole offset, which would take the room out of the mechanism, fails here. Three
-for `cavity.stl` against `WALL`, three for `cavity_grown.stl` against `WALL - 1.2`. What the
-current build measures: minimum 2.13 mm and 0.89 mm, both medians still nominal, where before
-the keep-out pass both minima were 0.00.
+`test_wall.py` (15) measures the shell's wall; the statue's parting did not move and it is unchanged.
 
-`test_shell.py` (96) needs `statue` and `assemble` to have run. Every section is watertight,
-winding-consistent, **one body** and within the bed; no two of the ten share a millimetre;
-every interface piece the assembler welded in is inside the section it went into; the window,
-the intake, the mouth and the parting are open, and the parting is open at every tilt; the four
-shroud screws have holes through the bell and bottom on their inserts' floors with the boss's
-face beside each head — an assertion a shroud with no bosses at all used to pass; **the bell turns to
-±65° without touching anything fixed**, its rim never dips under `Z_TURN` nor reaches outside the
-panels below their tops; **the neck gap is the exhaust** - 62 of 72 directions out of it are
-open, and the ten that are not are the sleeve panels; and **the jet leaves the statue at every
-tilt** from −35° to +45°, in a `JET_D` envelope. Two of them are new and they are about what
-the bell turns **over** rather than beside: the built bell is swept against every printed
-mechanism part that does not turn with the plate and stands over its rim — the cage, the phone
-sled and the two stop pins — 0 mm³ at all 27 angles, with the least gap measured at each
-(2.98 mm from the cage at +30°); and the turntable deck, which that sweep found fouls it, is a
-strict xfail carrying the number until the deck is redrawn.
+`test_shell.py` (105): every section watertight, one body, in the bed; no two share a millimetre;
+every interface part welded into its section; the window, the intake, the mouth and the dome's bore
+open, and the seam air all round; the head's four screws on their inserts; the unit turned over the
+fixed mechanism - the xfail on the deck is gone, the deck is 5.9 mm from the unit at the nearest -
+and to its stops against the fixed shell; the jet's 3° cone clear of the beard and moustache.
+
+`test_pose.py` (22): **the whole machine posed**, pan −65, −30, 0, 30, 65 by nod −15, −8, 0, +5 -
+what nods, what pans, the linkage and the tube against what is fixed and against each other; the
+least gap to each neighbour at the stops; and the 2 mm seam, proved by distance from C.
+
+`test_assembly.py` (17): the order above, swept step by step; why the beard is in halves; the
+chassis through the ring's top; the collar joint's screws under the unit at rest and reachable; the
+radial screws' lengths; and - a strict xfail - the lens clip, below.
 
 ## Known limits
 
-- **The face is a reconstruction, not a sculpture.** It reads as a gnome at any distance you
-  would see it from, and as something soft and slightly uncanny in a close-up. The eyes are
-  mush. Nothing in this repository can fix that but better photographs.
-- **It is mirrored, so the moustache is symmetrical** in a way a carved one never is, and a
-  hairline seam runs down the hat and the nose where the two halves met. A swipe of filler.
-- **There is a 2 mm seam all round the beard, and the lathe takes more off it than one number
-  says.** The bell has to turn inside the fixed panels, so it is turned down to r 103 between
-  z 309 and 399. On the front meridian the skin reached r 105.8, so it loses **2.8 mm** — but the
-  beard sweeps sideways over the chest, and there the skin stood out much further: r 107.3 at
-  ±30° (4.3 mm off), **r 114.0 at ±40° (11.0 mm)**, **r 115.5 at ±50° (12.5 mm)** and r 112.7 at
-  ±60° (9.7 mm). What is lost at the front is the tip of two locks; what is lost at ±40–50° is a
-  centimetre of the beard's side, replaced by a cylindrical face. `PANEL_Y`'s comment in
-  `params.py` used to quote the 2.3 mm alone and carries the whole table now.
-- **The exhaust is that gap, and the air path is wrong.** The fan hangs under the deck and blows
-  up through it; the air leaves through the bell's turning gap and the beard's parting. Two
-  things follow from the numbers. First, **the intake and the exhaust are both at the back**: the
-  intake is 40 × 20 = 800 mm² in the belt ring's back at z 262–282, the exhaust is the turning
-  gap at z 307–309 — 661 mm of coat perimeter, 2 mm tall, 62 of 72 azimuths open, about
-  1 100 mm² — and their centres are 36 mm apart. The short path from one to the other runs up the
-  back of the coat, bypasses the phone at the front entirely, and re-ingests its own warm air.
-  Second, **most of the fan's output recirculates**: it blows up through a 1 018 mm² hole into
-  the bell, and the only way out of the bell is back down past the deck's rim, where the gap
-  between the deck and the beard's inner skin is about **11 000 mm²** — eleven times the hole the
-  air came up through, and far wider than the parting, so most of what the fan moves goes round
-  in a circle inside the bell rather than out of the statue. The obvious remedy is to put
-  the intake at the **front** of the ring, below the window, so the draught crosses the phone.
-  Nothing in `params.py` sets the intake's azimuth: `VENT_IN_W`, `VENT_IN_H` and `Z_VENT_IN` give
-  its size and height only, and `openings()` in `assemble.py` cuts it as a box out to −X. Moving
-  it means a `VENT_IN_DEG` beside `Z_VENT_IN`. The geometry is deliberately left as it is here.
-- **Nothing is filtered and nothing is sealed.** Rain that falls straight into the turning gap
-  goes inside; the deck under it is solid but the phone is not far below. The four Ø7 access
-  chimneys through the shroud's roof are the one hole that is sheltered: they are at z 454 and
-  the highest opening anywhere in the bell above them is the countersunk screw holes at z 440,
-  fourteen millimetres lower, with the head and hat a closed dome over the lot.
-- **The tightest bought part is the bottle.** Its shoulder corners pass the coat's inner wall
-  with **2.5 mm** at the back and a little more at the front (`BOTTLE_XY` sits it 2 mm forward
-  of centre, the balance point); `BOTTLE_SHOULDER_IN` is what saves them, so a squarer 1 L
-  bottle does not go in at all. Tighter still inside: the fan's hole in the deck clears the lazy
-  susan's bolt circle by **1.0 mm**, and the plate's hanging column passes the pan servo by
-  about a millimetre.
-- **The bell's back sweeps through the turntable deck.** `_neck_prism` trims the deck to the
-  statue's own section at z 394–400, so its rim touches the coat's inner wall all the way round
-  — and that wall is 69 mm out at the back and 105 at the flanks. Turn the bell and the back
-  comes onto the deck's lobe: up to **1.8 cm³ at the +65° stop**, 1.1 at −65, all of it the rim
-  between r 69 and the deck's own 86, plus one of the pan servo's hangers at the −Y end of the
-  arc. `test_the_bell_clears_the_turntable_deck` is in the suite as a strict xfail, so it will
-  start failing the day it is fixed. The fix is not small: inside r 69 there is no room for the
-  fan's Ø36 hole at (−49, −20) or for the pan servo's four hangers, so the deck, the fan and the
-  servo's position all move together. Nothing else the bell turns over is touched — the cage
-  clears it by 2.98 mm, the sled by 10.6 and the stop pins by 12.0, all measured by sweeping the
-  built meshes.
-- **The bell is 573 g and turns on a 52 mm shroud.** Nothing in this repository has checked what
-  that does to the pan servo's duty cycle or to the bearing over a season outdoors. It hangs on
-  four M3 × 30 that cross 27 mm of open air between the bell's inner skin and the shroud's
-  bosses, with about 2.7 mm of thread in each insert.
-- **Spilt water at the filler runs at the phone.** The cap is at (42, 54) on the divider and the
-  sled's tray is 8.8 mm from its rim on the same flat face, with 1 mm of air under the tray. Fill
-  with a funnel and wipe the divider. Nothing drains it.
-- **The wall is measured now, and one thing about it is still untidy.** `WALL_MIN` is 1.6 mm and
-  `keep_out` in `statue.py` holds the cavity to a measured 2.13 mm minimum and the grown cavity
-  to 0.89; `test_wall.py`'s six tests are what keep it there. But **523 mm³ (0.0034 % of the
-  cavity) of `cavity.stl` lies outside `cavity_grown.stl`**, mostly in two patches at the back of
-  the head and over the face. That is the direction that costs nothing: `cavity_grown` is only
-  the volume an interface part may reach into, so where it is the smaller of the two a part is
-  clipped more conservatively than it had to be. It is not new and no part is near either patch.
-- **`NECK_SECTION` is a hand-measured literal in `mech/turntable.py`.** Thirty-six radii of the
-  coat's own section over the deck's band, which the deck is trimmed to. The plan was to read it
-  out of `out/statue/features.json`, and the cleanup found that file cannot carry it: its `reach`
-  rows keep five numbers each, the minimum and the four cardinals, and `statue.py`'s `reach()`
-  throws the other sixty-eight directions away as it measures them. Rebuilt from what survives it
-  is out by 35.6 mm from the minimum alone, or 22.1 and 17.3 mm interpolating the cardinals, and
-  wrong in the dangerous direction — 84 mm at 150° where the coat's back corner is at 69.3. The
-  literal itself was re-measured against the current mesh and is within **0.91 mm**, so it is
-  right; it simply has nowhere better to live until the statue stage publishes a whole profile.
-- **The lazy susan's eight bolts pass through clearance holes in the deck and the plate,** and
-  what holds them — nuts, or self-tappers into the printed parts — is not modelled.
+- **The dome shows when the head turns.** The collar's grey sphere is what the beard lies on, and
+  at 65° it is bare behind the beard. That is inherent to parting on a sphere.
+- **Gusts over about 15 m/s back-drive the nod** onto its stops. The MG996R stalls at about
+  1 N·m and 20 m/s puts 0.97 on it. The stops are printed and take it.
+- **The nozzle is 10 mm long, not 25.** The unit keeps 100 mm from C where it faces the coat, and
+  at the mouth that sphere is at x 67; with the nozzle's radius and the holder's wall, its back can
+  be no nearer the axis than x 73.5, and its tip is at the skin. Buy a short one.
+- **The horn is screwed to the stem, not clamped to the pin**, and the pin turns in one cheek, the
+  servo's output bearing being the other support. See the nod drive above for the numbers.
+- **The beard is two prints**, for the reason above, and there are 8 screws in the head where
+  there were 4.
+- **The lens clip does not go in with the phone.** Its corner is 89.8 mm out and the ring's top,
+  as the parting left it, is 85; and the 44 mm window is too short to put a 30 mm clip on through
+  it. `test_the_lens_clip_goes_in_with_the_phone` is a strict xfail. Either a smaller clip or a
+  window cut taller.
+- **Rim beading and the beard's centre lock.** The unit's rim is a smoothed curve on the sphere with
+  a turned-in flange; where the skin was thinner than the wall it was lifted, and in print the edge
+  will bead. The beard's centre lock hangs from the moustache by skin just under the wall and is
+  slightly frayed.
+- **The phone is under everything.** Servicing it takes the unit, the spider, the collar and the
+  deck off.
+- **The exhaust is the dome's bore and the 2 mm seam**, and nothing is filtered or sealed: rain on
+  the seam runs down the collar's outside, but rain that reaches the bore goes onto the plate.
+- **The tightest bought part is still the bottle** (2.5 mm at its shoulder corners), and the
+  tightest fits in the neck are the stop lug in its slot (0.2 mm each side) and the blade between
+  the cheeks (0.4).

@@ -318,3 +318,7 @@ renders are inspected after every change to the shell scripts.
   the mesh they carried do not exist: the window and the intake are plain cuts. The known limits
   in `cad/README.md` are the authority on what this design does not solve — chiefly that the
   intake and the exhaust are both at the back, 36 mm apart, so the draught bypasses the phone.
+- **2026-09-27, the nod drive.** The head pans ±65 and nods −15..+5 about C = (0, 0, 350); the
+  statue parts on a sphere about C, with a screwed-on `collar`; a 6810-2RS bearing, a yoke to a Ø4
+  pin at C, a stem and a spider carry the unit, driven by an MG996R; the nozzle is fixed in the
+  mouth; the beard prints in two halves. See the plan's addendum of that date.

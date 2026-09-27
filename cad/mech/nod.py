@@ -185,8 +185,8 @@ def spider():
     Two M3 x 12 go down through it into the stem's head, driven from above before the unit goes
     on. The tube comes up through its middle and stands out of its top as the stab the head's
     socket slides onto, clamped by a third M3 from the side so the water cannot push it down.
-    Prints hub down: the arms' undersides are the sphere, which rises away from the hub at more
-    than 45 degrees from the bed near the bosses and is the only overhang.
+    Prints top face down: the hub's and the arms' tops are one plane, and what hangs is the four
+    bosses' undersides and the sphere under the arms - 344 mm2 measured, against 1 933 hub down.
     """
     z0, z1 = P.SPIDER_Z
     s = cyl_z(P.SPIDER_HUB_R, z0, z1)

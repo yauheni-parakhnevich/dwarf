@@ -19,7 +19,7 @@ disclaimer at the top of a README; it is most of the engineering below it.
 | `firmware/lib/dwarf` | **Done.** Protocol, servos, shot state machine, safety watchdog, 92 tests |
 | `firmware/src` | **Runs on real hardware.** Serial console; BLE is next |
 | `ios/DwarfApp` | **Planned, not written.** Camera, CoreML, the radio, the web UI |
-| The gnome itself | **Modelled, not printed.** `cad/` generates all 33 printed pieces from one parameters file and an image-to-3D reconstruction of a real garden gnome; bought parts still unmeasured |
+| The gnome itself | **Modelled, not printed.** `cad/` generates all 35 printed pieces from one parameters file and an image-to-3D reconstruction of a real garden gnome; bought parts still unmeasured |
 
 So: the brain works and is heavily tested, the body exists on paper, and no cat has ever been
 squirted.
@@ -39,13 +39,19 @@ for three seconds it disarms itself, closes the valve and centres the head — s
 interesting failure ends with the water off.
 
 **The gnome** is a printed shell 70 cm tall, and it is a real garden gnome: an image-to-3D
-reconstruction of the user's own, hollowed to a 2.4 mm wall and cut into ten pieces around what
-has to move. The coat stays still; everything above the beard's bottom edge - beard, face, ears
-and hat - is one bell that turns on the neck shroud. The head does not nod. Only the nozzle
-tilts, on a micro servo inside the beard, and its jet leaves through the beard's own parting
-under the mouth. A hollow shaft carries water and wiring up through the turning neck, so nothing
-has to seal against a rotating joint, and everything that holds pressure is bought, never
+reconstruction of the user's own, hollowed to a 2.4 mm wall and cut into twelve pieces around what
+has to move. The coat stays still up to its collar; the beard, the head and the hat turn together,
+panning ±65° and nodding from 15° down to 5° up about one point in the neck, on a pin reached
+through the bore of a thin-section ball bearing. Because both motions turn about the same point,
+the coat and the head part on a sphere round it and can never meet. The nozzle is fixed in the
+mouth, so the jet goes where the head looks. The water tube runs up inside the neck's stem and the
+head's socket slides onto it as the head goes on; everything that holds pressure is bought, never
 printed.
+
+| | |
+|---|---|
+| ![The printed gnome at rest, three-quarter view; pink marks the beard, head and hat, which move](cad/docs/pose_rest_quarter.png) | ![Section through the neck at rest: the pin, the stem, the bearing, the deck, the spider, the nozzle and the tube](cad/docs/pose_cutaway_rest_side.png) |
+| The gnome at rest; pink is what moves. | Cut through the neck: pin, stem, bearing, spider, nozzle, tube. |
 
 Between the phone and the ESP32 is a small JSON protocol over Bluetooth. Both sides' test
 suites assert against the same message fixtures in `protocol/fixtures/`, so they cannot drift
