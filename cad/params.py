@@ -372,18 +372,28 @@ Z_COLLAR = 407.0                            # derived, not chosen: where the sph
 BEARD_AZ = 85.0                             # the bib's fill sector: inside +-this the coat is
                                             # filled out to the sphere, so the beard sits on a
                                             # smooth bib instead of on its own old relief
-RIM_MIN_W = 6.0                             # the unit's edge on the sphere: any tongue of it
-                                            # narrower than this is cut off, as is any feather
-                                            # thinner than WALL_MIN
-RIM_FLANGE_W = 3.0                          # and what is left gets a flange this wide lying on
+RIM_OPEN_R = 5.0                            # the unit's edge on the sphere: any peninsula of it
+                                            # with a neck under twice this goes (the stray lock)
+RIM_SMOOTH = 3.0                            # the edge is a low-passed curve, a Gaussian of this
+RIM_RAMP = 1.0                              # ... cut across over this much, so no grid shows
+RIM_ISLAND = 18.0                           # thin or empty patches inside the beard smaller than
+                                            # this are closed by lifting the skin, not cut
+RIM_TONGUE_W = 10.0                         # a lock narrower than this hanging off the rim behind
+                                            # the ears, with nothing under it, is taken off
+RIM_EDGE_BAND = 4.0                         # skin thinner than WALL_MIN is cut only this close to
+                                            # the unit's edge; further in, it is lifted instead
+RIM_FLANGE_W = 3.0                          # what is left gets a flange this wide lying on
 RIM_FLANGE_T = 2.0                          # the sphere, this thick, turned in over the cavity
 NECK_BORE_R = 55.0                          # the one hole in the socket's closed dome, on the axis: SHROUD_R_OUT 52 + 3
 NECK_DAM_H = 3.0                            # a drip skirt this deep hangs under the bore's edge.
                                             # A rim this tall standing up round the bore would be
                                             # outside the ball (101.8 from C) and the nape meets it
                                             # at pan -65, nose down 15; the dome's top is the ball
-SEAM_CHAMFER_DEG = 30.0                     # the coat's top edge slopes down from the socket at
-                                            # this, instead of stepping out to the skin
+SEAM_NOTCH_MAX = 8.0                        # the coat's top edge slopes down from the socket so
+                                            # there is no ledge, but never cuts deeper than this
+                                            # under the unit's flat bottom: the slope eases where
+                                            # the ledge is wide (depth = width x slope)
+SEAM_CHAMFER_MAX_DEG = 60.0                 # and is never steeper than this where it is narrow
 PANEL_Y = 105.0                             # the sleeves' plane; above Z_BEARD_BOT the coat is
                                             # inside the ball (r <= 98) and never reaches it
 PANEL_TOP = Z_BEARD_BOT                     # so the side panels stop where the beard's bottom is

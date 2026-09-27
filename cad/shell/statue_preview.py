@@ -189,6 +189,8 @@ for name, (pan, nod) in {"rest": (0.0, 0.0), "pan65": (65.0, 0.0), "noddown15": 
 # the bib, the beard's edge and the shoulder, close up, with the head turned and nodded down
 parting("closeup", 65.0, -15.0, {"quarter": (74.0, 34.0), "back": (74.0, 215.0)},
         centre=(0.0, 0.0, 352.0), span=250.0)
+# and at rest, from the front-right at the beard's height: the pose the statue spends its life in
+parting("closeup", 0.0, 0.0, {"rest": (88.0, 55.0)}, centre=(0.0, 0.0, 345.0), span=230.0)
 # and the cutaway at rest, in the existing style: the coat halved at y = 0, the unit whole over it
 parting("cutaway", 0.0, 0.0, {"side": (90.0, 0.0)}, halve_fixed=True,
         centre=(0.0, 0.0, 380.0), span=420.0)
