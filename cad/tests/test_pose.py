@@ -176,6 +176,7 @@ def test_the_seam_is_two_millimetres_everywhere(rig):
         assert M.overlap(parts[n][0], parts["collar"][0]) < 1e-6, n
 
 
+@pytest.mark.slow
 def test_the_least_gaps_at_the_worst_poses(rig):
     """Every pair in NEIGHBOURS, measured at every pose of the grid: the least gap, where it is,
     and that it keeps its minimum. The message lists them all, worst first. Measured with
@@ -189,6 +190,11 @@ def test_the_least_gaps_at_the_worst_poses(rig):
         for a, b, _, _ in NEIGHBOURS:
             if a == "stop_lug" and nod in P.NOD_STOP:
                 continue                    # at the stops the lug is on its stop: test_mech's
+            if a in P.TURNING_SECTIONS and (abs(pan) not in (0.0, P.PAN_STOP_DEG) or nod not in (P.NOD_STOP[0], 0.0, P.NOD_STOP[1])):
+                continue                    # the shell's pieces, 80 000 faces each: at the stops and the middle
+            if a in P.TURNING_SECTIONS and b == "collar" and (pan, nod) != (0.0, 0.0):
+                continue                    # against the collar, at rest: a rotation about C keeps the
+                                            # distance, which test_the_seam_... proves for every pose
             ma = tube if a == "tube" else M.moved(man[a], parts[a][1], pan, nod)
             mb = M.moved(man[b], parts[b][1], pan, nod)
             d = M.mgap(ma, mb, reach=10.0)

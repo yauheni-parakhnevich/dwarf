@@ -42,9 +42,10 @@ pan linkage / interface; bought-part envelopes). `POSE=65,-15` before the comman
 uv venv --python 3.11 .venv-cad
 uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 
-.venv-cad/bin/python cad/build.py              # every stage, about two minutes
-.venv-cad/bin/pytest cad/tests -q              # 268 tests in eight files: the build's final check
-.venv-cad/bin/pytest cad/tests -q -m "not slow"  # the quick suite, about 1 minute: leaves out test_wall and test_fit
+.venv-cad/bin/python cad/build.py              # every stage, in order, about four minutes
+.venv-cad/bin/pytest cad/tests -q              # 268 tests in eight files, 3-5 minutes: the build's final check
+.venv-cad/bin/pytest cad/tests -q -m "not slow"  # the quick suite, under 2 minutes: leaves out test_wall,
+                                                 # test_fit and the pose sweep's gap list
 ```
 
 Blender 5.2 is driven headless from `/Applications/Blender.app`; set `BLENDER` to point
@@ -59,7 +60,7 @@ hollowing the statue and the previews.
 | `preview` | Blender: the posed renders and every section to `out/preview/` | 20 s |
 | `scene` | Blender: `out/gnome.blend`, every section and part as its own object, posed | 3 s |
 
-That is 2:07 measured for the whole build. The stages run in the order of the table, **`statue`
+That is 4:06 measured for a fresh build, `cad/out` empty. The stages run in the order of the table, **`statue`
 before `mech`**: the deck, the collar's tabs, the beard's tongues and the leg brackets are sized from
 what the statue stage measures (`out/statue/features.json`), and there is no guess good enough to
 build them from - a first build that guessed once printed collar tabs that missed the ring and beard
