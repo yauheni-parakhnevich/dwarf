@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """Build the printed parts.
 
-Stages: mech, statue, shell, assemble, preview, scene. No argument runs all of them, in that
-order. `shell` is a stub the statue stage replaced; it is kept so the list still reads as the
+Stages: statue, mech, shell, assemble, preview, scene. No argument runs all of them, in that
+order: the statue first, because the mechanism is sized from what it measures (out/statue/
+features.json) - the deck, the collar's tabs, the beard's tongues, the leg brackets. `shell` is a stub the statue stage replaced; it is kept so the list still reads as the
 pipeline it was.
 """
 import os
@@ -18,6 +19,10 @@ OUT = CAD / "out"
 
 
 def mech():
+    feats = OUT / "statue" / "features.json"
+    if not feats.exists():
+        sys.exit(f"mech: {feats} is missing. The mechanism is sized from the statue's measurements; "
+                 f"run `build.py statue` first (or `build.py` for everything, in order)")
     import mech  # noqa: F401  (registers builders)
     import mech; mech.load_all()
     from build123d import export_step, export_stl
@@ -150,7 +155,7 @@ def scene():
     blender("scene.py", wants=[OUT / "gnome.blend"])
 
 
-STAGES = {"mech": mech, "statue": statue, "shell": shell, "assemble": assemble, "preview": preview, "scene": scene}
+STAGES = {"statue": statue, "mech": mech, "shell": shell, "assemble": assemble, "preview": preview, "scene": scene}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(STAGES)

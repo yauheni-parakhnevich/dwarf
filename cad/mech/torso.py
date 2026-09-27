@@ -103,18 +103,12 @@ def cage_feet():
 
 
 def measured_legs():
-    """The statue stage's measured leg cavities if it has written them, else the parameters'.
-
-    LEG_LEFT_XY and LEG_RIGHT_XY are the fit report's estimate from a reach table; the statue
-    measures the real cavity and puts it in out/statue/features.json under "legs".
-    """
-    path = Path(__file__).resolve().parents[1] / "out" / "statue" / "features.json"
-    try:
-        legs = json.loads(path.read_text())["legs"]
-        return {"left": tuple(legs["left"][:2]), "right": tuple(legs["right"][:2]),
-                "r": float(legs["r"])}
-    except (OSError, KeyError, ValueError):
-        return {"left": tuple(P.LEG_LEFT_XY), "right": tuple(P.LEG_RIGHT_XY), "r": P.LEG_R}
+    """The statue stage's measured leg cavities. LEG_LEFT_XY and LEG_RIGHT_XY were the fit report's
+    estimate and are 41 mm from where the mesh puts the legs, so they are not a fallback: without
+    the statue this raises (mech.common.features)."""
+    from mech.common import features
+    legs = features("legs")
+    return {"left": tuple(legs["left"][:2]), "right": tuple(legs["right"][:2]), "r": float(legs["r"])}
 
 
 def leg_centres():

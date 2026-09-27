@@ -87,10 +87,7 @@ Z_BEARD_TOP = P.SECTIONS_STATUE["beard"][1]            # 412
 def _inside(name, a, z0, z1, half=TONGUE_HALF_DEG):
     from mech.collar import _near
     from mech.common import inner_table
-    t = inner_table(name)
-    if t is None:
-        return 90.0
-    rows, step = t
+    rows, step = inner_table(name)
     seen = [row[i] for z, row in rows.items() if z0 <= z <= z1 for i in _near(a, rows, step, half) if row[i] > 0]
     return min(seen)
 

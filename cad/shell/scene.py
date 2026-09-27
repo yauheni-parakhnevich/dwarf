@@ -138,16 +138,10 @@ def box(name, x0, x1, y0, y1, z0, z1, color):
 
 
 def legs():
-    """The trouser legs the statue stage measured, as mech.torso.measured_legs reads them.
-
-    Read here rather than imported because this file runs inside Blender, which has no
-    build123d - and the parameters' LEG_LEFT_XY is 41 mm from where the mesh puts the leg.
-    """
-    try:
-        m = json.load(open(CAD / "out" / "statue" / "features.json"))["legs"]
-        return tuple(m["left"][:2]), tuple(m["right"][:2])
-    except (OSError, KeyError, ValueError):
-        return P.LEG_LEFT_XY, P.LEG_RIGHT_XY
+    """The trouser legs the statue stage measured, as mech.torso.measured_legs reads them (read
+    here because this runs inside Blender, which has no build123d)."""
+    m = json.load(open(CAD / "out" / "statue" / "features.json"))["legs"]
+    return tuple(m["left"][:2]), tuple(m["right"][:2])
 
 
 L, W, H = P.BOTTLE

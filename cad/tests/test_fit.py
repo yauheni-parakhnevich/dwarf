@@ -95,7 +95,7 @@ def test_the_bought_parts_are_inside_the_cavity():
 def test_the_legs_are_where_the_brackets_expect(placed):
     """Whatever the statue measured, both brackets still stand inside their leg."""
     lg = legs()
-    r = lg.get("r", P.LEG_R)
+    r = lg["r"]
     for name, key in (("pump_bracket", "left"), ("valve_bracket", "right")):
         cx, cy = lg[key]
         bb = placed[name].bounding_box()

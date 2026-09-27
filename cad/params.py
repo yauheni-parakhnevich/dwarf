@@ -357,9 +357,7 @@ CAN_THREAD_LEN = 12.0
 CAN_NECK_ID = 30.0
 PUMP = (45.0, 40.0, 95.0)                   # a micro 12 V diaphragm pump (about 1 L/min, 7 bar) standing in the left leg; x, y, z. Re-measure
 PUMP_FEET = (30.0, 30.0)                    # its mounting holes; re-measure
-LEG_LEFT_XY = (0.0, 80.0)                   # leg cavity centres at Z_FLOOR - 50, from the fit report; the statue stage measures them
-LEG_RIGHT_XY = (0.0, -80.0)
-LEG_R = 38.0                                # the legs' free radius there
+# the trouser legs' centres and free radius are measured by the statue stage (features.json "legs")
 PUMP_Z0 = Z_FLOOR - PUMP[2] - 5.0           # hangs under the floor plate on a bracket, 5 mm below the plate
 VALVE = (45.0, 25.0, 55.0)
 VALVE_Z0 = Z_FLOOR - VALVE[2] - 5.0

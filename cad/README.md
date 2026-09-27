@@ -53,15 +53,19 @@ hollowing the statue and the previews.
 
 | Stage | What it does | Time |
 |---|---|---:|
-| `mech` | build123d: every mechanism part to `out/step/` and `out/stl/`, in the frame it prints in; the placed `mechanism_assembly`; `out/placements.json` (where each part sits and how it moves) and the bought parts' envelopes to `out/stl/bought/` with `out/bought.json` | 8 s |
 | `statue` | the reconstruction into the project frame, hollowed in Blender, both voids cut back off the folds, measured, parted on the sphere, cut into the raw sections in `out/statue/raw/`, swept through pan and nod, and its own previews | 105 s |
+| `mech` | build123d, after `statue`: every mechanism part to `out/step/` and `out/stl/`, in the frame it prints in; the placed `mechanism_assembly`; `out/placements.json` (where each part sits and how it moves) and the bought parts' envelopes to `out/stl/bought/` with `out/bought.json` | 8 s |
 | `assemble` | trimesh + manifold3d: interface parts clipped into the cavity and unioned in, openings and screw holes cut, the beard split in two, twelve printable sections to `out/stl/`, and `out/stl/holes.json` - every radial hole's measured skin and insert floor | 6 s |
 | `preview` | Blender: the posed renders and every section to `out/preview/` | 20 s |
 | `scene` | Blender: `out/gnome.blend`, every section and part as its own object, posed | 3 s |
 
-That is 2:07 measured for the whole build. Stages can be named individually and run in any order,
-as long as `mech` and `statue` have run before `assemble`. The tests that need built files skip
-themselves when there are none. The `shell` stage is still in the list and does nothing.
+That is 2:07 measured for the whole build. The stages run in the order of the table, **`statue`
+before `mech`**: the deck, the collar's tabs, the beard's tongues and the leg brackets are sized from
+what the statue stage measures (`out/statue/features.json`), and there is no guess good enough to
+build them from - a first build that guessed once printed collar tabs that missed the ring and beard
+halves with no tongues. So `build.py mech` on a tree without the statue's outputs stops and says to
+run `statue` first, and every builder that reads them raises rather than guessing. Stages can be run
+on their own after that. The tests that need built files skip themselves when there are none. The `shell` stage is still in the list and does nothing.
 
 A Blender script that raises still exits 0 - Blender prints the traceback and quits happily - so
 the stages that drive it delete what each script owns before running it and check afterwards

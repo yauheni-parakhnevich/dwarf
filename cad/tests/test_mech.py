@@ -733,3 +733,22 @@ def test_chassis_and_deck_screws_have_driver_paths(parts):
             if name == "nozzle_holder":
                 continue                                         # it comes with the head, after
             assert (driver & other).volume < 1e-3, ("spider screw", x, name)
+
+
+STATUE_SIZED = ("deck", "collar_spigot", "beard_tongue", "pump_bracket", "valve_bracket", "valve_strap",
+                "floor_plate")
+
+
+@pytest.mark.parametrize("name", STATUE_SIZED)
+def test_a_part_sized_by_the_statue_refuses_to_guess(name, monkeypatch, tmp_path):
+    """With features.json hidden, every builder that is sized from it raises rather than building
+    from a guess - a fresh clone's first build once printed collar tabs at r 84 that missed the
+    ring and beard halves with no tongues."""
+    import mech
+    import mech.common as C
+    from mech import ALL
+    mech.load_all()
+    monkeypatch.setattr(C, "OUT", tmp_path)
+    spec = next(s for s in ALL if s.name == name)
+    with pytest.raises(C.StatueMissing):
+        spec.build()

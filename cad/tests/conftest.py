@@ -14,6 +14,9 @@ def parts():
     """Every registered part, built once for the whole session, in its print frame."""
     import mech; mech.load_all()
     from mech import ALL
+    from mech.common import OUT
+    if not (OUT / "statue" / "features.json").exists():
+        pytest.skip("the mechanism is sized from the statue's measurements: run `build.py statue`")
     return {spec.name: spec.build() for spec in ALL}
 
 

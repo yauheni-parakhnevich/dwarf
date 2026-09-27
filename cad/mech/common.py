@@ -106,21 +106,29 @@ def pose_point(p, pan=0.0, nod=0.0, nods=True):
     return (x, y, z + P.Z_NOD)
 
 
-def features():
-    """out/statue/features.json, or None before the statue stage has run."""
+class StatueMissing(RuntimeError):
+    """A part is sized from what the statue stage measured, and it has not been measured."""
+
+
+def features(key=None):
+    """out/statue/features.json, or its entry `key`. Several parts are sized from it - the deck,
+    the collar's tabs, the beard's tongues, the leg brackets - and there is no guess that is good
+    enough to build them from instead: a build that guessed printed tabs that missed the ring. So
+    it raises when the statue stage has not run."""
+    path = OUT / "statue" / "features.json"
     try:
-        return json.loads((OUT / "statue" / "features.json").read_text())
-    except (OSError, ValueError):
-        return None
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise StatueMissing(f"{path} is missing or unreadable: run `build.py statue` before `mech`") from exc
+    if key is not None and key not in doc:
+        raise StatueMissing(f"{path} has no {key!r}: it is from an older statue stage; run `build.py statue`")
+    return doc if key is None else doc[key]
 
 
 def inner_table(name):
-    """The statue's published first-crossing table for `name` ("collar" or "torso"): a dict of
-    z -> radii every step_deg, with the misses (0) left out, or None if it has not been written."""
-    f = features()
-    if not f or f"{name}_inner" not in f:
-        return None
-    t = f[f"{name}_inner"]
+    """The statue's published first-crossing table for `name` ("collar", "torso", "beard",
+    "head"): a dict of z -> radii every step_deg, and the step."""
+    t = features(f"{name}_inner")
     return {float(z): row for z, row in t["rows"].items()}, float(t["step_deg"])
 
 

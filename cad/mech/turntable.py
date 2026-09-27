@@ -20,27 +20,6 @@ def _polar(r, deg, z):
     return (*polar(r, deg), z)
 
 
-# The cavity's own section over the deck's band, measured from out/statue/cavity.stl at z 394,
-# 396, 398 and 400 and minimised: the nearest boundary in each ten degrees of azimuth. Re-measured
-# against the current mesh the same way, these thirty-six numbers are within 0.9 mm of it, so the
-# table is not stale - it simply has nowhere better to live yet.
-#
-# out/statue/features.json cannot stand in for it. Its `reach` rows carry five numbers each - the
-# minimum and the four cardinals - and statue.py's reach() throws the other sixty-eight directions
-# away as it goes. Rebuilding this section from what survives misses badly: the minimum alone is
-# 35.6 mm short at the sides, and interpolating the cardinals round the azimuth, whether straight
-# or as a quadrant ellipse, is out by up to 22.1 and 17.3 mm and is *optimistic* almost everywhere
-# - it reads 84 mm at 150 degrees where the coat's back corner is really at 69.3, which is exactly
-# where the deck would then grow through the wall. So the literal stays. Move it to features.json
-# when the statue stage publishes the whole profile rather than four points of it.
-NECK_SECTION = {0: 82.2, 10: 83.2, 20: 88.0, 30: 93.3, 40: 89.7, 50: 89.5, 60: 98.2, 70: 103.4,
-                80: 100.9, 90: 105.1, 100: 98.7, 110: 102.5, 120: 91.1, 130: 91.1, 140: 83.0,
-                150: 69.3, 160: 69.2, 170: 74.5, 180: 75.6, 190: 74.5, 200: 69.2, 210: 69.3,
-                220: 83.0, 230: 91.1, 240: 91.1, 250: 102.5, 260: 98.7, 270: 105.1, 280: 100.9,
-                290: 103.4, 300: 98.2, 310: 89.5, 320: 89.7, 330: 93.3, 340: 88.0, 350: 83.2}
-NECK_MARGIN = 1.0
-
-
 def collar_shadow(z_top=P.Z_DECK - P.DECK_T):
     """The narrowest the collar is, in each direction, anywhere from its bottom up to z_top.
 
@@ -49,10 +28,7 @@ def collar_shadow(z_top=P.Z_DECK - P.DECK_T):
     the coat's own wall at 71, well inside the section at the deck's own height. Read from the
     statue's `collar_inner` table; (angles in degrees, radii).
     """
-    t = inner_table("collar")
-    if t is None:
-        return None
-    rows, step = t
+    rows, step = inner_table("collar")
     n = len(next(iter(rows.values())))
     out = []
     from mech.collar import tab_in_r
@@ -66,19 +42,15 @@ def collar_shadow(z_top=P.Z_DECK - P.DECK_T):
 
 
 def _neck_prism(z0, z1, margin=None):
-    """What the deck may occupy in plan: inside the collar's shadow less DECK_SHADOW_MARGIN, or,
-    before the statue stage has published it, the hand-measured NECK_SECTION less NECK_MARGIN."""
-    sh = collar_shadow()
-    if sh is None:
-        pts = [polar(NECK_SECTION[a] - NECK_MARGIN, a) for a in sorted(NECK_SECTION)]
-    else:
-        m = P.DECK_SHADOW_MARGIN if margin is None else margin
-        a, r = sh
-        n = len(r)
-        # each corner takes the least of its own and its neighbours' radii, so the straight edge
-        # between two samples never crosses a wall that steps in between them
-        low = [min(x for x in (r[(i - 1) % n], r[i], r[(i + 1) % n]) if x > 0) for i in range(n)]
-        pts = [polar(x - m, ai) for ai, x in zip(a, low)]
+    """What the deck may occupy in plan: inside the collar's shadow less DECK_SHADOW_MARGIN. The
+    hand-measured NECK_SECTION this once was is gone: the statue publishes the collar's inside."""
+    m = P.DECK_SHADOW_MARGIN if margin is None else margin
+    a, r = collar_shadow()
+    n = len(r)
+    # each corner takes the least of its own and its neighbours' radii, so the straight edge
+    # between two samples never crosses a wall that steps in between them
+    low = [min(x for x in (r[(i - 1) % n], r[i], r[(i + 1) % n]) if x > 0) for i in range(n)]
+    pts = [polar(x - m, ai) for ai, x in zip(a, low)]
     return Pos(0, 0, z0) * extrude(Polygon(*pts), z1 - z0)
 
 

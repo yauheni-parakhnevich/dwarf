@@ -109,7 +109,7 @@ cd firmware && pio test -e native
 # the firmware itself
 cd firmware && pio run -e esp32dev
 
-# every printed part, from one parameters file — 172 tests
+# every printed part, from one parameters file
 uv venv --python 3.11 .venv-cad
 uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 .venv-cad/bin/python cad/build.py && .venv-cad/bin/pytest cad/tests -q
@@ -118,9 +118,9 @@ uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
 The CAD build also wants Blender 5.2 at `/Applications/Blender.app` (set `BLENDER` to point
 elsewhere), and it wants `cad/in/` — the reference photographs of the statue and `gnome_ai.glb`,
 the image-to-3D reconstruction made from them. **That directory is a user-supplied input and is
-not committed**: it is 200 000 triangles of someone's garden ornament. Without it the mechanism
-still builds and its tests still run; the `statue` stage stops and the tests that need a built
-shell skip themselves. `cad/README.md` has the recipe for making the reconstruction again.
+not committed**: it is 200 000 triangles of someone's garden ornament. Without it nothing builds:
+the `statue` stage stops, and the mechanism, which is sized from the statue's measurements, refuses
+to build from guesses; the tests that need built files skip themselves. `cad/README.md` has the recipe for making the reconstruction again.
 
 ## A few things learned the hard way
 

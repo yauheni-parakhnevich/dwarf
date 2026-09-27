@@ -40,20 +40,14 @@ def _near(a, rows, step, half):
 def ring_inside(a, half=P.SPIGOT_HALF_DEG):
     """The least radius of the ring's inside over the tab's height and width: what the tab's
     outside has to pass, the whole way down."""
-    t = inner_table("torso")
-    if t is None:
-        return 84.0
-    rows, step = t
+    rows, step = inner_table("torso")
     seen = [row[i] for z, row in rows.items() if Z_TAB0 - 2 <= z <= Z_JOINT
             for i in _near(a, rows, step, half) if row[i] > 0]
     return min(seen)
 
 
 def collar_inside(a, z0, z1, half=P.SPIGOT_HALF_DEG):
-    t = inner_table("collar")
-    if t is None:
-        return 84.0
-    rows, step = t
+    rows, step = inner_table("collar")
     seen = [row[i] for z, row in rows.items() if z0 - 2 <= z <= z1
             for i in _near(a, rows, step, half) if row[i] > 0]
     return min(seen)
