@@ -31,7 +31,24 @@ class Controller {
         : cfg_(cfg), shooter_(cfg.shooter) {}
 
     // Applies one command and returns the acknowledgement to notify, if any.
-    Ack handle(const Command& c, Millis now);
+    //
+    // refreshHeartbeat controls whether this command counts as proof the
+    // phone is alive (lastCmd_/linkUp_). It defaults to true, which is
+    // correct for every single-channel caller (every test in this suite,
+    // and firmware/src/main.cpp's original serial-only console). Once a
+    // second, independent command channel exists -- BLE, in main.cpp -- two
+    // channels satisfying the same heartbeat independently becomes the same
+    // self-feeding-watchdog shape as a synthesised command through this same
+    // function (see forceSafe() below): a channel nobody is actually
+    // listening on (a serial monitor left open on the bench, say) can keep
+    // "proving" liveness after the channel that matters -- BLE -- has gone
+    // quiet. main.cpp resolves this by giving BLE exclusive ownership of the
+    // heartbeat whenever a central is connected, and passing
+    // refreshHeartbeat=false for commands arriving over serial during that
+    // window; the command still executes (the console stays a real command
+    // path either way), it simply cannot feed the watchdog it is supposed to
+    // be guarded by.
+    Ack handle(const Command& c, Millis now, bool refreshHeartbeat = true);
 
     // Advances time: tank debounce, faults, heartbeat, servo slew, shot machine.
     // tankSwitchClosed is true while the float switch reports water.

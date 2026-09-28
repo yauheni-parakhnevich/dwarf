@@ -1,0 +1,8 @@
+build123d==0.13.0
+bd_warehouse
+trimesh
+manifold3d
+rtree
+numpy
+scipy
+pytest

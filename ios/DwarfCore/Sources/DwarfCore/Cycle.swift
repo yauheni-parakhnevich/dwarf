@@ -9,6 +9,11 @@ public struct CycleOutput: Sendable {
     public let solutions: [Int: AimSolution]
     public let blobs: [Blob]
     public let meanLuma: Double
+    /// Why the best candidate was not fired at, or nil when it was, or when there was
+    /// nothing to consider. See `FireRefusal`.
+    public let refusal: FireRefusal?
+    /// Shots still counted against the hourly ceiling.
+    public let shotsThisHour: Int
 }
 
 /// Runs a frame through the whole pipeline.
@@ -42,6 +47,14 @@ public final class Cycle {
         self.tracker = Tracker(config: trackerConfig)
         self.policy = FirePolicy(limits: fireLimits)
         self.aimer = Aimer(calibration: calibration, limits: limits)
+    }
+
+    /// What the policy has already spent, for persisting across a restart.
+    public var shotLog: [ShotRecord] { policy.shotLog }
+
+    /// Puts a persisted budget back. See `FirePolicy.restore(_:now:uptime:)`.
+    public func restoreShotLog(_ records: [ShotRecord], now: Date, uptime: TimeInterval) {
+        policy.restore(records, now: now, uptime: uptime)
     }
 
     /// Replaces the calibration, for instance right after the owner adds a point in the
@@ -87,7 +100,9 @@ public final class Cycle {
         ))
 
         return CycleOutput(decision: decision, cropRequests: requests, tracks: tracks,
-                           solutions: solutions, blobs: blobs, meanLuma: frame.meanLuma)
+                           solutions: solutions, blobs: blobs, meanLuma: frame.meanLuma,
+                           refusal: policy.lastRefusal,
+                           shotsThisHour: policy.shotsInLastHour(asOf: uptime))
     }
 
     /// Detector answers can overtake each other whenever the app keeps more than one

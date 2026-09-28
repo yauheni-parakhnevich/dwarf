@@ -31,7 +31,7 @@ bool isValidTempReading(float t) {
 
 }  // namespace
 
-Ack Controller::handle(const Command& c, Millis now) {
+Ack Controller::handle(const Command& c, Millis now, bool refreshHeartbeat) {
     Ack ack;
     if (c.type == CmdType::None) {
         ack.present = true;
@@ -41,8 +41,10 @@ Ack Controller::handle(const Command& c, Millis now) {
         return ack;
     }
 
-    lastCmd_ = now;
-    linkUp_ = true;
+    if (refreshHeartbeat) {
+        lastCmd_ = now;
+        linkUp_ = true;
+    }
 
     switch (c.type) {
         case CmdType::Hb:

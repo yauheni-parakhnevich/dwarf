@@ -19,7 +19,7 @@ disclaimer at the top of a README; it is most of the engineering below it.
 | `firmware/lib/dwarf` | **Done.** Protocol, servos, shot state machine, safety watchdog, 92 tests |
 | `firmware/src` | **Runs on real hardware.** Serial console; BLE is next |
 | `ios/DwarfApp` | **Planned, not written.** Camera, CoreML, the radio, the web UI |
-| The gnome itself | **Not built.** Parts not ordered, nothing printed |
+| The gnome itself | **Modelled, not printed.** `cad/` generates all 35 printed pieces from one parameters file and an image-to-3D reconstruction of a real garden gnome; bought parts still unmeasured |
 
 So: the brain works and is heavily tested, the body exists on paper, and no cat has ever been
 squirted.
@@ -38,9 +38,20 @@ watches its own safety timers. It knows nothing about cats. If the phone stops t
 for three seconds it disarms itself, closes the valve and centres the head — so every
 interesting failure ends with the water off.
 
-**The gnome** is a printed shell about 55 cm tall. The head nods on a yoke; a hollow shaft
-carries water and wiring up through the rotating neck, so nothing has to seal against a
-turning joint. Everything that holds pressure is bought, never printed.
+**The gnome** is a printed shell 70 cm tall, and it is a real garden gnome: an image-to-3D
+reconstruction of the user's own, hollowed to a 2.4 mm wall and cut into twelve pieces around what
+has to move. The coat stays still up to its collar; the beard, the head and the hat turn together,
+panning ±65° and nodding from 15° down to 5° up about one point in the neck, on a pin reached
+through the bore of a thin-section ball bearing. Because both motions turn about the same point,
+the coat and the head part on a sphere round it and can never meet. The nozzle is fixed in the
+mouth, so the jet goes where the head looks. The water tube runs up inside the neck's stem and the
+head's socket slides onto it as the head goes on; everything that holds pressure is bought, never
+printed.
+
+| | |
+|---|---|
+| ![The printed gnome at rest, three-quarter view; pink marks the beard, head and hat, which move](cad/docs/pose_rest_quarter.png) | ![Section through the neck at rest: the pin, the stem, the bearing, the deck, the spider, the nozzle and the tube](cad/docs/pose_cutaway_rest_side.png) |
+| The gnome at rest; pink is what moves. | Cut through the neck: pin, stem, bearing, spider, nozzle, tube. |
 
 Between the phone and the ESP32 is a small JSON protocol over Bluetooth. Both sides' test
 suites assert against the same message fixtures in `protocol/fixtures/`, so they cannot drift
@@ -74,6 +85,8 @@ ios/DwarfCore/      Swift package: every decision, no frameworks, 162 tests
 ios/DwarfApp/       the iOS app — planned, not yet written
 firmware/           PlatformIO project for the ESP32
 protocol/fixtures/  wire-format examples both test suites assert against
+cad/                every printed part: the mechanism from one parameters file,
+                    the shell from an image-to-3D reconstruction of the gnome itself
 hardware/           bill of materials, wiring, bench checklists
 docs/               the design spec, the mechanical design, and the plans
 tools/              fixture generation, model export, PDF rendering
@@ -95,7 +108,19 @@ cd firmware && pio test -e native
 
 # the firmware itself
 cd firmware && pio run -e esp32dev
+
+# every printed part, from one parameters file
+uv venv --python 3.11 .venv-cad
+uv pip install --python .venv-cad/bin/python -r cad/requirements.txt
+.venv-cad/bin/python cad/build.py && .venv-cad/bin/pytest cad/tests -q
 ```
+
+The CAD build also wants Blender 5.2 at `/Applications/Blender.app` (set `BLENDER` to point
+elsewhere), and it wants `cad/in/` — the reference photographs of the statue and `gnome_ai.glb`,
+the image-to-3D reconstruction made from them. **That directory is a user-supplied input and is
+not committed**: it is 200 000 triangles of someone's garden ornament. Without it nothing builds:
+the `statue` stage stops, and the mechanism, which is sized from the statue's measurements, refuses
+to build from guesses; the tests that need built files skip themselves. `cad/README.md` has the recipe for making the reconstruction again.
 
 ## A few things learned the hard way
 

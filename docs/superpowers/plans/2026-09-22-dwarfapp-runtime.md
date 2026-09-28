@@ -368,7 +368,7 @@ The weights are AGPL-3.0 (Ultralytics), which is fine for this private project.
 Run this through a 3.11 virtual environment, not the system Python:
 
     uv venv --python /opt/homebrew/bin/python3.11 .venv-model
-    .venv-model/bin/pip install -r tools/requirements-model.txt
+    uv pip install --python .venv-model/bin/python -r tools/requirements-model.txt
     .venv-model/bin/python tools/export_model.py
 """
 
@@ -432,7 +432,8 @@ Create `ios/DwarfApp/App/Models/.gitignore`:
 ```bash
 cd /Users/Yauheni_Parakhnevich/Workspace/dwarf
 uv venv --python /opt/homebrew/bin/python3.11 .venv-model
-.venv-model/bin/pip install -r tools/requirements-model.txt
+# uv venv does not install pip into the environment, so install through uv itself.
+uv pip install --python .venv-model/bin/python -r tools/requirements-model.txt
 .venv-model/bin/python tools/export_model.py
 ```
 
@@ -452,7 +453,21 @@ print(m.get_spec().description)
 
 Write the input name, the two output names and their shapes into the commit message. Task 5 decodes exactly these, and guessing is how a whole afternoon disappears.
 
-The expected shape, which Task 5's code assumes: one image input at `imgsz × imgsz`, and two outputs — `confidence` of shape `(N, 80)` and `coordinates` of shape `(N, 4)`, the coordinates being `[x_center, y_center, width, height]` normalised to the input square. **If the real spec differs, stop and report it** rather than adapting Task 5 quietly.
+**Measured on 2026-09-22 with ultralytics 8.3.40 and coremltools 8.1**, so this step is a
+check that a re-export still matches rather than a discovery:
+
+```
+INPUT  image                640 x 640 image
+INPUT  iouThreshold         double
+INPUT  confidenceThreshold  double
+OUTPUT confidence           (N, 80)
+OUTPUT coordinates          (N, 4)
+```
+
+Three inputs, not one, and none of them is marked optional. `coordinates` rows are
+`[x_center, y_center, width, height]` normalised to the input square. Task 5 supplies all
+three and selects the image input by type rather than by name order. **If a re-export
+differs from this, stop and report it** rather than adapting Task 5 quietly.
 
 - [ ] **Step 6: Commit**
 
@@ -1483,14 +1498,15 @@ import CoreVideo
 /// Mac; what is left here can only be exercised on the phone, and Task 6 does that.
 public final class CoreMLDetector: Detector {
     private let model: MLModel
-    private let inputName: String
+    private let imageInputName: String
     private let minConfidence: Double
+    private let iouThreshold: Double
 
     /// - Parameter computeUnits: the A9 has no Neural Engine, so `.all` means GPU with a
     ///   CPU fallback. Left configurable because M0 may find the CPU steadier under
     ///   thermal pressure than a GPU competing with the camera.
     public init(modelName: String = "yolo11n", bundle: Bundle = .main,
-                minConfidence: Double = 0.25,
+                minConfidence: Double = 0.25, iouThreshold: Double = 0.45,
                 computeUnits: MLComputeUnits = .all) throws {
         guard let url = bundle.url(forResource: modelName, withExtension: "mlmodelc") else {
             throw DetectorError.modelMissing(name: modelName)
@@ -1499,16 +1515,29 @@ public final class CoreMLDetector: Detector {
         configuration.computeUnits = computeUnits
         self.model = try MLModel(contentsOf: url, configuration: configuration)
         self.minConfidence = minConfidence
+        self.iouThreshold = iouThreshold
 
-        guard let input = model.modelDescription.inputDescriptionsByName.keys.first else {
+        // The export has three inputs, not one: `image`, `iouThreshold` and
+        // `confidenceThreshold`. Picking `keys.first` would hand a pixel buffer to
+        // whichever of them a Dictionary happened to enumerate first — a bug that works
+        // on the bench and fails in the garden, or the other way round. Select by type.
+        let inputs = model.modelDescription.inputDescriptionsByName
+        guard let image = inputs.first(where: { $0.value.type == .image })?.key else {
             throw DetectorError.unexpectedOutputs
         }
-        self.inputName = input
+        self.imageInputName = image
     }
 
     public func detect(input: CVPixelBuffer) throws -> [RawBox] {
-        let features = try MLDictionaryFeatureProvider(
-            dictionary: [inputName: MLFeatureValue(pixelBuffer: input)])
+        // None of the three inputs is optional in the spec, so all three are supplied.
+        // Thresholding inside the model is also cheaper: suppressed boxes never become
+        // rows for BoxDecoder to walk. It still checks the confidence itself, because a
+        // re-export with different defaults should not quietly widen what gets fired at.
+        let features = try MLDictionaryFeatureProvider(dictionary: [
+            imageInputName: MLFeatureValue(pixelBuffer: input),
+            "iouThreshold": MLFeatureValue(double: iouThreshold),
+            "confidenceThreshold": MLFeatureValue(double: minConfidence)
+        ])
         let output = try model.prediction(from: features)
 
         guard let confidence = output.featureValue(for: "confidence")?.multiArrayValue,
@@ -1674,6 +1703,40 @@ Record: inferences per second, worst thermal state (0 nominal, 1 fair, 2 serious
 - **Still short at 320**: stop and re-plan. The cycle budget in `SchedulerConfig` and the whole premise of two crops plus a sweep tile per cycle would need rethinking, and that is a spec conversation, not an implementation detail.
 
 Append the result to this task as a note, commit it, and carry the number into Task 12's `SchedulerConfig`.
+
+**M0 result, measured 2026-09-22 on the gnome's own iPhone 6s (iOS 15.8.8), ten minutes,
+unplugged, screen on, lying flat:**
+
+```
+DONE 600 s · 1998 inferences · 3.33 /s · worst thermal 0 · 260 MB
+```
+
+**Passed, with room.** The exit criterion allowed `fair`; the phone never left `nominal` in
+ten unbroken minutes. `imgsz` stays at 640 — no FP16 fallback, no drop to 416 or 320, so the
+gnome keeps its full reach of roughly 75 px of cat at 6 m. Resident memory settled at 260 MB
+rather than climbing.
+
+Two defects had to be fixed before this number existed, and both were in the benchmark
+rather than in the model:
+
+- The loop ran **on the main thread**. `SwiftUI.View` is `@MainActor`-isolated, so an `async`
+  method declared on a view inherits that isolation and `Task.detached` hops straight back to
+  the main actor to call it. Ten minutes of blocked main thread is a watchdog kill. The crash
+  report's heaviest stack showed CoreFoundation's run loop calling into Espresso. The
+  accompanying `cpu_resource` report was only an advisory — `Action taken: none`,
+  `ThermalPressure 0` — so it was never thermal.
+- Nothing drained the autorelease pool between inferences, and CoreML autoreleases a good
+  deal per call, so the footprint climbed until iOS killed the app.
+
+**What the number means downstream.** 0.30 s an inference. One answer can carry three of them
+(two motion crops and a sweep tile), so 0.9 s; with a two-tile sweep, an animal the sweep
+alone finds is looked at about every 1.8 s. `TrackerConfig.stillWindow` defaults to 1.0 s and
+samples are only recorded on a hit, so each would age out before the next arrived and a cat
+sitting in plain view — while anything else in frame moved — would be tracked perfectly and
+never fired at. `Runtime` now sizes `stillWindow` and `confirmWindow` from
+`Settings.detectorLatency` rather than taking DwarfCore's defaults. Re-measure in Task 14
+against the real camera, where motion detection and conversion compete for the same core and
+0.30 s is an optimistic floor.
 
 - [ ] **Step 7: Commit**
 
@@ -2290,6 +2353,29 @@ This gnome's BLE address is `54:43:B2:44:2F:9E`. CoreBluetooth does not expose a
 it gives each peripheral an opaque per-app `identifier` — so the app discovers by service UUID,
 then remembers the identifier of whatever it connected to. Advertised name is `dwarf`.
 
+### What the firmware now requires, which this task's original text predates
+
+**Both characteristics demand an authenticated, encrypted link.** The firmware requires
+bonding with LE Secure Connections and a passkey, so:
+
+- The **first** write to `cmd`, or the first subscription to `status`, triggers iOS's own
+  pairing dialog. The owner types the six-digit passkey the gnome prints over its serial
+  console on every boot. There is no API to answer that dialog and none is wanted.
+- Until that has happened, writes fail with `CBATTError.insufficientAuthentication` or
+  `.insufficientEncryption`. That is a **distinct state from "not connected"**, and the app
+  must be able to say so — "the gnome is there and will not talk to you until you pair with
+  it" is a completely different instruction to the owner than "no gnome found". Expose it.
+- After bonding, iOS reconnects and re-encrypts silently. The owner does this once.
+- A gnome whose bonds were erased over serial will refuse the phone until it pairs again.
+
+**The gnome disconnects a central that has not authenticated within ten seconds**, to stop
+strangers squatting on its connection slots. A connection that keeps dropping about ten
+seconds after it forms means pairing is not completing, not that the link is flaky.
+
+**`isConnected` is read from the main actor and written from CoreBluetooth's queue.** The
+review of Task 13 flagged this as latent because `FakeTransport` is never driven; with a real
+radio it becomes live. Guard it.
+
 - [ ] **Step 1: Write the transport**
 
 Create `ios/DwarfApp/App/BluetoothTransport.swift`:
@@ -2313,11 +2399,26 @@ public final class BluetoothTransport: NSObject, Transport {
     /// One JSON object per write; the spec caps a message at 180 bytes.
     public let framing: Framing = .perWrite
 
-    public private(set) var isConnected = false {
-        didSet {
-            guard isConnected != oldValue else { return }
-            onConnectionChange?(isConnected)
-        }
+    /// Written from CoreBluetooth's queue, read from whatever queue asks. The link's own
+    /// state is not a place to be casual about which thread is looking.
+    private let lock = NSLock()
+    private var connected = false
+    public var isConnected: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return connected
+    }
+
+    /// True when the gnome is in range but has refused us for want of a bond. A different
+    /// thing entirely from being disconnected, and the owner needs a different instruction:
+    /// pair with it, using the passkey it prints over serial.
+    public private(set) var needsPairing = false
+
+    private func setConnected(_ value: Bool) {
+        lock.lock()
+        let changed = connected != value
+        connected = value
+        lock.unlock()
+        if changed { onConnectionChange?(value) }
     }
     public var onReceive: ((Data) -> Void)?
     public var onConnectionChange: ((Bool) -> Void)?
@@ -3002,7 +3103,11 @@ final class RuntimeTests: XCTestCase {
 
         let transport = FakeTransport()
         transport.isConnected = true
-        let link = ActuatorLink(transport: transport)
+        // One clock for the whole rig. The link stamps arriving statuses with it and the
+        // runtime asks about uptimes from it; two clocks is exactly the defect the review
+        // of Task 8 found, where a single rewind withheld every status forever.
+        let steady = SteadyClock(wrapping: clock)
+        let link = ActuatorLink(transport: transport, clock: steady)
         let detector = FakeDetector()
         let battery = FakeBattery()
 
@@ -3012,7 +3117,7 @@ final class RuntimeTests: XCTestCase {
             detector: detector,
             geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080), quarterTurns: 0),
             power: PowerManager(battery: battery),
-            clock: SteadyClock(wrapping: clock))
+            clock: steady)
 
         return Rig(runtime: runtime, detector: detector, transport: transport, link: link,
                    clock: clock, battery: battery, store: store)
@@ -3036,11 +3141,13 @@ final class RuntimeTests: XCTestCase {
         return pixels
     }
 
-    private func healthyStatus(at uptime: TimeInterval, in rig: Rig) {
+    /// The link timestamps this from the clock, so the caller sets `rig.clock.uptime`
+    /// first, exactly as the real transport's callback would arrive mid-cycle.
+    private func healthyStatus(in rig: Rig) {
         rig.transport.deliver(Data("""
         {"armed":true,"pan":0,"tilt":0,"tank":"ok","pump":true,"charge":false,\
         "fan":false,"temp":22,"fault":null,"shots":0}\n
-        """.utf8), at: uptime)
+        """.utf8))
     }
 
     func testACycleWithNoAnswerYetIsPendingNotAnEmptyAnswer() throws {
@@ -3079,7 +3186,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<120 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
             if i % 3 == 0 { rig.runtime.waitForDetector() }
         }
@@ -3095,7 +3202,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<120 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
             if i % 3 == 0 { rig.runtime.waitForDetector() }
         }
@@ -3124,7 +3231,7 @@ final class RuntimeTests: XCTestCase {
         let rig = try makeRig()
         rig.runtime.thermalOverride = .critical
         rig.clock.uptime = 1
-        healthyStatus(at: 1, in: rig)
+        healthyStatus(in: rig)
         rig.runtime.handle(frame: brightBuffer())
 
         XCTAssertTrue(rig.transport.sentStrings.contains { $0.contains("\"arm\"") && $0.contains("false") })
@@ -3137,7 +3244,7 @@ final class RuntimeTests: XCTestCase {
 
         for i in 0..<30 {
             rig.clock.uptime = Double(i) * 0.1
-            healthyStatus(at: rig.clock.uptime, in: rig)
+            healthyStatus(in: rig)
             rig.runtime.handle(frame: brightBuffer())
         }
 
@@ -3411,6 +3518,48 @@ git commit -m "feat(app): wire the runtime together and honour DwarfCore's contr
 
 ---
 
+**Post-review addendum (applied in commit `54e1d70`):** the plan's test compared a
+`TimeInterval?` against a `Double` with an accuracy, which `XCTAssertEqual` has no overload
+for — the same mistake this project's previous plan made in its Task 6, made again knowing
+about it. `try XCTUnwrap` rather than a sentinel, because nil genuinely means "no answer has
+ever landed". The implementation itself was correct as written.
+
+The review then found memory corruption.
+
+1. **Runtime's read surface was not thread-safe.** Six `public private(set)` fields were read
+   from whatever queue a status screen lives on while the capture queue wrote them.
+   ThreadSanitizer found real races, and an uninstrumented build of the same scenario
+   segfaulted inside ARC — a reader holding a half-assigned `CycleOutput` while its arrays
+   were released underneath it. Writing some of them under the lock was worth nothing while
+   the reader never took it. They are now one `RuntimeSnapshot`, copied out under the lock in
+   a single read. `update(mode:)` and `update(calibration:)` had the same problem against
+   `Cycle` and `Store`; locking those would have deadlocked against `askDetector`, so the
+   changes queue and apply at the top of the next cycle. Verified with the scenario that used
+   to crash: 1200 cycles against 458 million concurrent reads and 2000 mode changes, clean.
+2. **A detector 4.5x slower than the cycle stops a still cat ever being fired at.** Measured,
+   not argued: at 10 fps against a 0.45 s detector, only 28 of 140 cycles reached the model,
+   while `Scheduler`'s round-robin advanced on all 140 — so most of the sweep's rotation was
+   discarded. The effective revisit of the tile containing the animal stretched past
+   `stillWindow`, so its samples aged out between hits and `isStill` never became true. A
+   perfectly stationary, correctly detected cat produced zero shots over the whole run.
+   Neither package is misbehaving; it is an emergent interaction, and M0's number decides
+   whether it bites. `droppedRequests` now counts it so it is visible rather than inferred.
+3. **Sends were swallowed.** `try?` at every call site meant a shot the policy authorised
+   that never left the phone left no trace. Counted now.
+4. **A hung CoreML call cannot be timed out or cancelled**, and would stop all detection for
+   good with no symptom but tracks ageing out. `detectorBusySince` makes that visible.
+
+Confirmed clean, each by direct evidence rather than reading: the original `CVPixelBuffer` is
+never retained past the call, proven by overwriting it immediately and seeing the model still
+receive the original content 50 ms later; `.wouldShoot` has no code path to the transport at
+all and `.shoot` is structurally impossible outside live mode; `clock.uptime` is read exactly
+once per cycle; and a non-monotonic `capturedAt` cannot reach the tracker, guarded
+independently by `SteadyClock`, by the single-in-flight invariant, and by `Cycle.accepted`.
+
+The suite is 78 tests after this task.
+
+---
+
 ## Task 13: The camera and the screen
 
 **Files:**
@@ -3543,6 +3692,9 @@ final class GnomeController: ObservableObject {
     @Published private(set) var trackCount = 0
     @Published private(set) var linkUp = false
     @Published private(set) var mode: Mode = .dryRun
+    /// Counters that should normally read empty. Anything here means the gnome is running
+    /// but not doing what it looks like it is doing.
+    @Published private(set) var health = ""
     /// True when the model could not be loaded. The gnome then tracks nothing at all, and
     /// silently looking like it works is the worst way for that to present.
     @Published private(set) var modelMissing = false
@@ -3558,8 +3710,9 @@ final class GnomeController: ObservableObject {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let store = Store(directory: directory)
+        let clock = SteadyClock(wrapping: SystemClock())
         let transport = BluetoothTransport()
-        let link = ActuatorLink(transport: transport)
+        let link = ActuatorLink(transport: transport, clock: clock)
         // A missing or unreadable model must be visible, not papered over: the fallback
         // detector never finds anything, so the gnome would sit there looking healthy and
         // watching nothing.
@@ -3581,7 +3734,7 @@ final class GnomeController: ObservableObject {
             geometry: FrameGeometry(buffer: PixelSize(width: 1920, height: 1080),
                                     quarterTurns: store.settings.quarterTurns),
             power: PowerManager(battery: DeviceBattery()),
-            clock: SteadyClock(wrapping: SystemClock()))
+            clock: clock)
         self.mode = store.settings.mode
         self.modelMissing = missing
     }
@@ -3607,8 +3760,19 @@ final class GnomeController: ObservableObject {
     }
 
     private func refresh() {
+        let snapshot = runtime.snapshot
         linkUp = link.isConnected
-        trackCount = runtime.lastOutput?.tracks.count ?? 0
+        trackCount = snapshot.tracks.count
+
+        // Everything the review of Task 12 added a counter for, surfaced. A gnome that has
+        // quietly stopped working should say so on its own screen rather than be diagnosed
+        // from a crash report.
+        health = [
+            snapshot.droppedRequests > 0 ? "dropped \(snapshot.droppedRequests)" : nil,
+            snapshot.sendFailures > 0 ? "send fails \(snapshot.sendFailures)" : nil,
+            snapshot.detectorFailures > 0 ? "model fails \(snapshot.detectorFailures)" : nil,
+            snapshot.lumaUnusable ? "luma unusable" : nil
+        ].compactMap { $0 }.joined(separator: " · ")
 
         if modelMissing {
             line = "MODEL MISSING — nothing is being detected"
@@ -3616,8 +3780,8 @@ final class GnomeController: ObservableObject {
             line = "unreadable: \(store.loadFailures.joined(separator: ", "))"
         } else if !store.isCalibrated {
             line = "tracking only — not calibrated"
-        } else if let decision = runtime.lastOutput?.decision {
-            line = describe(decision)
+        } else {
+            line = describe(snapshot.decision)
         }
     }
 
@@ -3660,6 +3824,12 @@ struct RootView: View {
 
             Text("\(gnome.trackCount) track\(gnome.trackCount == 1 ? "" : "s")")
                 .font(.footnote).foregroundStyle(.secondary)
+
+            if !gnome.health.isEmpty {
+                Text(gnome.health)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+            }
 
             Picker("mode", selection: Binding(get: { gnome.mode },
                                               set: { gnome.set(mode: $0) })) {

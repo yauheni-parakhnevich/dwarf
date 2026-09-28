@@ -2528,6 +2528,61 @@ git commit -m "feat(firmware): serve commands and status over BLE"
 
 ---
 
+**Post-review addendum (applied in commits `ab1bfc0`, `20ce755`, `ebffe0d`):** the plan's BLE
+code compiled and worked as written. The open question Task 10 handed forward — which channel
+owns liveness once serial and BLE can both feed the same 3 s heartbeat — was answered, and
+answering it uncovered a worse bug than the one it was about.
+
+**The design.** Ownership belongs to at most one channel, decided by *recent proof of life*
+rather than by connection state. `Controller::handle()` gained `refreshHeartbeat`, defaulting
+to true so all 92 existing tests were untouched. A command always executes whatever the flag
+says — the console stays a real command path, which is the whole reason it exists — it simply
+does not always count as evidence the phone is alive. BLE commands always refresh. Serial
+refreshes only while BLE does not own liveness, and BLE owns it only while a central is
+connected *and* has sent a recognised command within the last 3 s. A disconnect now drives
+`forceSafe()` immediately rather than waiting out the timeout, deferred into `loop()` through
+a volatile flag because the NimBLE host runs on its own task.
+
+Rejected: "BLE owns liveness permanently once any central has connected". That strands the
+serial console — the tool built specifically for when BLE misbehaves — until a power cycle,
+and buys nothing, because `forceSafe()` has already made the state safe at the moment of
+disconnect.
+
+**The bug that design found.** The first cut gated ownership on the connection flag alone. A
+central that connects, sends one command and then goes silent *without ever tearing down the
+link* — a crashed app, a backgrounded phone — left the gnome with **no live watchdog at all**
+after the first timeout: BLE still owned the slot without feeding it, serial's refreshes
+stayed suppressed, and nothing re-armed the check. Reproduced against a real central, fixed
+by requiring BLE's proof of life to be recent, and reproduced again to confirm the fix. This
+is the same species as the two liveness bugs already found in this project — the firmware
+feeding its own heartbeat, and the phone's link vouching for a status it could no longer see.
+
+**Verified on the real ESP32-D0WD-V3**, using the Mac's own radio as a BLE central rather than
+waiting for the phone: `dwarf` advertising the spec's service UUID; a full connect, write and
+notify round trip; serial flooding `hb` for 4.5 s unable to mask a silent BLE owner; the fan
+observed off 129 ms and 132 ms after a real disconnect in two runs, proving `forceSafe()` runs
+at once rather than after 3 s; and the zombie gap closing and the watchdog re-engaging live.
+95 native tests, flash 48.5% (NimBLE costs about 326 KB), RAM 11.2%, and 222 KB of heap still
+free with a central connected — about 116 bytes of marginal cost per connection.
+
+**What a stranger in the garden can do.** The service is unauthenticated, as the spec
+specifies, so anyone in range can connect and write. The firmware's own limits contain it:
+every angle is clamped, every burst capped at 500 ms whatever is asked for, a 5 s cooldown
+enforced, arming refused unless tank and temperature are healthy, and the hardware valve timer
+closes the solenoid from an ISR regardless of any of it. The worst reachable outcome is
+nuisance — repeated disarms and parks, which is the safe direction anyway, or single capped
+bursts no oftener than every 5 s. No path over BLE alone reaches an unbounded spray, a valve
+held open, or memory corruption.
+
+**Declined, with reasons.** The disconnect flag is not tagged to a connection, so a
+disconnect immediately followed by a reconnect could run `forceSafe()` against the fresh
+session — a spurious park, always in the safe direction. A connection-generation counter would
+close it. Declined because the two radios live centimetres apart inside the same gnome body:
+this is not a link operating near the edge of its range, and the failure is a momentary park
+rather than anything unsafe. Worth revisiting only if the bench week shows real drops.
+
+---
+
 ### Task 12: Wet bench rig and M1 sign-off
 
 **Files:**

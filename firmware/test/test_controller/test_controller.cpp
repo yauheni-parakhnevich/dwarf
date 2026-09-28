@@ -839,6 +839,59 @@ void test_safe_state_clears_a_commanded_fan() {
     TEST_ASSERT_FALSE(c.fanOn());
 }
 
+void test_suppressed_heartbeat_refresh_still_executes_the_command() {
+    Controller c;
+    Millis now = 0;
+    // No phone has ever been present, so the caller (main.cpp models this as
+    // "no BLE central connected") still lets the serial console arm the
+    // gnome -- refreshHeartbeat only gates the liveness bookkeeping, never
+    // whether the command itself takes effect.
+    Ack a = c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now, /*refreshHeartbeat=*/false);
+    TEST_ASSERT_TRUE(a.ok);
+    TEST_ASSERT_TRUE(c.armed());
+}
+
+void test_suppressed_heartbeat_refresh_cannot_mask_a_real_timeout() {
+    Controller c;
+    Millis now = 0;
+    // A real channel (BLE, in main.cpp) established the link and armed the
+    // gnome.
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+    TEST_ASSERT_TRUE(c.armed());
+
+    // A second channel (a serial monitor left open on the bench) keeps
+    // sending heartbeats for 4 seconds straight, well past the 3 s timeout,
+    // but every one of them is marked refreshHeartbeat=false because it is
+    // not the channel that owns liveness right now. This is exactly the
+    // hazard the Task 10 addendum carried forward: two channels satisfying
+    // one heartbeat independently would let a monitor nobody is reading mask
+    // the real link actually going quiet.
+    for (int i = 0; i < 400; ++i) {
+        now += 10;
+        c.update(now, true, 22.0f);
+        c.handle(cmd("{\"c\":\"hb\"}"), now, /*refreshHeartbeat=*/false);
+    }
+
+    TEST_ASSERT_FALSE(c.armed());
+    TEST_ASSERT_TRUE(c.chargeOn());
+}
+
+void test_default_handle_call_still_refreshes_heartbeat() {
+    // Every pre-existing call site in this suite (and main.cpp's original
+    // serial-only console) calls handle(cmd, now) with no third argument.
+    // Pins the default to true so that behaviour is unchanged.
+    Controller c;
+    Millis now = 0;
+    c.handle(cmd("{\"c\":\"arm\",\"v\":true}"), now);
+
+    for (int i = 0; i < 10; ++i) {
+        advance(c, now, 1000);
+        c.handle(cmd("{\"c\":\"hb\"}"), now);
+    }
+
+    TEST_ASSERT_TRUE(c.armed());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_arm_and_disarm);
@@ -882,5 +935,8 @@ int main(int, char**) {
     RUN_TEST(test_cfg_with_nan_limits_is_rejected);
     RUN_TEST(test_heartbeat_times_out_at_exactly_3_seconds);
     RUN_TEST(test_safe_state_clears_a_commanded_fan);
+    RUN_TEST(test_suppressed_heartbeat_refresh_still_executes_the_command);
+    RUN_TEST(test_suppressed_heartbeat_refresh_cannot_mask_a_real_timeout);
+    RUN_TEST(test_default_handle_call_still_refreshes_heartbeat);
     return UNITY_END();
 }
